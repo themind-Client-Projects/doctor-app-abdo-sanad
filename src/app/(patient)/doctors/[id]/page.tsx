@@ -236,7 +236,7 @@ export default function DoctorListingPage({ params }: { params: Promise<{ id: st
               </DrawerDescription>
             </DrawerHeader>
 
-            <div className="px-5 py-4 flex-1 overflow-y-auto space-y-6">
+            <div className="px-5 py-4 flex-1 overflow-y-auto overscroll-contain space-y-6" style={{ WebkitOverflowScrolling: 'touch' }}>
               {/* Success State */}
               {bookingConfirmed ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -255,7 +255,7 @@ export default function DoctorListingPage({ params }: { params: Promise<{ id: st
                       <CalendarClock className="w-5 h-5 text-primary" />
                       اختر التاريخ
                     </h4>
-                    <div className="bg-gray-50 border border-gray-100 rounded-2xl p-4">
+                    <div className="bg-gray-50 border border-gray-100 rounded-2xl p-2 sm:p-4 overflow-hidden">
                       <Calendar
                         mode="single"
                         selected={selectedDate}
@@ -273,7 +273,7 @@ export default function DoctorListingPage({ params }: { params: Promise<{ id: st
                           d.setHours(0, 0, 0, 0);
                           return d < today || !isDateAvailable(d);
                         }}
-                        className="rounded-md"
+                        className="rounded-md [--cell-size:36px] sm:[--cell-size:44px] !w-full"
                         modifiers={{ available: DEMO_AVAILABLE_DATES }}
                         modifiersClassNames={{
                           available: 'ring-2 ring-primary/20 ring-inset font-bold',
@@ -281,17 +281,17 @@ export default function DoctorListingPage({ params }: { params: Promise<{ id: st
                       />
                     </div>
                     {/* Legend */}
-                    <div className="flex items-center gap-4 mt-3 px-1">
-                      <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                        <div className="w-3 h-3 rounded bg-primary" />
+                    <div className="flex items-center justify-center gap-3 sm:gap-4 mt-3 px-1 flex-wrap">
+                      <div className="flex items-center gap-1.5 text-[11px] sm:text-xs text-gray-500">
+                        <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded bg-primary flex-shrink-0" />
                         <span>التاريخ المختار</span>
                       </div>
-                      <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                        <div className="w-3 h-3 rounded ring-2 ring-primary/30 bg-white" />
+                      <div className="flex items-center gap-1.5 text-[11px] sm:text-xs text-gray-500">
+                        <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded ring-2 ring-primary/30 bg-white flex-shrink-0" />
                         <span>متاح</span>
                       </div>
-                      <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                        <div className="w-3 h-3 rounded bg-gray-200" />
+                      <div className="flex items-center gap-1.5 text-[11px] sm:text-xs text-gray-500">
+                        <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded bg-gray-200 flex-shrink-0" />
                         <span>غير متاح</span>
                       </div>
                     </div>
@@ -304,13 +304,13 @@ export default function DoctorListingPage({ params }: { params: Promise<{ id: st
                         <Clock className="w-5 h-5 text-primary" />
                         الأوقات المتاحة
                       </h4>
-                      <div className="grid grid-cols-3 gap-3">
+                      <div className="grid grid-cols-3 gap-2 sm:gap-3">
                         {DEMO_TIME_SLOTS.map(({ time, available }) => (
                           <button
                             key={time}
                             disabled={!available}
                             onClick={() => setSelectedTime(time)}
-                            className={`py-3 px-2 rounded-xl text-base font-bold border transition-all ${
+                            className={`py-2.5 sm:py-3 px-1.5 sm:px-2 rounded-xl text-sm sm:text-base font-bold border transition-all ${
                               !available
                                 ? 'bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed line-through'
                                 : selectedTime === time
