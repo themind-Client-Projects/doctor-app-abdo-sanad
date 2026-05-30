@@ -147,6 +147,68 @@ export const DEFAULT_RECENT_SEARCHES = [
 
 // ─── Bookings Demo Data ─────────────────────────────────────────────────
 
+export const NOTIFICATIONS = [
+  {
+    id: 1,
+    title: 'موعد مؤكد مع د. سامي العبيدي',
+    message: 'لا تنسَ موعدك الطبي اليوم الساعة 4:30 مساءً. يرجى الحضور قبل الموعد بـ 15 دقيقة.',
+    time: 'منذ ساعتين',
+    type: 'appointment',
+    isRead: false,
+  },
+  {
+    id: 2,
+    title: 'نتائج التحاليل جاهزة',
+    message: 'تم إصدار نتائج تحاليلك من مختبرات النور. يمكنك الاطلاع عليها الآن.',
+    time: 'منذ 5 ساعات',
+    type: 'lab',
+    isRead: false,
+  },
+  {
+    id: 3,
+    title: 'عرض جديد: خصم 20% على العناية المنزلية',
+    message: 'استفد من خصم حصري على خدمات العناية التمريضية المنزلية المعتمدة هذا الأسبوع.',
+    time: 'أمس',
+    type: 'offer',
+    isRead: true,
+  },
+  {
+    id: 4,
+    title: 'تحديث المحفظة',
+    message: 'تم إضافة 50,000 دينار عراقي إلى محفظة سند الخاصة بك كنقاط كاش باك.',
+    time: 'منذ 3 أيام',
+    type: 'wallet',
+    isRead: true,
+  },
+];
+
+// ─── E-Commerce Data (Pharmacies & Products) ────────────────────────────
+
+export interface Product {
+  id: string;
+  name: string;
+  category: string;
+  price: number;
+  image: string;
+  inStock: boolean;
+  pharmacyId: number;
+}
+
+export const DEMO_PHARMACIES = [
+  { id: 1, name: 'صيدلية النور المركزية', status: 'مفتوح الآن', time: '٢٤ ساعة', image: '/complexes/real_complex_1.png' },
+  { id: 2, name: 'صيدلية الشفاء', status: 'مغلق', time: '٨ ص - ١٠ م', image: '/complexes/real_complex_2.png' },
+  { id: 3, name: 'صيدلية الرازي', status: 'مفتوح الآن', time: '٢٤ ساعة', image: '/complexes/real_complex_3.png' },
+];
+
+export const DEMO_PRODUCTS: Product[] = [
+  { id: 'p1', name: 'بانادول اكسترا - 24 قرص', category: 'أدوية', price: 3500, image: '/complexes/real_complex_2.png', inStock: true, pharmacyId: 1 },
+  { id: 'p2', name: 'فيتامين سي 1000 ملغ', category: 'فيتامينات', price: 12000, image: '/complexes/real_complex_3.png', inStock: true, pharmacyId: 1 },
+  { id: 'p3', name: 'سيروم فيتامين سي للبشرة', category: 'عناية بالبشرة', price: 25000, image: '/complexes/real_complex_1.png', inStock: true, pharmacyId: 1 },
+  { id: 'p4', name: 'أوميغا 3 زيت السمك', category: 'مكملات غذائية', price: 18000, image: '/complexes/real_complex_2.png', inStock: false, pharmacyId: 1 },
+  { id: 'p5', name: 'كريم مرطب سيرافي', category: 'عناية بالبشرة', price: 35000, image: '/complexes/real_complex_3.png', inStock: true, pharmacyId: 1 },
+  { id: 'p6', name: 'قطرات مرطبة للعين', category: 'عناية شخصية', price: 8500, image: '/complexes/real_complex_1.png', inStock: true, pharmacyId: 1 },
+];
+
 export const DEMO_UPCOMING_BOOKINGS: Booking[] = [
   {
     id: 1,

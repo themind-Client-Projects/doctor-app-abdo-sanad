@@ -1,11 +1,22 @@
 'use client';
 
+import { useState } from 'react';
 import { Lock, MapPin, Phone, Star, ChevronLeft, HeartHandshake, Syringe, Activity, HeartPulse } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { PageBackButton } from '@/components/shared/page-back-button';
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
+import { HomecareReservationForm } from '@/components/forms/homecare-reservation-form';
 
 export default function NursingPage() {
   const router = useRouter();
+  
+  const [selectedCenter, setSelectedCenter] = useState<any>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const openReservation = (center: any) => {
+    setSelectedCenter(center);
+    setDrawerOpen(true);
+  };
 
   const centers = [
     { id: 1, name: 'مركز الرحمة للعناية المنزلية', location: 'يغطي بغداد بالكامل', phone: '0773 456 7890', rating: 4.8, icon: <HeartHandshake className="w-8 h-8" /> },
@@ -83,8 +94,10 @@ export default function NursingPage() {
                 </div>
                 
                 <div className="flex gap-2 mt-2">
-                  <button className="flex-1 bg-rose-50 hover:bg-rose-100 text-rose-700 py-2.5 rounded-xl text-sm font-bold transition-colors">
-                    عرض الخدمات والأسعار
+                  <button 
+                    onClick={() => openReservation(center)}
+                    className="flex-1 bg-rose-600 hover:bg-rose-700 text-white py-2.5 rounded-xl text-sm font-bold shadow-md shadow-rose-600/20 active:scale-95 transition-all">
+                    احجز خدمة الآن
                   </button>
                   <button className="w-12 flex items-center justify-center bg-gray-50 hover:bg-gray-100 text-gray-600 rounded-xl border border-gray-100 transition-colors">
                     <Phone className="w-4 h-4" />
@@ -96,6 +109,35 @@ export default function NursingPage() {
         </section>
 
       </main>
+
+      {/* ── Reservation Drawer ── */}
+      <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
+        <DrawerContent className="max-h-[92vh] h-auto">
+          <div className="mx-auto w-full max-w-md flex flex-col h-full overflow-y-auto hide-scrollbar pb-safe">
+            <DrawerHeader className="text-right px-5 pt-6">
+              <DrawerTitle className="text-xl font-extrabold mb-1 text-gray-900">
+                حجز خدمة تمريضية
+              </DrawerTitle>
+              {selectedCenter && (
+                <p className="text-sm text-rose-600 font-bold bg-rose-50 px-3 py-1.5 rounded-lg inline-block mt-2">
+                  مع {selectedCenter.name}
+                </p>
+              )}
+            </DrawerHeader>
+            
+            <div className="p-5 pb-8">
+              <HomecareReservationForm 
+                centerName={selectedCenter?.name} 
+                onSuccess={() => {
+                  // The form shows a success message for 2 seconds, then we close the drawer
+                  setTimeout(() => setDrawerOpen(false), 2000);
+                }} 
+              />
+            </div>
+          </div>
+        </DrawerContent>
+      </Drawer>
+
     </div>
   );
 }

@@ -337,7 +337,7 @@ export default function BookingsPage() {
 
       {/* ── Reschedule Drawer (Controlled) ───────────────────────────────── */}
       <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <DrawerContent className="!max-h-[85vh] h-[85vh]">
+        <DrawerContent className="!max-h-[92vh] h-[92vh]">
           <div className="mx-auto w-full flex flex-col h-full">
             <DrawerHeader className="text-right px-5">
               <DrawerTitle className="text-2xl font-extrabold">إعادة جدولة الموعد</DrawerTitle>
@@ -352,14 +352,14 @@ export default function BookingsPage() {
               </DrawerDescription>
             </DrawerHeader>
 
-            <div className="px-5 py-4 flex-1 overflow-y-auto space-y-6 -webkit-overflow-scrolling-touch">
+            <div className="px-5 py-4 flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-6" style={{ WebkitOverflowScrolling: 'touch' }}>
               {/* Calendar */}
               <div>
                 <h4 className="font-bold text-gray-800 mb-3 flex items-center gap-2 text-base">
                   <CalendarClock className="w-5 h-5 text-primary" />
                   اختر التاريخ
                 </h4>
-                <div className="bg-gray-50 border border-gray-100 rounded-2xl p-2 sm:p-4 overflow-hidden">
+                <div className="bg-gray-50 border border-gray-100 rounded-2xl p-3">
                   <Calendar
                     mode="single"
                     selected={date}
@@ -377,7 +377,7 @@ export default function BookingsPage() {
                       d.setHours(0, 0, 0, 0);
                       return d < today || !isDateAvailable(d);
                     }}
-                    className="rounded-md [--cell-size:36px] sm:[--cell-size:44px] !w-full"
+                    className="rounded-md [--cell-size:40px] !w-full"
                     modifiers={{ available: availableDates }}
                     modifiersClassNames={{
                       available: 'ring-2 ring-primary/20 ring-inset font-bold',

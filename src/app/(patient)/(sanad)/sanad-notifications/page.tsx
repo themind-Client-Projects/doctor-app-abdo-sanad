@@ -61,7 +61,7 @@ export default function NotificationsPage() {
     <div className="min-h-screen bg-gray-50 pb-20 font-sans">
       <header className="px-5 pt-12 pb-4 bg-white shadow-sm flex items-center justify-between sticky top-0 z-50 relative">
         <PageBackButton className="static bg-gray-100 text-gray-800 hover:bg-gray-200" />
-        <h1 className="text-lg font-bold text-gray-900 absolute left-1/2 -translate-x-1/2">الإشعارات</h1>
+        <h1 className="text-lg font-bold text-gray-900 absolute left-1/2 -translate-x-1/2">إشعارات سند</h1>
         <div className="w-10"></div> {/* spacer for centering */}
       </header>
 

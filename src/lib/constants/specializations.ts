@@ -1,6 +1,6 @@
 import { 
   Droplet, Users, Activity, Baby, HeartPulse, 
-  Salad, Sparkles, Leaf, Stethoscope, Bone, 
+  Salad, Sparkles, Leaf, Stethoscope, Accessibility, 
   Brain, Eye, Ear
 } from 'lucide-react';
 
@@ -14,8 +14,7 @@ export const SPECIALIZATIONS = [
   { id: 'dermatology', name: 'الجلدية والتجميل', icon: Sparkles, color: 'bg-pink-100 text-pink-600' },
   { id: 'palliative-care', name: 'التلطيف', icon: Leaf, color: 'bg-teal-100 text-teal-600' },
   { id: 'dentistry', name: 'الأسنان', icon: Stethoscope, color: 'bg-cyan-100 text-cyan-600' },
-  { id: 'orthopedics', name: 'المفاصل والكسور', icon: Bone, color: 'bg-orange-100 text-orange-600' },
-  // Suggested Additions
+  { id: 'orthopedics', name: 'المفاصل والكسور', icon: Accessibility, color: 'bg-orange-100 text-orange-600' },
   { id: 'mental-health', name: 'الطب النفسي والإرشاد', icon: Brain, color: 'bg-indigo-100 text-indigo-600' },
   { id: 'ophthalmology', name: 'طب العيون', icon: Eye, color: 'bg-sky-100 text-sky-600' },
   { id: 'ent', name: 'الأنف والأذن والحنجرة', icon: Ear, color: 'bg-violet-100 text-violet-600' },

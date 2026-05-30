@@ -3,6 +3,7 @@
 import { useState, useRef, use } from 'react';
 import { Filter, MapPin, Star, Phone, CalendarClock, Clock, Stethoscope, UserCheck, ChevronLeft, Check, Briefcase } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { PageBackButton } from '@/components/shared/page-back-button';
 import { SPECIALIZATIONS } from '@/lib/constants/specializations';
 import { DEMO_DOCTORS, DEMO_TIME_SLOTS, DEMO_AVAILABLE_DATES, isDateAvailable } from '@/lib/constants/demo-data';
@@ -221,7 +222,7 @@ export default function DoctorListingPage({ params }: { params: Promise<{ id: st
 
       {/* ── Reservation Drawer ────────────────────────────────────────────── */}
       <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <DrawerContent className="!max-h-[85vh] h-[85vh]">
+        <DrawerContent className="!max-h-[92vh] h-[92vh]">
           <div className="mx-auto w-full flex flex-col h-full">
             <DrawerHeader className="text-right px-5">
               <DrawerTitle className="text-2xl font-extrabold">حجز موعد</DrawerTitle>
@@ -236,7 +237,7 @@ export default function DoctorListingPage({ params }: { params: Promise<{ id: st
               </DrawerDescription>
             </DrawerHeader>
 
-            <div className="px-5 py-4 flex-1 overflow-y-auto overscroll-contain space-y-6" style={{ WebkitOverflowScrolling: 'touch' }}>
+            <div className="px-5 py-4 flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-6" style={{ WebkitOverflowScrolling: 'touch' }}>
               {/* Success State */}
               {bookingConfirmed ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -255,7 +256,7 @@ export default function DoctorListingPage({ params }: { params: Promise<{ id: st
                       <CalendarClock className="w-5 h-5 text-primary" />
                       اختر التاريخ
                     </h4>
-                    <div className="bg-gray-50 border border-gray-100 rounded-2xl p-2 sm:p-4 overflow-hidden">
+                    <div className="bg-gray-50 border border-gray-100 rounded-2xl p-3">
                       <Calendar
                         mode="single"
                         selected={selectedDate}
@@ -273,7 +274,7 @@ export default function DoctorListingPage({ params }: { params: Promise<{ id: st
                           d.setHours(0, 0, 0, 0);
                           return d < today || !isDateAvailable(d);
                         }}
-                        className="rounded-md [--cell-size:36px] sm:[--cell-size:44px] !w-full"
+                        className="rounded-md [--cell-size:40px] !w-full"
                         modifiers={{ available: DEMO_AVAILABLE_DATES }}
                         modifiersClassNames={{
                           available: 'ring-2 ring-primary/20 ring-inset font-bold',

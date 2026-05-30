@@ -15,7 +15,7 @@ const NAV_ITEMS: NavItem[] = [
   { name: 'الرئيسية', href: '/home', icon: Home },
   { name: 'حجوزاتي', href: '/bookings', icon: Calendar },
   { name: 'بحث', href: '/search', icon: Search },
-  { name: 'إشعارات', href: '/notifications', icon: Bell },
+  { name: 'إشعارات', href: '/sanad-notifications', icon: Bell },
   { name: 'حسابي', href: '/profile', icon: User },
 ];
 
