@@ -26,7 +26,7 @@ export default function RootLayout({
       <html lang="ar" dir="rtl">
         <body className={`${notoKufiArabic.variable} font-arabic bg-background text-foreground antialiased`}>
           {children}
-          <InstallPrompt />
+          {/* <InstallPrompt /> */}
         </body>
       </html>
     </ClerkProvider>
