@@ -3,7 +3,7 @@
 import { use, useMemo, useState, Suspense } from 'react';
 import Image from 'next/image';
 import { Search, MapPin, Clock, Star, ShoppingBag, Info, AlertCircle } from 'lucide-react';
-import { PageBackButton } from '@/components/shared/page-back-button';
+
 import { DEMO_PHARMACIES, DEMO_PRODUCTS } from '@/lib/constants/demo-data';
 import { ProductCard } from '@/components/shared/ecommerce/product-card';
 import { CartDrawer } from '@/components/shared/ecommerce/cart-drawer';
@@ -55,7 +55,7 @@ function PharmacyContent({ pharmacyId }: { pharmacyId: number }) {
           priority
         />
         <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/40 to-transparent" />
-        <PageBackButton className="text-white bg-black/20 hover:bg-black/30 backdrop-blur-md" />
+
         
         <div className="absolute bottom-0 left-0 right-0 p-5">
           <div className="flex justify-between items-end">

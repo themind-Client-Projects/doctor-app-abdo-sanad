@@ -172,7 +172,7 @@ export function HomecareReservationForm({ centerName, onSuccess }: HomecareReser
         <button
           type="submit"
           disabled={isSubmitting}
-          className="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-rose-600/30 transition-all active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed mt-4"
+          className="w-full bg-primary hover:bg-primary/90 text-white font-bold py-4 rounded-2xl shadow-lg shadow-primary/30 transition-all active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed mt-4"
         >
           {isSubmitting ? 'جاري إرسال الطلب...' : 'تأكيد الحجز'}
         </button>

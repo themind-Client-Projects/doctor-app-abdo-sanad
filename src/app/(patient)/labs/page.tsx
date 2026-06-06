@@ -2,7 +2,7 @@
 
 import { Lock, MapPin, Phone, Star, ChevronLeft, Search, Calendar, Activity, Home, Clock, Filter, Beaker, Droplet, Bone, ClipboardList, Dna, Microscope, TestTube } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { PageBackButton } from '@/components/shared/page-back-button';
+
 
 export default function LabsPage() {
   const router = useRouter();
@@ -31,31 +31,25 @@ export default function LabsPage() {
   return (
     <div className="flex flex-col min-h-screen bg-gray-50/50 pb-28 font-sans">
       {/* Header */}
-      <header className="bg-gradient-to-r from-purple-700 to-purple-500 px-4 pt-14 pb-8 rounded-b-[2.5rem] shadow-lg relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4"></div>
-        <PageBackButton />
-        <div className="relative z-10 text-center mt-2">
-          <h1 className="text-2xl font-extrabold text-white mb-2 tracking-tight">المختبرات والأشعة</h1>
-          <p className="text-purple-100 text-sm font-medium">احجز فحوصاتك بسهولة مع أفضل المختبرات</p>
-        </div>
-
+      {/* Page Title */}
+      <div className="px-5 pt-2 pb-4">
+        <h1 className="text-xl font-extrabold text-gray-900 mb-4">المختبرات والأشعة</h1>
+        
         {/* Search Bar */}
-        <div className="relative z-10 mt-6 max-w-md mx-auto">
-          <div className="relative flex items-center">
-            <div className="absolute right-4 text-gray-400">
-              <Search className="w-5 h-5" />
-            </div>
-            <input 
-              type="text" 
-              placeholder="ابحث عن مختبر، تحليل، أو أشعة..." 
-              className="w-full bg-white/95 backdrop-blur text-gray-800 rounded-2xl py-3.5 pr-12 pl-12 shadow-md outline-none focus:ring-2 focus:ring-purple-300 transition-all font-medium placeholder:text-gray-400"
-            />
-            <button className="absolute left-2 p-2 bg-purple-100 text-purple-600 rounded-xl hover:bg-purple-200 transition-colors">
-              <Filter className="w-4 h-4" />
-            </button>
+        <div className="relative">
+          <div className="absolute right-4 text-gray-400 top-1/2 -translate-y-1/2">
+            <Search className="w-5 h-5" />
           </div>
+          <input 
+            type="text" 
+            placeholder="ابحث عن مختبر، تحليل، أو أشعة..." 
+            className="w-full bg-white text-gray-900 rounded-2xl py-3.5 pr-12 pl-12 border border-gray-200 outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm transition-all font-medium placeholder:text-gray-400"
+          />
+          <button className="absolute left-2 top-1/2 -translate-y-1/2 p-2 bg-purple-50 text-purple-600 rounded-xl hover:bg-purple-100 transition-colors">
+            <Filter className="w-4 h-4" />
+          </button>
         </div>
-      </header>
+      </div>
 
       <main className="px-4 mt-4 space-y-8">
         

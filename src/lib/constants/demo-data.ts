@@ -78,18 +78,21 @@ export const DEMO_TIME_SLOTS: TimeSlot[] = [
 
 // ─── Available Dates ────────────────────────────────────────────────────
 
-export const DEMO_AVAILABLE_DATES = [
-  new Date(2026, 4, 13),
-  new Date(2026, 4, 14),
-  new Date(2026, 4, 15),
-  new Date(2026, 4, 18),
-  new Date(2026, 4, 19),
-  new Date(2026, 4, 20),
-  new Date(2026, 4, 21),
-  new Date(2026, 4, 25),
-  new Date(2026, 4, 26),
-  new Date(2026, 4, 27),
-];
+export const DEMO_AVAILABLE_DATES = (() => {
+  const dates = [];
+  const today = new Date();
+  
+  // Generate 15 available dates over the next 30 days
+  for (let i = 1; i <= 30; i++) {
+    // Skip some days randomly to make it look realistic (e.g. skip weekends or random days)
+    if (i % 3 !== 0 && i % 7 !== 0) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      dates.push(d);
+    }
+  }
+  return dates;
+})();
 
 export function isDateAvailable(day: Date): boolean {
   return DEMO_AVAILABLE_DATES.some(
@@ -201,12 +204,12 @@ export const DEMO_PHARMACIES = [
 ];
 
 export const DEMO_PRODUCTS: Product[] = [
-  { id: 'p1', name: 'بانادول اكسترا - 24 قرص', category: 'أدوية', price: 3500, image: '/complexes/real_complex_2.png', inStock: true, pharmacyId: 1 },
-  { id: 'p2', name: 'فيتامين سي 1000 ملغ', category: 'فيتامينات', price: 12000, image: '/complexes/real_complex_3.png', inStock: true, pharmacyId: 1 },
-  { id: 'p3', name: 'سيروم فيتامين سي للبشرة', category: 'عناية بالبشرة', price: 25000, image: '/complexes/real_complex_1.png', inStock: true, pharmacyId: 1 },
-  { id: 'p4', name: 'أوميغا 3 زيت السمك', category: 'مكملات غذائية', price: 18000, image: '/complexes/real_complex_2.png', inStock: false, pharmacyId: 1 },
-  { id: 'p5', name: 'كريم مرطب سيرافي', category: 'عناية بالبشرة', price: 35000, image: '/complexes/real_complex_3.png', inStock: true, pharmacyId: 1 },
-  { id: 'p6', name: 'قطرات مرطبة للعين', category: 'عناية شخصية', price: 8500, image: '/complexes/real_complex_1.png', inStock: true, pharmacyId: 1 },
+  { id: 'p1', name: 'بانادول اكسترا - 24 قرص', category: 'أدوية', price: 3500, image: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=500&auto=format&fit=crop&q=60', inStock: true, pharmacyId: 1 },
+  { id: 'p2', name: 'فيتامين سي 1000 ملغ', category: 'فيتامينات', price: 12000, image: 'https://images.unsplash.com/photo-1625244724120-1fd1d34d00f6?w=500&auto=format&fit=crop&q=60', inStock: true, pharmacyId: 1 },
+  { id: 'p3', name: 'سيروم فيتامين سي للبشرة', category: 'عناية بالبشرة', price: 25000, image: 'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=500&auto=format&fit=crop&q=60', inStock: true, pharmacyId: 1 },
+  { id: 'p4', name: 'أوميغا 3 زيت السمك', category: 'مكملات غذائية', price: 18000, image: 'https://images.unsplash.com/photo-1550572017-edd951b55104?w=500&auto=format&fit=crop&q=60', inStock: false, pharmacyId: 1 },
+  { id: 'p5', name: 'كريم مرطب سيرافي', category: 'عناية بالبشرة', price: 35000, image: 'https://images.unsplash.com/photo-1608248597279-f99d160bfcbc?w=500&auto=format&fit=crop&q=60', inStock: true, pharmacyId: 1 },
+  { id: 'p6', name: 'قطرات مرطبة للعين', category: 'عناية شخصية', price: 8500, image: 'https://images.unsplash.com/photo-1607613009820-a29f7bb81c04?w=500&auto=format&fit=crop&q=60', inStock: true, pharmacyId: 1 },
 ];
 
 export const DEMO_UPCOMING_BOOKINGS: Booking[] = [

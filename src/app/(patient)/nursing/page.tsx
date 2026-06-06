@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Lock, MapPin, Phone, Star, ChevronLeft, HeartHandshake, Syringe, Activity, HeartPulse } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { PageBackButton } from '@/components/shared/page-back-button';
+
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { HomecareReservationForm } from '@/components/forms/homecare-reservation-form';
 
@@ -26,14 +26,11 @@ export default function NursingPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50/50 pb-24">
-      <header className="bg-gradient-to-r from-rose-600 to-rose-400 px-4 pt-14 pb-8 rounded-b-[2.5rem] shadow-lg relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4"></div>
-        <PageBackButton />
-        <div className="relative z-10 text-center mt-2">
-          <h1 className="text-2xl font-extrabold text-white mb-2 tracking-tight">التمريض والعناية المنزلية</h1>
-          <p className="text-rose-100 text-sm font-medium">خدمات تمريضية متخصصة في راحة منزلك</p>
-        </div>
-      </header>
+      {/* Page Title */}
+      <div className="px-5 pt-2 pb-4">
+        <h1 className="text-xl font-extrabold text-gray-900">التمريض والعناية المنزلية</h1>
+        <p className="text-gray-500 text-sm mt-1 font-medium">خدمات تمريضية متخصصة في راحة منزلك</p>
+      </div>
 
       <main className="px-4 mt-6 space-y-6">
         

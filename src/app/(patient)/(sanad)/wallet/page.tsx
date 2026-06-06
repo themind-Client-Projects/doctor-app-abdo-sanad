@@ -1,7 +1,7 @@
 'use client';
 
 import { Wallet, ArrowUpRight, ArrowDownLeft, Plus, Receipt, Clock, TrendingUp } from 'lucide-react';
-import { PageBackButton } from '@/components/shared/page-back-button';
+
 
 interface Transaction {
   id: number;
@@ -23,19 +23,14 @@ const DEMO_TRANSACTIONS: Transaction[] = [
 export default function WalletPage() {
   return (
     <div className="flex flex-col min-h-screen bg-gray-50/50 pb-24 font-sans">
-      {/* Header */}
-      <header className="bg-gradient-to-br from-primary to-primary/80 px-4 pt-14 pb-10 rounded-b-[2.5rem] shadow-lg relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -translate-y-1/2 -translate-x-1/4" />
-        <div className="absolute bottom-0 right-0 w-40 h-40 bg-white/5 rounded-full blur-2xl translate-y-1/2 translate-x-1/4" />
-        <PageBackButton />
-        <div className="relative z-10 text-center mt-2">
-          <h1 className="text-2xl font-extrabold text-white tracking-tight">محفظتي</h1>
-          <p className="text-primary-foreground/70 text-sm mt-1 font-medium">إدارة رصيدك ومعاملاتك</p>
-        </div>
-      </header>
+      {/* Page Title */}
+      <div className="px-5 pt-2 pb-4">
+        <h1 className="text-xl font-extrabold text-gray-900">محفظتي</h1>
+        <p className="text-gray-500 text-sm mt-1 font-medium">إدارة رصيدك ومعاملاتك</p>
+      </div>
 
       {/* Balance Card */}
-      <div className="px-4 -mt-6 relative z-10">
+      <div className="px-5">
         <div className="bg-white rounded-3xl p-6 shadow-lg border border-gray-100">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">

@@ -16,6 +16,7 @@ export interface Doctor {
   isAvailable: boolean;
   experience: string;
   gender: 'male' | 'female';
+  image?: string;
 }
 
 export interface Lab {

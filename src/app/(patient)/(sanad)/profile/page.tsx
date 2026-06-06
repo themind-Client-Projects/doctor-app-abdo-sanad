@@ -24,17 +24,16 @@ export default function ProfilePage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50/50 pb-24 font-sans">
-      {/* Profile Header */}
-      <header className="bg-gradient-to-br from-primary to-primary/80 px-4 pt-14 pb-28 rounded-b-[2.5rem] relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -translate-y-1/2 -translate-x-1/4" />
-        {/* Header kept clean — profile card below acts as the visual anchor */}
-      </header>
+      {/* Page Title */}
+      <div className="px-5 pt-2 pb-4">
+        <h1 className="text-xl font-extrabold text-gray-900">الملف الشخصي</h1>
+      </div>
 
-      {/* Profile Card - floats over header */}
-      <div className="px-4 -mt-20 relative z-10">
-        <div className="bg-white rounded-3xl p-6 shadow-lg border border-gray-100">
+      {/* Profile Card */}
+      <div className="px-5">
+        <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
           <div className="flex flex-col items-center">
-            <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-3 border-4 border-white shadow-md -mt-16">
+            <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-3">
               <User className="w-9 h-9 text-primary" />
             </div>
             <h2 className="text-xl font-extrabold text-gray-800">أحمد محمد</h2>

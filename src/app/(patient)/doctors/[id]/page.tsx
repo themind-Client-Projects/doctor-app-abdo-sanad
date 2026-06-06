@@ -4,7 +4,7 @@ import { useState, useRef, use } from 'react';
 import { Filter, MapPin, Star, Phone, CalendarClock, Clock, Stethoscope, UserCheck, ChevronLeft, Check, Briefcase } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { PageBackButton } from '@/components/shared/page-back-button';
+
 import { SPECIALIZATIONS } from '@/lib/constants/specializations';
 import { DEMO_DOCTORS, DEMO_TIME_SLOTS, DEMO_AVAILABLE_DATES, isDateAvailable } from '@/lib/constants/demo-data';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
@@ -87,9 +87,9 @@ export default function DoctorListingPage({ params }: { params: Promise<{ id: st
   return (
     <div className="flex flex-col min-h-screen bg-gray-50/50 pb-24 font-sans">
       {/* Header */}
-      <header className="bg-gradient-to-r from-primary to-primary/80 px-4 pt-14 pb-8 rounded-b-[2.5rem] shadow-lg relative overflow-hidden">
+      <header className="bg-gradient-to-r from-primary to-primary/80 px-4 pt-4 pb-8 rounded-b-[2.5rem] shadow-lg relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4" />
-        <PageBackButton />
+
         <div className="relative z-10 flex flex-col items-center mt-2">
           {SpecIcon && (
             <div className="w-16 h-16 bg-white/15 backdrop-blur-sm rounded-2xl flex items-center justify-center mb-3">

@@ -2,7 +2,7 @@
 
 import { Lock, MapPin, Phone, Star, ChevronLeft, Activity, Bone, HeartPulse, PersonStanding } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { PageBackButton } from '@/components/shared/page-back-button';
+
 
 export default function PhysiotherapyPage() {
   const router = useRouter();
@@ -15,14 +15,11 @@ export default function PhysiotherapyPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50/50 pb-24 font-sans">
-      <header className="bg-gradient-to-r from-amber-500 to-amber-400 px-4 pt-14 pb-8 rounded-b-[2.5rem] shadow-lg relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4"></div>
-        <PageBackButton />
-        <div className="relative z-10 text-center mt-2">
-          <h1 className="text-2xl font-extrabold text-white mb-2 tracking-tight">العلاج الطبيعي</h1>
-          <p className="text-amber-50 text-sm font-medium">أفضل المراكز لاستعادة حركتك ونشاطك</p>
-        </div>
-      </header>
+      {/* Page Title */}
+      <div className="px-5 pt-2 pb-4">
+        <h1 className="text-xl font-extrabold text-gray-900">العلاج الطبيعي</h1>
+        <p className="text-gray-500 text-sm mt-1 font-medium">أفضل المراكز لاستعادة حركتك ونشاطك</p>
+      </div>
 
       <main className="px-4 mt-6 space-y-6">
         

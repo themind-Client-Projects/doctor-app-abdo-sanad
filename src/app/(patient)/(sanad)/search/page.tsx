@@ -138,16 +138,12 @@ export default function SearchPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50/50 pb-24 font-sans">
-      {/* Header */}
-      <header className="bg-gradient-to-r from-primary to-primary/80 px-4 pt-14 pb-8 rounded-b-[2.5rem] shadow-lg relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -translate-y-1/2 -translate-x-1/4" />
-        <div className="relative z-10 text-center mt-2 mb-6">
-          <h1 className="text-2xl font-extrabold text-white tracking-tight">البحث</h1>
-          <p className="text-primary-foreground/70 text-sm mt-1 font-medium">ابحث عن أطباء ومختبرات وصيدليات</p>
-        </div>
-
+      {/* Page Title */}
+      <div className="px-5 pt-2 pb-4">
+        <h1 className="text-xl font-extrabold text-gray-900 mb-4">البحث</h1>
+        
         {/* Search Bar */}
-        <div className="relative z-10 flex gap-2">
+        <div className="relative flex gap-2">
           <div className="relative flex-1">
             <div className="absolute inset-y-0 start-0 flex items-center ps-4 pointer-events-none">
               <Search className="w-5 h-5 text-gray-400" />
@@ -157,7 +153,7 @@ export default function SearchPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearchSubmit()}
-              className="w-full bg-white/95 backdrop-blur text-gray-900 rounded-2xl py-3.5 ps-11 pe-10 outline-none focus:ring-2 focus:ring-white/40 shadow-md text-sm font-medium placeholder:text-gray-400 transition-all"
+              className="w-full bg-white text-gray-900 rounded-2xl py-3.5 ps-11 pe-10 outline-none border border-gray-200 focus:border-primary focus:ring-1 focus:ring-primary shadow-sm text-sm font-medium placeholder:text-gray-400 transition-all"
               placeholder="ابحث عن طبيب، تخصص، مختبر..."
             />
             {query && (
@@ -170,7 +166,7 @@ export default function SearchPage() {
             )}
           </div>
         </div>
-      </header>
+      </div>
 
       <main className="px-4 mt-6 space-y-6">
 

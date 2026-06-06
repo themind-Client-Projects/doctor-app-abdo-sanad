@@ -3,6 +3,8 @@ import { Noto_Kufi_Arabic } from 'next/font/google';
 import { ClerkProvider } from '@clerk/nextjs';
 import { arSA } from '@clerk/localizations';
 import { InstallPrompt } from '@/components/pwa/install-prompt';
+import { BottomNavbar } from '@/components/shared/bottom-navbar';
+import { TopNavbar } from '@/components/shared/top-navbar';
 import './globals.css';
 
 const notoKufiArabic = Noto_Kufi_Arabic({
@@ -24,8 +26,12 @@ export default function RootLayout({
   return (
     <ClerkProvider localization={arSA}>
       <html lang="ar" dir="rtl">
-        <body className={`${notoKufiArabic.variable} font-arabic bg-background text-foreground antialiased`}>
-          {children}
+        <body className={`${notoKufiArabic.variable} font-arabic bg-background text-foreground antialiased pb-16`}>
+          <TopNavbar />
+          <div className="pt-[116px]">
+            {children}
+          </div>
+          <BottomNavbar />
           {/* <InstallPrompt /> */}
         </body>
       </html>

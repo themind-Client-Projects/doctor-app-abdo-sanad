@@ -1,43 +1,25 @@
 'use client';
 
-import { Search, MapPin, Wallet, Calendar, Stethoscope, Microscope, Pill, Syringe, Activity } from 'lucide-react';
+import { Search, MapPin, Wallet, Calendar, Stethoscope, Microscope, Pill, Syringe, Activity, Bell } from 'lucide-react';
 import Link from 'next/link';
 
 export default function HomePage() {
   return (
     <div className="flex flex-col min-h-screen bg-gray-50/50 pb-24">
-      {/* Header / Wallet Section */}
-      <header className="bg-primary text-primary-foreground px-4 pt-12 pb-6 rounded-b-[2rem] shadow-sm">
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
-              <span className="text-xl font-bold">أ</span>
-            </div>
-            <div>
-              <p className="text-sm text-primary-foreground/80">مرحباً بك،</p>
-              <h1 className="text-lg font-bold">أحمد محمد</h1>
-            </div>
-          </div>
-          <Link href="/wallet" className="bg-white/20 px-3 py-1.5 rounded-full flex items-center gap-2 backdrop-blur-sm hover:bg-white/30 transition-colors active:scale-95">
-            <Wallet className="w-4 h-4" />
-            <span className="font-semibold text-sm">1,250 د.ع</span>
-          </Link>
-        </div>
 
-        {/* Search Bar */}
+
+      <main className="px-4 mt-5 space-y-8">
+        {/* Search */}
         <div className="relative">
           <div className="absolute inset-y-0 start-0 flex items-center ps-4 pointer-events-none">
             <Search className="w-5 h-5 text-gray-400" />
           </div>
           <input
             type="text"
-            className="w-full bg-white text-gray-900 rounded-2xl py-3.5 ps-11 pe-4 outline-none focus:ring-2 focus:ring-primary/50 shadow-sm"
+            className="w-full bg-white text-gray-900 rounded-2xl py-3.5 ps-11 pe-4 border border-gray-100 outline-none focus:ring-2 focus:ring-primary/50 shadow-sm text-sm"
             placeholder="ابحث عن طبيب، تخصص، مستشفى..."
           />
         </div>
-      </header>
-
-      <main className="px-4 mt-6 space-y-8">
         {/* Billboard / Announcements */}
         <section>
           <div className="bg-gradient-to-r from-teal-500 to-emerald-400 rounded-2xl p-5 text-white shadow-md relative overflow-hidden">

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, Suspense } from 'react';
-import { Search, Filter, MapPin, Star, CalendarClock, Stethoscope, Check, Briefcase, ChevronDown } from 'lucide-react';
+import { Search, Filter, MapPin, Star, PhoneCall, Stethoscope, Check, Briefcase, Video, ChevronDown } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 
@@ -64,7 +64,7 @@ function DoctorsContent() {
       {/* Page Title */}
       <div className="px-5 pt-2 pb-4">
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-xl font-extrabold text-gray-900">أطباء {selectedCity || 'العراق'}</h1>
+          <h1 className="text-xl font-extrabold text-gray-900">مكالمة أطباء</h1>
           <button 
             className="flex items-center gap-1.5 font-bold text-xs text-primary hover:text-primary/80 bg-primary/5 px-2.5 py-1.5 rounded-full transition-colors"
           >
@@ -114,7 +114,7 @@ function DoctorsContent() {
         {/* Doctors List */}
         <section className="px-4 space-y-4">
           <div className="flex justify-between items-center mb-2">
-            <h2 className="text-base font-bold text-gray-800">الأطباء المتاحين</h2>
+            <h2 className="text-base font-bold text-gray-800">الأطباء المتاحين للمكالمات</h2>
             <span className="text-xs text-gray-500 font-medium">{filteredDoctors.length} طبيب</span>
           </div>
 
@@ -168,7 +168,7 @@ function DoctorsContent() {
 
                 <div className="flex items-center gap-3 pt-3 border-t border-gray-50">
                   <div className="flex-1">
-                    <span className="text-[10px] text-gray-400 block mb-0.5">سعر الكشفية</span>
+                    <span className="text-[10px] text-gray-400 block mb-0.5">سعر المكالمة</span>
                     <span className="text-sm font-extrabold text-primary block leading-none">{doctor.price}</span>
                   </div>
                   <button
@@ -180,8 +180,8 @@ function DoctorsContent() {
                         : 'bg-gray-100 text-gray-400 cursor-not-allowed'
                     }`}
                   >
-                    <CalendarClock className="w-4 h-4" />
-                    {doctor.isAvailable ? 'احجز موعد' : 'غير متاح'}
+                    <PhoneCall className="w-4 h-4" />
+                    {doctor.isAvailable ? 'احجز مكالمة' : 'غير متاح'}
                   </button>
                 </div>
               </div>
@@ -203,7 +203,7 @@ function DoctorsContent() {
   );
 }
 
-export default function DoctorsDiscoveryPage() {
+export default function TeleconsultationPage() {
   return (
     <Suspense fallback={<div className="flex h-screen items-center justify-center">جاري التحميل...</div>}>
       <DoctorsContent />

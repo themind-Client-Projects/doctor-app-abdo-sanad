@@ -2,7 +2,7 @@
 
 import { use, useMemo, useState } from 'react';
 import Image from 'next/image';
-import { PageBackButton } from '@/components/shared/page-back-button';
+
 import { DoctorBookingDrawer } from '@/components/shared/doctor-booking-drawer';
 import type { Doctor } from '@/types/patient';
 import { SearchInput } from '@/components/shared/search-input';
@@ -42,7 +42,6 @@ export default function ComplexPage({ params }: { params: Promise<{ id: string }
         <Image src={complex.image} alt={complex.name} fill className="object-cover" />
         <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-gray-50" />
         <div className="absolute top-12 left-0 right-0 px-5 flex justify-between items-center z-10">
-          <PageBackButton className="bg-white/20 backdrop-blur-md text-white border-white/30" />
         </div>
       </div>
 

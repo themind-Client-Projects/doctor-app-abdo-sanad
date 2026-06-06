@@ -1,6 +1,6 @@
 'use client';
 
-import { PageBackButton } from '@/components/shared/page-back-button';
+
 import { Bell, CalendarCheck, Megaphone, Stethoscope, Clock, CheckCircle2 } from 'lucide-react';
 
 const NOTIFICATIONS = [
@@ -59,11 +59,9 @@ const NOTIFICATIONS = [
 export default function NotificationsPage() {
   return (
     <div className="min-h-screen bg-gray-50 pb-20 font-sans">
-      <header className="px-5 pt-12 pb-4 bg-white shadow-sm flex items-center justify-between sticky top-0 z-50 relative">
-        <PageBackButton className="static bg-gray-100 text-gray-800 hover:bg-gray-200" />
-        <h1 className="text-lg font-bold text-gray-900 absolute left-1/2 -translate-x-1/2">إشعارات سند</h1>
-        <div className="w-10"></div> {/* spacer for centering */}
-      </header>
+      <div className="px-5 pt-2 pb-4">
+        <h1 className="text-xl font-extrabold text-gray-900">إشعارات سند</h1>
+      </div>
 
       <main className="p-4 space-y-3">
         {NOTIFICATIONS.length === 0 ? (

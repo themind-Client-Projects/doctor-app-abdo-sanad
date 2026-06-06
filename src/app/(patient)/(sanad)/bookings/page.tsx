@@ -205,16 +205,7 @@ export default function BookingsPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50/50 pb-24 font-sans">
-      {/* Header */}
-      <header className="bg-primary px-4 pt-14 pb-8 rounded-b-[2.5rem] shadow-sm relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-40 h-40 bg-white/5 rounded-full blur-3xl -translate-y-1/2 -translate-x-1/4" />
-        <h1 className="text-2xl font-extrabold text-center text-white relative z-10">حجوزاتي</h1>
-        <p className="text-center text-primary-foreground/70 text-sm mt-1 relative z-10">
-          {upcomingBookings.length} حجوزات قادمة
-        </p>
-      </header>
-
-      <main className="px-4 mt-6 space-y-6">
+      <main className="px-4 mt-2 space-y-6">
         {/* Tabs */}
         <div className="flex gap-1 bg-gray-100 p-1.5 rounded-2xl">
           <button
