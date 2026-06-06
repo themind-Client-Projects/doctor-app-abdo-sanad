@@ -64,7 +64,7 @@ export function DoctorBookingDrawer({ doctor, open, onOpenChange }: DoctorBookin
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="h-[92vh] max-h-[92vh]">
+      <DrawerContent className="h-[85vh] max-h-[85vh]">
         <div className="mx-auto w-full max-w-md flex flex-col h-full bg-white rounded-t-3xl overflow-hidden">
           <DrawerHeader className="text-right px-5 pb-2 pt-6 shrink-0 bg-white z-10 border-b border-gray-50/50 flex items-center justify-between">
             {step === 'payment' && (
@@ -83,7 +83,7 @@ export function DoctorBookingDrawer({ doctor, open, onOpenChange }: DoctorBookin
             {step === 'payment' && <div className="w-8" />} {/* Spacer for centering */}
           </DrawerHeader>
 
-          <div className="px-5 py-6 pb-32 overflow-y-auto overscroll-contain hide-scrollbar flex-1 space-y-8 relative" style={{ WebkitOverflowScrolling: 'touch' }}>
+          <div className="px-5 py-4 overflow-y-auto overscroll-contain hide-scrollbar flex-1 space-y-6 relative" style={{ WebkitOverflowScrolling: 'touch' }}>
             {step === 'success' ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mb-4 animate-bounce shadow-lg shadow-emerald-500/20">
@@ -216,7 +216,7 @@ export function DoctorBookingDrawer({ doctor, open, onOpenChange }: DoctorBookin
                         d.setHours(0, 0, 0, 0);
                         return d < today || !isDateAvailable(d);
                       }}
-                      className="rounded-md [--cell-size:40px] !w-full"
+                      className="rounded-md [--cell-size:36px] !w-full"
                       modifiers={{ available: DEMO_AVAILABLE_DATES }}
                       modifiersClassNames={{
                         available: 'ring-2 ring-primary/20 ring-inset font-bold',
@@ -247,13 +247,13 @@ export function DoctorBookingDrawer({ doctor, open, onOpenChange }: DoctorBookin
                       <Clock className="w-5 h-5 text-primary" />
                       الأوقات المتاحة
                     </h4>
-                    <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                    <div className="grid grid-cols-3 gap-2">
                       {DEMO_TIME_SLOTS.map(({ time, available }) => (
                         <button
                           key={time}
                           disabled={!available}
                           onClick={() => setSelectedTime(time)}
-                          className={`py-2.5 sm:py-3 px-1.5 sm:px-2 rounded-xl text-sm sm:text-base font-bold border transition-all ${
+                          className={`py-2.5 px-1.5 rounded-xl text-sm font-bold border transition-all ${
                             !available
                               ? 'bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed line-through'
                               : selectedTime === time
@@ -303,11 +303,11 @@ export function DoctorBookingDrawer({ doctor, open, onOpenChange }: DoctorBookin
           </div>
 
           {step !== 'success' && (
-            <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-5 pt-4 z-20 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
-              <DrawerFooter className="p-0 flex flex-col gap-3">
+            <div className="shrink-0 bg-white border-t border-gray-100 p-4 z-20 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 8px) + 8px)' }}>
+              <DrawerFooter className="p-0 flex flex-col gap-2">
                 {step === 'select_time' ? (
                   <Button
-                    className="w-full rounded-xl py-6 font-bold text-base shadow-lg shadow-primary/20 transition-all hover:shadow-primary/30 active:scale-[0.98]"
+                    className="w-full rounded-xl py-5 font-bold text-base shadow-lg shadow-primary/20 transition-all hover:shadow-primary/30 active:scale-[0.98]"
                     disabled={!selectedDate || !selectedTime}
                     onClick={handleContinueToPayment}
                   >
@@ -315,14 +315,14 @@ export function DoctorBookingDrawer({ doctor, open, onOpenChange }: DoctorBookin
                   </Button>
                 ) : (
                   <Button
-                    className="w-full rounded-xl py-6 font-bold text-base shadow-lg shadow-primary/20 transition-all hover:shadow-primary/30 active:scale-[0.98]"
+                    className="w-full rounded-xl py-5 font-bold text-base shadow-lg shadow-primary/20 transition-all hover:shadow-primary/30 active:scale-[0.98]"
                     onClick={confirmBooking}
                   >
                     {useWallet ? 'تأكيد الدفع من المحفظة' : 'المتابعة للبطاقة الائتمانية'}
                   </Button>
                 )}
                 <DrawerClose asChild>
-                  <Button variant="outline" className="w-full rounded-xl py-6 font-bold text-gray-600 hover:bg-gray-50">
+                  <Button variant="outline" className="w-full rounded-xl py-5 font-bold text-gray-600 hover:bg-gray-50">
                     إلغاء
                   </Button>
                 </DrawerClose>

@@ -2,14 +2,13 @@
 
 import { useState, useMemo, Suspense } from 'react';
 import { 
-  Search, Filter, MapPin, Star, CalendarClock, Stethoscope, 
+  Search, Filter, MapPin, Star, Stethoscope, 
   Briefcase, Phone, Share2, Award, ChevronLeft, ShieldCheck, 
   Clock, X, PhoneCall, Copy, Check, Wallet
 } from 'lucide-react';
 import Image from 'next/image';
 import { SPECIALIZATIONS } from '@/lib/constants/specializations';
 import { DEMO_DOCTORS } from '@/lib/constants/demo-data';
-import { DoctorBookingDrawer } from '@/components/shared/doctor-booking-drawer';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from '@/components/ui/drawer';
 import type { Doctor } from '@/types/patient';
 
@@ -33,7 +32,7 @@ function DoctorsDirectoryContent() {
   
   // Dialog & Drawer state
   const [detailDrawerOpen, setDetailDrawerOpen] = useState(false);
-  const [bookingDrawerOpen, setBookingDrawerOpen] = useState(false);
+
   const [callDialogOpen, setCallDialogOpen] = useState(false);
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
   const [copiedDoctorId, setCopiedDoctorId] = useState<string | null>(null);
@@ -83,10 +82,7 @@ function DoctorsDirectoryContent() {
     setDetailDrawerOpen(true);
   };
 
-  const handleOpenBooking = (doctor: Doctor) => {
-    setSelectedDoctor(doctor);
-    setBookingDrawerOpen(true);
-  };
+
 
   const handleOpenCall = (doctor: Doctor, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -318,17 +314,6 @@ function DoctorsDirectoryContent() {
                     >
                       <Phone className="w-4 h-4" />
                     </button>
-                    
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleOpenBooking(doctor);
-                      }}
-                      className="px-4 py-2.5 bg-primary text-white rounded-xl text-xs font-bold shadow-sm shadow-primary/10 hover:bg-primary/95 active:scale-95 transition-transform flex items-center gap-1.5"
-                    >
-                      <CalendarClock className="w-3.5 h-3.5" />
-                      حجز موعد
-                    </button>
                   </div>
                 </div>
               </div>
@@ -440,20 +425,10 @@ function DoctorsDirectoryContent() {
                 <div className="flex gap-3">
                   <button
                     onClick={(e) => handleOpenCall(selectedDoctor, e)}
-                    className="flex-1 py-4 bg-gray-50 border border-gray-200 text-gray-700 rounded-xl font-bold text-sm transition-all hover:bg-gray-100 active:scale-95 flex items-center justify-center gap-2"
+                    className="flex-1 py-4 bg-primary text-white rounded-xl font-bold text-sm shadow-md shadow-primary/20 hover:bg-primary/95 active:scale-95 transition-all flex items-center justify-center gap-2"
                   >
-                    <Phone className="w-4 h-4 text-primary" />
+                    <Phone className="w-4 h-4" />
                     اتصال بالعيادة
-                  </button>
-                  <button
-                    onClick={() => {
-                      setDetailDrawerOpen(false);
-                      setTimeout(() => setBookingDrawerOpen(true), 250);
-                    }}
-                    className="flex-1.5 py-4 bg-primary text-white rounded-xl font-bold text-sm shadow-md shadow-primary/20 hover:bg-primary/95 active:scale-95 transition-all flex items-center justify-center gap-2"
-                  >
-                    <CalendarClock className="w-4 h-4" />
-                    حجز موعد الآن
                   </button>
                 </div>
               </div>
@@ -615,12 +590,7 @@ function DoctorsDirectoryContent() {
         </DrawerContent>
       </Drawer>
 
-      {/* ── Doctor Booking Drawer Integration ── */}
-      <DoctorBookingDrawer 
-        doctor={selectedDoctor}
-        open={bookingDrawerOpen}
-        onOpenChange={setBookingDrawerOpen}
-      />
+
     </div>
   );
 }

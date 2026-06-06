@@ -51,8 +51,8 @@ export function TopNavbar() {
   const content = getHeaderContent();
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md">
-      <header className="max-w-md mx-auto px-5 pt-12 pb-4 flex items-center justify-between">
+    <div className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+      <header className="max-w-md mx-auto px-5 pt-3 pb-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           {isMainPage ? (
             /* Main pages: show dynamic content */

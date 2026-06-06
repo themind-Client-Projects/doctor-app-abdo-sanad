@@ -28,7 +28,7 @@ export default function RootLayout({
       <html lang="ar" dir="rtl">
         <body className={`${notoKufiArabic.variable} font-arabic bg-background text-foreground antialiased pb-16`}>
           <TopNavbar />
-          <div className="pt-[116px]">
+          <div className="pt-[72px]" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 60px)' }}>
             {children}
           </div>
           <BottomNavbar />
