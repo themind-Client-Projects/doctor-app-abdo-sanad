@@ -4,7 +4,7 @@ import type { Doctor, TimeSlot, SearchResult, Booking } from '@/types/patient';
 
 export const DEMO_DOCTORS: Record<string, Doctor[]> = {
   'oncology': [
-    { id: 'onc-1', name: 'د. سامي العبيدي', specialty: 'استشاري أورام وأمراض دم', specialtyId: 'oncology', rating: 4.9, reviewCount: 124, location: 'بغداد - المنصور', clinic: 'مستشفى الأورام التخصصي', phone: '0770 111 2222', price: '50,000 د.ع', isAvailable: true, experience: '18 سنة', gender: 'male' },
+    { id: 'onc-1', name: 'د. سامي العبيدي', specialty: 'استشاري أورام وأمراض دم', specialtyId: 'oncology', rating: 4.9, reviewCount: 124, location: 'بغداد - المنصور', clinic: 'مستشفى الأورام التخصصي', phone: '0770 111 2222', price: '50,000 د.ع', isAvailable: true, experience: '18 سنة', gender: 'male', image: '/doctors/sami.png' },
     { id: 'onc-2', name: 'د. هدى الجبوري', specialty: 'أخصائية أورام', specialtyId: 'oncology', rating: 4.7, reviewCount: 89, location: 'بغداد - الكرادة', clinic: 'المركز الطبي الشامل', phone: '0781 333 4444', price: '45,000 د.ع', isAvailable: true, experience: '12 سنة', gender: 'female' },
     { id: 'onc-3', name: 'د. خالد الربيعي', specialty: 'استشاري أمراض الدم', specialtyId: 'oncology', rating: 4.8, reviewCount: 156, location: 'بغداد - زيونة', clinic: 'مستشفى ابن النفيس', phone: '0790 555 6666', price: '40,000 د.ع', isAvailable: false, experience: '22 سنة', gender: 'male' },
   ],
@@ -81,7 +81,7 @@ export const DEMO_TIME_SLOTS: TimeSlot[] = [
 export const DEMO_AVAILABLE_DATES = (() => {
   const dates = [];
   const today = new Date();
-  
+
   // Generate 15 available dates over the next 30 days
   for (let i = 1; i <= 30; i++) {
     // Skip some days randomly to make it look realistic (e.g. skip weekends or random days)

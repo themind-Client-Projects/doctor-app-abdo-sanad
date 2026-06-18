@@ -86,7 +86,7 @@ export function TopNavbar() {
           )}
         </div>
         <Link href="/wallet" className="flex items-center gap-2 bg-[#eaf6ef] text-[#10b981] px-4 py-1.5 rounded-full transition-transform active:scale-95 shadow-sm border border-[#10b981]/20">
-          <span className="font-bold text-base mt-1 whitespace-nowrap">1,250 د.ع</span>
+          <span className="font-bold text-base mt-1 whitespace-nowrap">150,000 د.ع</span>
           <Wallet className="w-[22px] h-[22px] stroke-[2.5]" />
         </Link>
       </header>

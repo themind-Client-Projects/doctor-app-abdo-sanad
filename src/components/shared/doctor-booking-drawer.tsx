@@ -3,7 +3,6 @@
 import { useState, useRef } from 'react';
 import { Calendar as CalendarClock, Clock, Check, MapPin, Stethoscope, Wallet, ArrowRight, ShieldCheck, CreditCard } from 'lucide-react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter, DrawerClose } from '@/components/ui/drawer';
-import { Calendar } from '@/components/ui/calendar';
 import { Button } from '@/components/ui/button';
 import { DEMO_AVAILABLE_DATES, DEMO_TIME_SLOTS } from '@/lib/constants/demo-data';
 
@@ -27,18 +26,24 @@ export function DoctorBookingDrawer({ doctor, open, onOpenChange }: DoctorBookin
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [step, setStep] = useState<'select_time' | 'payment' | 'success'>('select_time');
   const [useWallet, setUseWallet] = useState(true);
-  
+
   // Mock wallet balance for demo
   const walletBalance = "150,000";
 
-  
+
   const timeSectionRef = useRef<HTMLDivElement>(null);
   const today = new Date();
-  
+
+  const upcomingDates = Array.from({ length: 7 }).map((_, i) => {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    return d;
+  });
+
   const isDateAvailable = (date: Date) => {
-    return DEMO_AVAILABLE_DATES.some(d => 
-      d.getDate() === date.getDate() && 
-      d.getMonth() === date.getMonth() && 
+    return DEMO_AVAILABLE_DATES.some(d =>
+      d.getDate() === date.getDate() &&
+      d.getMonth() === date.getMonth() &&
       d.getFullYear() === date.getFullYear()
     );
   };
@@ -129,18 +134,16 @@ export function DoctorBookingDrawer({ doctor, open, onOpenChange }: DoctorBookin
                   <h4 className="font-bold text-gray-800 mb-3 text-base">طريقة الدفع</h4>
                   <div className="space-y-3">
                     {/* Wallet Option */}
-                    <button 
+                    <button
                       onClick={() => setUseWallet(true)}
-                      className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${
-                        useWallet 
-                          ? 'border-primary bg-primary/5 shadow-md shadow-primary/10' 
+                      className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${useWallet
+                          ? 'border-primary bg-primary/5 shadow-md shadow-primary/10'
                           : 'border-gray-100 bg-white hover:border-primary/30'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-3">
-                        <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${
-                          useWallet ? 'bg-primary text-white shadow-inner' : 'bg-gray-50 text-gray-400'
-                        }`}>
+                        <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${useWallet ? 'bg-primary text-white shadow-inner' : 'bg-gray-50 text-gray-400'
+                          }`}>
                           <Wallet className="w-6 h-6" />
                         </div>
                         <div className="text-right">
@@ -148,37 +151,9 @@ export function DoctorBookingDrawer({ doctor, open, onOpenChange }: DoctorBookin
                           <p className="text-xs text-gray-500 mt-0.5 font-medium">الرصيد المتاح: <span className="font-bold">{walletBalance} د.ع</span></p>
                         </div>
                       </div>
-                      <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
-                        useWallet ? 'border-primary bg-primary' : 'border-gray-300 bg-white'
-                      }`}>
-                        {useWallet && <Check className="w-3.5 h-3.5 text-white" />}
-                      </div>
-                    </button>
-
-                    {/* Credit Card Option (Disabled/Visual Only for demo) */}
-                    <button 
-                      onClick={() => setUseWallet(false)}
-                      className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${
-                        !useWallet 
-                          ? 'border-primary bg-primary/5 shadow-md shadow-primary/10' 
-                          : 'border-gray-100 bg-white hover:border-primary/30'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${
-                          !useWallet ? 'bg-primary text-white shadow-inner' : 'bg-gray-50 text-gray-400'
+                      <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${useWallet ? 'border-primary bg-primary' : 'border-gray-300 bg-white'
                         }`}>
-                          <CreditCard className="w-6 h-6" />
-                        </div>
-                        <div className="text-right">
-                          <h5 className={`font-extrabold text-sm ${!useWallet ? 'text-primary' : 'text-gray-700'}`}>بطاقة ائتمان</h5>
-                          <p className="text-xs text-gray-500 mt-0.5 font-medium">فيزا، ماستركارد، زين كاش</p>
-                        </div>
-                      </div>
-                      <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
-                        !useWallet ? 'border-primary bg-primary' : 'border-gray-300 bg-white'
-                      }`}>
-                        {!useWallet && <Check className="w-3.5 h-3.5 text-white" />}
+                        {useWallet && <Check className="w-3.5 h-3.5 text-white" />}
                       </div>
                     </button>
                   </div>
@@ -192,51 +167,59 @@ export function DoctorBookingDrawer({ doctor, open, onOpenChange }: DoctorBookin
               </div>
             ) : (
               <>
-                {/* Calendar */}
+                {/* Date Selection */}
                 <div>
-                  <h4 className="font-bold text-gray-800 mb-3 flex items-center gap-2 text-base">
-                    <CalendarClock className="w-5 h-5 text-primary" />
-                    اختر التاريخ
+                  <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2 text-base">
+                    اختر ميعاد حجزك
                   </h4>
-                  <div className="bg-gray-50 border border-gray-100 rounded-2xl p-3">
-                    <Calendar
-                      mode="single"
-                      selected={selectedDate}
-                      onSelect={(d) => {
-                        setSelectedDate(d);
-                        setSelectedTime(null);
-                        if (d) {
-                          setTimeout(() => {
-                            timeSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                          }, 150);
-                        }
-                      }}
-                      disabled={(day) => {
-                        const d = new Date(day);
-                        d.setHours(0, 0, 0, 0);
-                        return d < today || !isDateAvailable(d);
-                      }}
-                      className="rounded-md [--cell-size:36px] !w-full"
-                      modifiers={{ available: DEMO_AVAILABLE_DATES }}
-                      modifiersClassNames={{
-                        available: 'ring-2 ring-primary/20 ring-inset font-bold',
-                      }}
-                    />
-                  </div>
-                  {/* Legend */}
-                  <div className="flex items-center justify-center gap-3 sm:gap-4 mt-3 px-1 flex-wrap">
-                    <div className="flex items-center gap-1.5 text-[11px] sm:text-xs text-gray-500">
-                      <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded bg-primary flex-shrink-0" />
-                      <span>التاريخ المختار</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-[11px] sm:text-xs text-gray-500">
-                      <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded ring-2 ring-primary/30 bg-white flex-shrink-0" />
-                      <span>متاح</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-[11px] sm:text-xs text-gray-500">
-                      <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded bg-gray-200 flex-shrink-0" />
-                      <span>غير متاح</span>
-                    </div>
+                  <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-2 px-1 snap-x">
+                    {upcomingDates.map((date, idx) => {
+                      const isAvailable = isDateAvailable(date);
+                      const isSelected = selectedDate?.toDateString() === date.toDateString();
+                      
+                      let dayLabel = '';
+                      if (idx === 0) dayLabel = 'اليوم';
+                      else if (idx === 1) dayLabel = 'غداً';
+                      else dayLabel = date.toLocaleDateString('ar-IQ', { weekday: 'long', month: 'numeric', day: 'numeric' });
+
+                      return (
+                        <div 
+                          key={date.toISOString()}
+                          onClick={() => {
+                            if (isAvailable) {
+                              setSelectedDate(date);
+                              setSelectedTime(null);
+                              setTimeout(() => {
+                                timeSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                              }, 150);
+                            }
+                          }}
+                          className={`min-w-[110px] p-3 rounded-xl border-2 flex flex-col items-center gap-2 transition-all snap-center ${
+                            isAvailable ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'
+                          } ${
+                            isSelected 
+                              ? 'border-primary bg-primary/5' 
+                              : 'border-gray-100 bg-white hover:border-gray-300'
+                          }`}
+                        >
+                          <div className={`w-full text-center py-1.5 rounded text-sm font-bold ${isSelected ? 'bg-primary text-white' : 'bg-primary text-white'}`}>
+                            {dayLabel}
+                          </div>
+                          
+                          {isAvailable ? (
+                            <>
+                              <span className="text-[10px] text-gray-600 font-bold text-center leading-tight mt-1">من 9:00 ص<br/>إلى 9:00 م</span>
+                              <button className={`mt-2 w-full py-1.5 rounded text-xs font-bold transition-colors ${isSelected ? 'bg-primary text-white shadow-sm shadow-primary/20' : 'bg-primary text-white hover:bg-primary/90'}`}>احجز</button>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-[10px] text-gray-400 font-medium text-center leading-tight mt-1">لا يوجد<br/>موعد متاح</span>
+                              <button disabled className="mt-2 w-full py-1.5 rounded text-xs font-bold bg-gray-400 text-white">احجز</button>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -253,13 +236,12 @@ export function DoctorBookingDrawer({ doctor, open, onOpenChange }: DoctorBookin
                           key={time}
                           disabled={!available}
                           onClick={() => setSelectedTime(time)}
-                          className={`py-2.5 px-1.5 rounded-xl text-sm font-bold border transition-all ${
-                            !available
+                          className={`py-2.5 px-1.5 rounded-xl text-sm font-bold border transition-all ${!available
                               ? 'bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed line-through'
                               : selectedTime === time
                                 ? 'bg-primary text-white border-primary shadow-md shadow-primary/20 scale-[1.02]'
                                 : 'bg-white text-gray-600 border-gray-200 hover:border-primary/50 hover:bg-primary/5'
-                          }`}
+                            }`}
                         >
                           {time}
                         </button>
@@ -318,7 +300,7 @@ export function DoctorBookingDrawer({ doctor, open, onOpenChange }: DoctorBookin
                     className="w-full rounded-xl py-5 font-bold text-base shadow-lg shadow-primary/20 transition-all hover:shadow-primary/30 active:scale-[0.98]"
                     onClick={confirmBooking}
                   >
-                    {useWallet ? 'تأكيد الدفع من المحفظة' : 'المتابعة للبطاقة الائتمانية'}
+                    تأكيد الدفع من المحفظة
                   </Button>
                 )}
                 <DrawerClose asChild>

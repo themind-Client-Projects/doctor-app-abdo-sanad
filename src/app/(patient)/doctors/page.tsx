@@ -25,7 +25,7 @@ function DoctorsContent() {
   const { searchQuery, category: activeSpecialty, page } = useFilters();
   const { selectedCity } = useLocationStore();
   const ITEMS_PER_PAGE = 5;
-  
+
   // ── Reservation Drawer state ──
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
@@ -40,9 +40,9 @@ function DoctorsContent() {
     return allDoctors.filter(doctor => {
       const matchesSpecialty = activeSpecialty === 'all' || doctor.specialtyId === activeSpecialty;
       const matchesCity = !selectedCity || doctor.location.includes(selectedCity);
-      const matchesSearch = doctor.name.includes(searchQuery) || 
-                            doctor.specialty.includes(searchQuery) || 
-                            doctor.location.includes(searchQuery);
+      const matchesSearch = doctor.name.includes(searchQuery) ||
+        doctor.specialty.includes(searchQuery) ||
+        doctor.location.includes(searchQuery);
       return matchesSpecialty && matchesSearch && matchesCity;
     });
   }, [allDoctors, activeSpecialty, searchQuery, selectedCity]);
@@ -65,14 +65,14 @@ function DoctorsContent() {
       <div className="px-5 pt-2 pb-4">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-xl font-extrabold text-gray-900">أطباء {selectedCity || 'العراق'}</h1>
-          <button 
+          <button
             className="flex items-center gap-1.5 font-bold text-xs text-primary hover:text-primary/80 bg-primary/5 px-2.5 py-1.5 rounded-full transition-colors"
           >
             <ChevronDown className="w-3 h-3" />
             {selectedCity ? selectedCity : 'تغيير المدينة'}
           </button>
         </div>
-        
+
         {/* Search Bar */}
         <div className="relative max-w-md mx-auto flex gap-2">
           <SearchInput className="flex-1" placeholder="ابحث عن طبيب، تخصص، منطقة..." />
@@ -83,7 +83,7 @@ function DoctorsContent() {
       </div>
 
       <main className="mt-6 space-y-8">
-        
+
         {/* Clinics Ads */}
         <section>
           <div className="px-4 flex justify-between items-center mb-4">
@@ -105,7 +105,7 @@ function DoctorsContent() {
           <div className="px-4 mb-4">
             <h2 className="text-base font-bold text-gray-800">فلترة التخصصات</h2>
           </div>
-          <CategoryFilters 
+          <CategoryFilters
             categories={SPECIALIZATIONS}
             allLabel="جميع التخصصات"
           />
@@ -130,41 +130,39 @@ function DoctorsContent() {
             paginatedDoctors.map((doctor) => (
               <div
                 key={doctor.id}
-                className="bg-white rounded-[2rem] p-5 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] border border-gray-100 hover:border-primary/20 hover:shadow-lg transition-all duration-300"
+                className="bg-white rounded-[2rem] p-5 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] border border-gray-100 hover:border-primary/20 hover:shadow-lg transition-all duration-300 flex flex-col group"
               >
-                <div className="flex items-start gap-4 mb-4">
-                  <div className="relative flex-shrink-0">
-                    <div className="w-16 h-16 bg-gradient-to-br from-primary/10 to-primary/5 rounded-2xl flex items-center justify-center border border-primary/10">
-                      <Stethoscope className="w-7 h-7 text-primary" />
-                    </div>
-                    {doctor.isAvailable && (
-                      <div className="absolute -bottom-1 -end-1 w-5 h-5 bg-emerald-500 rounded-full border-2 border-white flex items-center justify-center">
-                        <Check className="w-3 h-3 text-white" />
+                <Link href={`/doctors/profile/${doctor.id}`} className="block flex-1 cursor-pointer">
+                  <div className="flex items-start gap-4 mb-4">
+                    <div className="relative flex-shrink-0">
+                      <div className="w-16 h-16 bg-gradient-to-br from-primary/10 to-primary/5 rounded-2xl flex items-center justify-center border border-primary/10">
+                        <Stethoscope className="w-7 h-7 text-primary" />
                       </div>
-                    )}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-start mb-1">
+                        <h3 className="font-extrabold text-gray-800 text-base truncate pe-2 group-hover:text-primary transition-colors">{doctor.name}</h3>
+                        <div className="flex items-center gap-1 bg-amber-50 text-amber-600 px-2 py-1 rounded-lg text-xs font-bold flex-shrink-0">
+                          <Star className="w-3 h-3 fill-amber-500" />
+                          {doctor.rating}
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-500 font-medium">{doctor.specialty}</p>
+                    </div>
                   </div>
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-start mb-1">
-                      <h3 className="font-extrabold text-gray-800 text-base truncate pe-2">{doctor.name}</h3>
-                      <div className="flex items-center gap-1 bg-amber-50 text-amber-600 px-2 py-1 rounded-lg text-xs font-bold flex-shrink-0">
-                        <Star className="w-3 h-3 fill-amber-500" />
-                        {doctor.rating}
-                      </div>
+                  <div className="flex flex-col gap-1.5 mt-4">
+                    <div className="flex items-center gap-1.5 text-xs text-gray-600">
+                      <MapPin className="w-3.5 h-3.5 text-primary/60" />
+                      <span className="truncate">{doctor.location} - {doctor.clinic}</span>
                     </div>
-                    <p className="text-xs text-gray-500 font-medium">{doctor.specialty}</p>
-                    <div className="flex flex-col gap-1.5 mt-2.5">
-                      <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                        <MapPin className="w-3.5 h-3.5 text-primary/60" />
-                        <span className="truncate">{doctor.location} - {doctor.clinic}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                        <Briefcase className="w-3.5 h-3.5 text-primary/60" />
-                        <span>خبرة {doctor.experience}</span>
-                      </div>
+                    <div className="flex items-center gap-1.5 text-xs text-gray-600">
+                      <Briefcase className="w-3.5 h-3.5 text-primary/60" />
+                      <span>خبرة {doctor.experience}</span>
                     </div>
                   </div>
-                </div>
+                </Link>
 
                 <div className="flex items-center gap-3 pt-3 border-t border-gray-50">
                   <div className="flex-1">
@@ -174,11 +172,10 @@ function DoctorsContent() {
                   <button
                     onClick={() => openBooking(doctor)}
                     disabled={!doctor.isAvailable}
-                    className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${
-                      doctor.isAvailable
-                        ? 'bg-primary/10 text-primary hover:bg-primary hover:text-white active:scale-95'
-                        : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                    }`}
+                    className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${doctor.isAvailable
+                      ? 'bg-primary/10 text-primary hover:bg-primary hover:text-white active:scale-95'
+                      : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      }`}
                   >
                     <CalendarClock className="w-4 h-4" />
                     {doctor.isAvailable ? 'احجز موعد' : 'غير متاح'}
@@ -194,7 +191,7 @@ function DoctorsContent() {
       </main>
 
       {/* ── Booking Drawer ── */}
-      <DoctorBookingDrawer 
+      <DoctorBookingDrawer
         doctor={selectedDoctor}
         open={drawerOpen}
         onOpenChange={setDrawerOpen}

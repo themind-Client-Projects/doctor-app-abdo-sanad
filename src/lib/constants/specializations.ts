@@ -1,6 +1,6 @@
-import { 
-  Droplet, Users, Activity, Baby, HeartPulse, 
-  Salad, Sparkles, Leaf, Stethoscope, Accessibility, 
+import {
+  Droplet, Users, Activity, Baby, HeartPulse,
+  Salad, Sparkles, Leaf, Stethoscope, Accessibility,
   Brain, Eye, Ear
 } from 'lucide-react';
 

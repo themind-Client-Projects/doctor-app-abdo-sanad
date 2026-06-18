@@ -89,8 +89,8 @@ export default function RootLandingPage() {
               { id: 3, name: 'رعاية منزلية', icon: HomeIcon, color: 'bg-purple-50 text-purple-600', onClick: () => setHomecareDrawerOpen(true) },
               { id: 4, name: 'خدمة او عملية', icon: Syringe, color: 'bg-rose-50 text-rose-600', href: '/services' },
               { id: 5, name: 'دليل اطباء', icon: BookOpen, color: 'bg-amber-50 text-amber-600', href: '/doctors-directory' },
-              { id: 6, name: 'تكسي', icon: Car, color: 'bg-indigo-50 text-indigo-600', href: '#' },
-              { id: 7, name: 'بنك الدم', icon: Droplet, color: 'bg-red-50 text-red-600', href: '#' },
+              { id: 6, name: 'تكسي', icon: Car, color: 'bg-indigo-50 text-indigo-600', href: '/services/taxi' },
+              { id: 7, name: 'بنك الدم', icon: Droplet, color: 'bg-red-50 text-red-600', href: '/services/blood-bank' },
             ].map((cat) => (
               cat.href ? (
                 <Link key={cat.id} href={cat.href} className="flex flex-col items-center gap-2 transition-transform active:scale-95 group">
