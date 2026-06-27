@@ -2,13 +2,19 @@
 
 import { Search, MapPin, Wallet, Calendar, Stethoscope, Microscope, Pill, Syringe, Activity, Bell } from 'lucide-react';
 import Link from 'next/link';
+import { FlexibleHeader } from '@/components/shared/flexible-header';
 
 export default function HomePage() {
   return (
     <div className="flex flex-col min-h-screen bg-gray-50/50 pb-24">
+      <FlexibleHeader 
+        title="أحمد محمد" 
+        subtitle="مرحباً بك في سند،" 
+        icon={<Activity className="w-6 h-6" />} 
+        showWallet 
+      />
 
-
-      <main className="px-4 mt-5 space-y-8">
+      <main className="px-4 mt-4 space-y-8">
         {/* Search */}
         <div className="relative">
           <div className="absolute inset-y-0 start-0 flex items-center ps-4 pointer-events-none">

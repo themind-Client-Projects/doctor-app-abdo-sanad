@@ -25,16 +25,18 @@ const homecareSchema = z.object({
   date: z.string().min(1, { message: 'يرجى تحديد التاريخ' }),
   address: z.string().min(5, { message: 'يرجى كتابة العنوان بالتفصيل' }),
   notes: z.string().optional(),
+  additionalServices: z.array(z.string()).optional(),
 });
 
 type HomecareFormValues = z.infer<typeof homecareSchema>;
 
 interface HomecareReservationFormProps {
   centerName?: string;
+  type?: 'nursing' | 'doctor';
   onSuccess?: () => void;
 }
 
-export function HomecareReservationForm({ centerName, onSuccess }: HomecareReservationFormProps) {
+export function HomecareReservationForm({ centerName, type = 'nursing', onSuccess }: HomecareReservationFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
@@ -47,6 +49,7 @@ export function HomecareReservationForm({ centerName, onSuccess }: HomecareReser
       date: '',
       address: '',
       notes: '',
+      additionalServices: [],
     },
   });
 
@@ -111,15 +114,29 @@ export function HomecareReservationForm({ centerName, onSuccess }: HomecareReser
           name="serviceType"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>نوع الخدمة المطلوبة</FormLabel>
+              <FormLabel>{type === 'nursing' ? 'نوع الخدمة المطلوبة' : 'التخصص الطبي المطلوب'}</FormLabel>
               <FormControl>
                 <Select icon={<Syringe className="w-5 h-5" />} {...field}>
-                  <option value="" disabled>اختر نوع الخدمة...</option>
-                  <option value="general">عناية تمريضية عامة</option>
-                  <option value="iv">تركيب مغذيات وزرق إبر</option>
-                  <option value="wound">تضميد جروح وعناية</option>
-                  <option value="physio">علاج طبيعي منزلي</option>
-                  <option value="lab">سحب عينات دم للتحاليل</option>
+                  <option value="" disabled>
+                    {type === 'nursing' ? 'اختر نوع الخدمة...' : 'اختر التخصص...'}
+                  </option>
+                  {type === 'nursing' ? (
+                    <>
+                      <option value="general">عناية تمريضية عامة</option>
+                      <option value="iv">تركيب مغذيات وزرق إبر</option>
+                      <option value="wound">تضميد جروح وعناية</option>
+                      <option value="physio">علاج طبيعي منزلي</option>
+                      <option value="lab">سحب عينات دم للتحاليل</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="gp">طبيب عام (باطنية)</option>
+                      <option value="pediatric">طبيب أطفال</option>
+                      <option value="ortho">طبيب عظام ومفاصل</option>
+                      <option value="cardio">طبيب قلبية</option>
+                      <option value="neuro">طبيب جملة عصبية</option>
+                    </>
+                  )}
                 </Select>
               </FormControl>
               <FormMessage />
@@ -169,6 +186,46 @@ export function HomecareReservationForm({ centerName, onSuccess }: HomecareReser
           )}
         />
 
+        {/* Additional Services */}
+        <div className="space-y-3 pt-2">
+          <FormLabel>خدمات إضافية (اختياري)</FormLabel>
+          <div className="space-y-2">
+            {[
+              { id: 'blood_sugar', name: 'فحص سكر الدم', price: 5000 },
+              { id: 'blood_pressure', name: 'قياس ضغط الدم', price: 3000 },
+              { id: 'oxygen', name: 'قياس نسبة الأوكسجين', price: 2000 },
+            ].map(service => {
+              const currentServices = form.watch('additionalServices') || [];
+              const isSelected = currentServices.includes(service.id);
+              
+              return (
+                <label key={service.id} className={`flex items-center justify-between p-3.5 rounded-xl border cursor-pointer transition-all active:scale-[0.98] ${isSelected ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-gray-300'}`}>
+                  <div className="flex items-center gap-3">
+                    <div className={`w-5 h-5 rounded flex items-center justify-center border transition-colors ${isSelected ? 'bg-primary border-primary' : 'border-gray-300'}`}>
+                      {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                    </div>
+                    <span className="text-sm font-medium text-gray-700">{service.name}</span>
+                  </div>
+                  <span className="text-sm font-bold text-primary">+{service.price.toLocaleString()} د.ع</span>
+                  <input 
+                    type="checkbox" 
+                    className="hidden" 
+                    checked={isSelected}
+                    onChange={(e) => {
+                      const current = form.getValues('additionalServices') || [];
+                      if (e.target.checked) {
+                        form.setValue('additionalServices', [...current, service.id]);
+                      } else {
+                        form.setValue('additionalServices', current.filter(id => id !== service.id));
+                      }
+                    }}
+                  />
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
         <button
           type="submit"
           disabled={isSubmitting}
@@ -176,6 +233,18 @@ export function HomecareReservationForm({ centerName, onSuccess }: HomecareReser
         >
           {isSubmitting ? 'جاري إرسال الطلب...' : 'تأكيد الحجز'}
         </button>
+
+        <div className="mt-6 pt-6 border-t border-gray-100 text-right text-xs text-gray-500 leading-relaxed">
+          <p className="font-semibold text-gray-700 mb-3 text-sm">الرجاء العلم:</p>
+          <ul className="list-disc list-inside space-y-2 opacity-90 marker:text-gray-400">
+            <li>المنصة ليست منشأة طبية وإنما هي وسيط بين مقدمي الخدمة الصحية المرخصين والمرضى عن طريق موقعها الإلكتروني / تطبيقات الهاتف.</li>
+            <li>لا تحل المنصة محل علاقة طبيب الرعاية الأولية الموجودة.</li>
+            <li>تخضع الخدمات الطبية التي يقدمها مقدمي الخدمات الصحية لحكمهم المهني.</li>
+            <li>لا تضمن المنصة كتابة وصفة طبية.</li>
+            <li>لا يصف الأطباء ومقدمي الخدمات المواد الخاضعة للتحكم والأدوية المدرجة على الجداول المخدرة والأدوية غير العلاجية وبعض الأدوية الأخرى التي قد تكون ضارة بسبب احتمال إساءة استخدامها.</li>
+            <li>جميع البيانات التي يتم جمعها من المرضى يتم استخدامها وفقاً للقوانين واللوائح للحفاظ على خصوصيتك.</li>
+          </ul>
+        </div>
       </form>
     </Form>
   );

@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { Car, MapPin, ChevronRight, Check, CheckCircle2, Wallet, Navigation } from 'lucide-react';
+import { Car, MapPin, ChevronRight, Check, CheckCircle2, Wallet, Navigation, Bus, ChevronDown } from 'lucide-react';
+import { FlexibleHeader } from '@/components/shared/flexible-header';
 import {
   Drawer,
   DrawerClose,
@@ -15,48 +16,52 @@ import {
 import { Button } from '@/components/ui/button';
 
 const TAXI_PACKAGES = [
-  { 
-    id: 1, 
-    name: 'تكسي اقتصادي', 
-    description: 'سيارات عملية ومريحة لمشاويرك اليومية', 
-    price: '5,000', 
+  {
+    id: 1,
+    name: 'تكسي اقتصادي',
+    description: 'سيارات عملية ومريحة لمشاويرك اليومية',
+    price: '5,000',
     priceNum: 5000,
     theme: 'from-blue-50/50 to-white border-blue-100',
     iconBg: 'bg-blue-100 text-blue-600',
-    features: ['تكييف ممتاز', 'سائق محترف', 'وصول سريع'] 
+    features: ['تكييف ممتاز', 'سائق محترف', 'وصول سريع']
   },
-  { 
-    id: 2, 
-    name: 'تكسي مميز (VIP)', 
-    description: 'سيارات فخمة لراحة تامة وخصوصية عالية', 
-    price: '12,000', 
+  {
+    id: 2,
+    name: 'تكسي مميز (VIP)',
+    description: 'سيارات فخمة لراحة تامة وخصوصية عالية',
+    price: '12,000',
     priceNum: 12000,
     theme: 'from-emerald-50/50 to-white border-emerald-200 ring-2 ring-emerald-500/20',
     iconBg: 'bg-emerald-100 text-emerald-600',
-    popular: true, 
-    features: ['سيارة حديثة', 'واي فاي مجاني', 'مياه معبأة', 'أولوية الحجز'] 
+    popular: true,
+    features: ['سيارة حديثة', 'واي فاي مجاني', 'مياه معبأة', 'أولوية الحجز']
   },
-  { 
-    id: 3, 
-    name: 'تكسي عائلي', 
-    description: 'مساحة واسعة تناسب عائلتك وأمتعتك', 
-    price: '15,000', 
+  {
+    id: 3,
+    name: 'تكسي عائلي',
+    description: 'مساحة واسعة تناسب عائلتك وأمتعتك',
+    price: '15,000',
     priceNum: 15000,
     theme: 'from-purple-50/50 to-white border-purple-100',
     iconBg: 'bg-purple-100 text-purple-600',
-    features: ['تتسع لـ 6 أشخاص', 'سعة أمتعة كبيرة', 'تكييف مركزي'] 
+    features: ['تتسع لـ 6 أشخاص', 'سعة أمتعة كبيرة', 'تكييف مركزي']
   },
 ];
 
 export default function TaxiServicePage() {
   const router = useRouter();
   const [step, setStep] = useState<1 | 2>(1); // 1: Form, 2: Packages
-  
+
   // Form State
   const [tripType, setTripType] = useState<'one-way' | 'return' | 'round-trip'>('one-way');
   const [pickupLocation, setPickupLocation] = useState('');
   const [landmark, setLandmark] = useState('');
   const [destination, setDestination] = useState('');
+
+  const [vehicleType, setVehicleType] = useState<'taxi' | 'bus'>('taxi');
+  const [passengerCount, setPassengerCount] = useState<'4' | '7' | 'more'>('4');
+  const [subscription, setSubscription] = useState<'none' | 'weekly' | 'monthly'>('none');
 
   // Booking State
   const [selectedPackage, setSelectedPackage] = useState<typeof TAXI_PACKAGES[0] | null>(null);
@@ -87,18 +92,13 @@ export default function TaxiServicePage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col font-sans pb-20">
-      {/* Header */}
-      <header className="bg-white px-4 pt-6 pb-4 flex items-center justify-between sticky top-0 z-50 shadow-sm">
-        <div className="w-10"></div>
-        <h1 className="text-xl font-bold text-gray-800">تكسي سند</h1>
-        <button 
-          onClick={() => step === 2 ? setStep(1) : router.back()} 
-          className="p-2 -mr-2 text-gray-700 hover:bg-gray-100 rounded-full transition-colors"
-        >
-          <ChevronRight className="w-6 h-6" />
-        </button>
-      </header>
+    <div className="flex flex-col min-h-screen bg-gray-50 pb-20 font-sans">
+      <FlexibleHeader
+        title="تكسي سند"
+        showBackButton={true}
+        showWallet={true}
+        onBack={() => step === 2 ? setStep(1) : router.back()}
+      />
 
       <main className="flex-1">
         {step === 1 ? (
@@ -114,30 +114,88 @@ export default function TaxiServicePage() {
             </div>
 
             <div className="px-5 space-y-6">
-              {/* Trip Type */}
+
+              {/* Vehicle Type */}
               <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
-                <h3 className="font-bold text-gray-800 mb-4">نوع الرحلة</h3>
-                <div className="flex bg-gray-100 p-1 rounded-2xl">
-                  <button
-                    onClick={() => setTripType('return')}
-                    className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${tripType === 'return' ? 'bg-white text-primary shadow-sm' : 'text-gray-500'}`}
+                <label className="block font-bold text-gray-800 mb-4">نوع المركبة</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none">
+                    {vehicleType === 'taxi' ? <Car className="w-5 h-5 text-primary" /> : <Bus className="w-5 h-5 text-primary" />}
+                  </div>
+                  <select
+                    value={vehicleType}
+                    onChange={(e) => setVehicleType(e.target.value as 'taxi' | 'bus')}
+                    className="w-full bg-gray-50 text-gray-900 rounded-2xl py-3.5 pr-12 pl-10 border border-gray-100 focus:border-primary/50 outline-none focus:ring-2 focus:ring-primary/20 transition-all appearance-none font-bold"
                   >
-                    عودة فقط
-                  </button>
-                  <button
-                    onClick={() => setTripType('round-trip')}
-                    className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${tripType === 'round-trip' ? 'bg-white text-primary shadow-sm' : 'text-gray-500'}`}
-                  >
-                    ذهاب وعودة
-                  </button>
-                  <button
-                    onClick={() => setTripType('one-way')}
-                    className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${tripType === 'one-way' ? 'bg-white text-primary shadow-sm' : 'text-gray-500'}`}
-                  >
-                    ذهاب فقط
-                  </button>
+                    <option value="taxi">تكسي</option>
+                    <option value="bus">باص</option>
+                  </select>
+                  <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
+                    <ChevronDown className="w-5 h-5 text-gray-400" />
+                  </div>
                 </div>
               </div>
+
+              {/* Passenger Count (Only for Bus) */}
+              {vehicleType === 'bus' && (
+                <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <label className="block font-bold text-gray-800 mb-4">عدد الركاب</label>
+                  <div className="relative">
+                    <select
+                      value={passengerCount}
+                      onChange={(e) => setPassengerCount(e.target.value as '4' | '7' | 'more')}
+                      className="w-full bg-gray-50 text-gray-900 rounded-2xl py-3.5 pr-4 pl-10 border border-gray-100 focus:border-primary/50 outline-none focus:ring-2 focus:ring-primary/20 transition-all appearance-none font-bold"
+                    >
+                      <option value="4">4 ركاب</option>
+                      <option value="7">7 ركاب</option>
+                      <option value="more">أكثر من 7 ركاب</option>
+                    </select>
+                    <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
+                      <ChevronDown className="w-5 h-5 text-gray-400" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Subscription Type */}
+              <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
+                <label className="block font-bold text-gray-800 mb-4">نوع الحجز</label>
+                <div className="relative">
+                  <select
+                    value={subscription}
+                    onChange={(e) => setSubscription(e.target.value as 'none' | 'weekly' | 'monthly')}
+                    className="w-full bg-gray-50 text-gray-900 rounded-2xl py-3.5 pr-4 pl-10 border border-gray-100 focus:border-primary/50 outline-none focus:ring-2 focus:ring-primary/20 transition-all appearance-none font-bold"
+                  >
+                    <option value="none">رحلة عادية</option>
+                    <option value="weekly">أسبوعي</option>
+                    <option value="monthly">شهري</option>
+                  </select>
+                  <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
+                    <ChevronDown className="w-5 h-5 text-gray-400" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Trip Type */}
+              {subscription === 'none' && (
+                <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <label className="block font-bold text-gray-800 mb-4">اتجاه الرحلة</label>
+                  <div className="relative">
+                    <select
+                      value={tripType}
+                      onChange={(e) => setTripType(e.target.value as 'one-way' | 'return' | 'round-trip')}
+                      className="w-full bg-gray-50 text-gray-900 rounded-2xl py-3.5 pr-4 pl-10 border border-gray-100 focus:border-primary/50 outline-none focus:ring-2 focus:ring-primary/20 transition-all appearance-none font-bold"
+                    >
+                      <option value="one-way">ذهاب فقط</option>
+                      <option value="round-trip">ذهاب وعودة</option>
+                      <option value="return">عودة فقط</option>
+                    </select>
+                    <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
+                      <ChevronDown className="w-5 h-5 text-gray-400" />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Locations */}
               <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 space-y-5">
@@ -190,7 +248,7 @@ export default function TaxiServicePage() {
                 </div>
               </div>
 
-              <Button 
+              <Button
                 className="w-full py-6 rounded-2xl font-bold text-lg shadow-lg shadow-primary/20"
                 onClick={handleContinueToPackages}
               >
@@ -211,7 +269,7 @@ export default function TaxiServicePage() {
                       الأكثر طلباً
                     </div>
                   )}
-                  
+
                   <div className="flex gap-4 mb-4">
                     <div className={`w-14 h-14 ${pkg.iconBg} rounded-2xl flex items-center justify-center flex-shrink-0`}>
                       <Car className="w-7 h-7" />
@@ -221,7 +279,7 @@ export default function TaxiServicePage() {
                       <p className="text-xs text-gray-500 leading-relaxed">{pkg.description}</p>
                     </div>
                   </div>
-                  
+
                   <div className="bg-white/50 rounded-2xl p-4 mb-5">
                     <div className="grid grid-cols-2 gap-y-3 gap-x-2">
                       {pkg.features.map((feature, idx) => (
@@ -235,11 +293,10 @@ export default function TaxiServicePage() {
 
                   <div className="flex items-center justify-between mt-auto pt-4 border-t border-gray-100">
                     <span className="font-extrabold text-gray-900 text-2xl">{pkg.price} <span className="text-xs text-gray-400 font-normal">د.ع</span></span>
-                    <button 
+                    <button
                       onClick={() => handleSelectPackage(pkg)}
-                      className={`text-sm font-bold px-8 py-3 rounded-xl transition-all shadow-md active:scale-95 ${
-                        pkg.popular ? 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-emerald-500/20' : 'bg-primary text-white hover:bg-primary/90 shadow-primary/20'
-                      }`}
+                      className={`text-sm font-bold px-8 py-3 rounded-xl transition-all shadow-md active:scale-95 ${pkg.popular ? 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-emerald-500/20' : 'bg-primary text-white hover:bg-primary/90 shadow-primary/20'
+                        }`}
                     >
                       طلب الآن
                     </button>
@@ -307,7 +364,7 @@ export default function TaxiServicePage() {
 
             {!bookingConfirmed && (
               <DrawerFooter className="px-5 pb-8 pt-4">
-                <Button 
+                <Button
                   className="w-full py-6 rounded-xl font-bold text-base shadow-lg shadow-primary/20"
                   onClick={confirmPayment}
                 >

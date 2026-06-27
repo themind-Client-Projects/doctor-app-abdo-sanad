@@ -1,6 +1,7 @@
 'use client';
 
 import { Heart, LogOut, ChevronLeft, ShieldQuestion, UserCog, KeyRound, Wallet, ReceiptText, Info, User } from 'lucide-react';
+import { FlexibleHeader } from '@/components/shared/flexible-header';
 
 interface MenuItem {
   id: number;
@@ -24,13 +25,14 @@ export default function ProfilePage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50/50 pb-24 font-sans">
-      {/* Page Title */}
-      <div className="px-5 pt-2 pb-4">
-        <h1 className="text-xl font-extrabold text-gray-900">الملف الشخصي</h1>
-      </div>
-
+      <FlexibleHeader 
+        title="حسابي" 
+        subtitle="إدارة إعداداتك" 
+        icon={<User className="w-6 h-6" />} 
+        showWallet 
+      />
       {/* Profile Card */}
-      <div className="px-5">
+      <div className="px-5 mt-6">
         <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
           <div className="flex flex-col items-center">
             <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-3">

@@ -9,6 +9,7 @@ import { SPECIALIZATIONS } from '@/lib/constants/specializations';
 import { DEMO_DOCTORS, DEMO_TIME_SLOTS, DEMO_AVAILABLE_DATES, isDateAvailable } from '@/lib/constants/demo-data';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
+import { DoctorCard } from '@/components/shared/doctor-card';
 import {
   Drawer,
   DrawerClose,
@@ -157,66 +158,11 @@ export default function DoctorListingPage({ params }: { params: Promise<{ id: st
         )}
 
         {!isLoading && filteredDoctors.map((doctor) => (
-          <div
-            key={doctor.id}
-            className="bg-white rounded-3xl p-5 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] border border-gray-100 hover:border-primary/20 hover:shadow-lg transition-all duration-300 group"
-          >
-            <div className="flex items-start gap-4 mb-4">
-              {/* Doctor Avatar */}
-              <div className="relative flex-shrink-0">
-                <div className="w-16 h-16 bg-gradient-to-br from-primary/10 to-primary/5 rounded-2xl flex items-center justify-center border border-primary/10 group-hover:scale-105 transition-transform">
-                  <Stethoscope className="w-7 h-7 text-primary" />
-                </div>
-                {doctor.isAvailable && (
-                  <div className="absolute -bottom-1 -end-1 w-5 h-5 bg-emerald-500 rounded-full border-2 border-white flex items-center justify-center">
-                    <Check className="w-3 h-3 text-white" />
-                  </div>
-                )}
-              </div>
-
-              {/* Doctor Info */}
-              <div className="flex-1 min-w-0">
-                <div className="flex justify-between items-start mb-1">
-                  <h3 className="font-extrabold text-gray-800 text-base truncate pe-2">{doctor.name}</h3>
-                  <div className="flex items-center gap-1 bg-amber-50 text-amber-600 px-2 py-1 rounded-lg text-xs font-bold flex-shrink-0">
-                    <Star className="w-3 h-3 fill-amber-500" />
-                    {doctor.rating}
-                    <span className="text-amber-400 font-normal">({doctor.reviewCount})</span>
-                  </div>
-                </div>
-                <p className="text-xs text-gray-500 font-medium">{doctor.specialty}</p>
-                <div className="flex items-center gap-3 mt-2">
-                  <div className="flex items-center gap-1 text-xs text-gray-500">
-                    <MapPin className="w-3.5 h-3.5 text-primary/60" />
-                    <span className="truncate">{doctor.location}</span>
-                  </div>
-                  <div className="flex items-center gap-1 text-xs text-gray-500">
-                    <Briefcase className="w-3 h-3 text-primary/60" />
-                    <span>{doctor.experience}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Price & Action */}
-            <div className="flex items-center gap-3">
-              <div className="flex-1 text-sm font-bold text-primary">
-                {doctor.price}
-              </div>
-              <button
-                onClick={() => openBooking(doctor)}
-                disabled={!doctor.isAvailable}
-                className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${
-                  doctor.isAvailable
-                    ? 'bg-primary/10 text-primary hover:bg-primary hover:text-white active:scale-95'
-                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                }`}
-              >
-                <CalendarClock className="w-4 h-4" />
-                {doctor.isAvailable ? 'احجز موعد' : 'غير متاح'}
-              </button>
-            </div>
-          </div>
+          <DoctorCard 
+            key={doctor.id} 
+            doctor={doctor} 
+            onBook={openBooking} 
+          />
         ))}
       </main>
 

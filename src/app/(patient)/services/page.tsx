@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Stethoscope, Bed, PercentSquare, MapPin, ChevronDown } from 'lucide-react';
+import { ChevronLeft, Stethoscope, Bed, PercentSquare, MapPin, ChevronDown, Activity } from 'lucide-react';
 import { useLocationStore } from '@/stores/patient/location.store';
 import { CitySelectorDrawer } from '@/components/features/patient/city-selector-drawer';
+import { PromoBanner } from '@/components/shared/promo-banner';
+import { FlexibleHeader } from '@/components/shared/flexible-header';
 
 export default function ServicesPage() {
   const router = useRouter();
@@ -60,22 +62,19 @@ export default function ServicesPage() {
   ];
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50 pb-20 font-sans">
-      {/* Page Title */}
-      <div className="px-5 pt-2 pb-4 flex items-center justify-between">
-        <h1 className="text-xl font-extrabold text-gray-900">خدمة أو عملية</h1>
-        <button 
-          onClick={() => openCitySelector()}
-          className="flex items-center gap-1 text-xs font-bold text-primary hover:text-primary/80 transition-colors bg-primary/5 px-2.5 py-1.5 rounded-full"
-        >
-          <MapPin className="w-3.5 h-3.5" />
-          {selectedCity ? selectedCity : 'اختر مدينتك'}
-          <ChevronDown className="w-3 h-3 ms-0.5" />
-        </button>
-      </div>
+    <div className="flex flex-col min-h-screen bg-gray-50/50 pb-28 font-sans">
+      <FlexibleHeader 
+        title="خدمة أو عملية" 
+        showBackButton 
+        showCitySelector 
+        showWallet={false}
+        isCompact={true}
+      />
 
-      <main className="px-5 space-y-3">
-        {services.map((service) => (
+      <main className="px-4 mt-6 space-y-6">
+
+        <div className="space-y-3">
+          {services.map((service) => (
           <button 
             key={service.path}
             onClick={() => handleNavigation(service.path)}
@@ -96,6 +95,15 @@ export default function ServicesPage() {
             <ChevronLeft className="w-5 h-5 text-gray-300 group-hover:text-primary transition-colors shrink-0" />
           </button>
         ))}
+        </div>
+
+        {/* Sanad Promo Banner */}
+        <PromoBanner 
+          brandName="سند"
+          title="وفر حتى 80% على جميع الخدمات الطبية"
+          subtitle="خصومات طبية في المملكة"
+          href="/services/packages" 
+        />
       </main>
 
       <CitySelectorDrawer />

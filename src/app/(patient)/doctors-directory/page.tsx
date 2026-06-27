@@ -10,6 +10,7 @@ import Image from 'next/image';
 import { SPECIALIZATIONS } from '@/lib/constants/specializations';
 import { DEMO_DOCTORS } from '@/lib/constants/demo-data';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from '@/components/ui/drawer';
+import { FlexibleHeader } from '@/components/shared/flexible-header';
 import type { Doctor } from '@/types/patient';
 
 const AREAS = [
@@ -113,10 +114,13 @@ function DoctorsDirectoryContent() {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50/50 pb-24 font-sans antialiased">
-      {/* Page Title */}
-      <div className="px-5 pt-6 pb-4">
-        <h1 className="text-xl font-extrabold text-gray-900">دليل الأطباء</h1>
-        <p className="text-gray-500 text-sm mt-1 font-medium mb-4">ابحث عن أفضل الأطباء والعيادات التخصصية</p>
+      <FlexibleHeader 
+        title="دليل الأطباء" 
+        subtitle="ابحث عن أفضل الأطباء والعيادات التخصصية"
+        showBackButton 
+        isCompact={false}
+      />
+      <div className="px-5 pt-4 pb-2">
         
         {/* Search & Filter Trigger */}
         <div className="relative max-w-md mx-auto flex gap-2">

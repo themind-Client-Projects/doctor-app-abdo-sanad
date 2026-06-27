@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronRight, Droplet, Search, HeartHandshake, CheckCircle2, AlertCircle, Phone, MapPin } from 'lucide-react';
+import { FlexibleHeader } from '@/components/shared/flexible-header';
 
 type Role = 'none' | 'need' | 'donate';
 type BloodType = 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-';
@@ -53,15 +54,12 @@ export default function BloodBankPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col font-sans pb-10">
-      {/* Header */}
-      <header className="bg-white px-5 pt-6 pb-4 flex items-center gap-4 sticky top-0 z-50 border-b border-red-50">
-
-        <div className="flex items-center gap-2">
-          <Droplet className="w-6 h-6 text-red-600 fill-red-100" />
-          <h1 className="text-xl font-extrabold text-gray-900">بنك الدم</h1>
-        </div>
-      </header>
+    <div className="flex flex-col min-h-screen bg-gray-50 pb-20 font-sans">
+      <FlexibleHeader 
+        title="بنك الدم" 
+        showBackButton 
+        icon={<Droplet className="w-6 h-6 text-red-600 fill-red-100" />}
+      />
 
       {/* Main Content */}
       <div className="flex-1 px-5 pt-6">

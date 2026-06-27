@@ -1,42 +1,48 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
-import { HomecareReservationForm } from '@/components/forms/homecare-reservation-form';
-import { 
-  Bell, 
-  Search, 
-  Stethoscope, 
-  PhoneCall, 
-  Home as HomeIcon, 
-  Syringe, 
-  BookOpen, 
-  Car, 
+import { FlexibleHeader } from '@/components/shared/flexible-header';
+import { PromoBanner } from '@/components/shared/promo-banner';
+import {
+  Bell,
+  Search,
+  Stethoscope,
+  PhoneCall,
+  Home as HomeIcon,
+  Syringe,
+  BookOpen,
+  Car,
   Droplet,
   ChevronLeft,
   Activity,
   CheckCircle2,
   Star,
-  Wallet,
-  CalendarClock,
-  Briefcase,
-  MapPin,
 } from 'lucide-react';
 import { DoctorBookingDrawer } from '@/components/shared/doctor-booking-drawer';
 import { DEMO_DOCTORS } from '@/lib/constants/demo-data';
 import type { Doctor } from '@/types/patient';
+import { DoctorCard } from '@/components/shared/doctor-card';
+import { CategoryFilters } from '@/components/shared/category-filters';
+import { SPECIALIZATIONS } from '@/lib/constants/specializations';
+import { useFilters } from '@/hooks/use-filters';
 
-export default function RootLandingPage() {
-  const [homecareDrawerOpen, setHomecareDrawerOpen] = useState(false);
-  
+function RootLandingContent() {
+
   // Doctor booking state
   const [bookingDrawerOpen, setBookingDrawerOpen] = useState(false);
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
 
-  // Get a few doctors for the homepage
-  const featuredDoctors = Object.values(DEMO_DOCTORS).flat().slice(0, 4);
+  const { category: activeSpecialty } = useFilters();
+
+  // Get doctors based on specialty, or a few featured ones
+  const filteredDoctors = useMemo(() => {
+    if (activeSpecialty === 'all') {
+      return Object.values(DEMO_DOCTORS).flat().slice(0, 4);
+    }
+    return DEMO_DOCTORS[activeSpecialty] || [];
+  }, [activeSpecialty]);
 
   const handleOpenBooking = (doctor: Doctor) => {
     setSelectedDoctor(doctor);
@@ -45,7 +51,12 @@ export default function RootLandingPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 pb-20 font-sans">
-
+      <FlexibleHeader 
+        title="أحمد محمد" 
+        subtitle="مرحباً بك،" 
+        icon={<Activity className="w-6 h-6" />} 
+        showWallet 
+      />
 
       <main className="px-4 mt-5 space-y-8">
         {/* Search */}
@@ -68,7 +79,7 @@ export default function RootLandingPage() {
                 key={item} 
                 className="min-w-[85vw] sm:min-w-[300px] h-40 rounded-[2rem] p-6 text-white flex justify-start items-center shadow-md snap-center relative overflow-hidden group"
               >
-                <Image src="/ads/real_clinic_banner.png" alt="عيادة" fill className="object-cover group-hover:scale-105 transition-transform duration-500" />
+                <Image src="/ads/real_clinic_banner.png" alt="إعلان" fill className="object-cover group-hover:scale-105 transition-transform duration-500" />
                 <div className="absolute inset-0 bg-gradient-to-l from-emerald-900/80 via-emerald-800/60 to-transparent" />
                 
                 <div className="relative z-10 flex flex-col justify-center max-w-[80%]">
@@ -86,12 +97,12 @@ export default function RootLandingPage() {
             {[
               { id: 1, name: 'حجز اطباء', icon: Stethoscope, color: 'bg-blue-50 text-blue-600', href: '/doctors' },
               { id: 2, name: 'مكالمة اطباء', icon: PhoneCall, color: 'bg-emerald-50 text-emerald-600', href: '/teleconsultation' },
-              { id: 3, name: 'رعاية منزلية', icon: HomeIcon, color: 'bg-purple-50 text-purple-600', onClick: () => setHomecareDrawerOpen(true) },
+              { id: 3, name: 'رعاية منزلية', icon: HomeIcon, color: 'bg-purple-50 text-purple-600', href: '/homecare' },
               { id: 4, name: 'خدمة او عملية', icon: Syringe, color: 'bg-rose-50 text-rose-600', href: '/services' },
               { id: 5, name: 'دليل اطباء', icon: BookOpen, color: 'bg-amber-50 text-amber-600', href: '/doctors-directory' },
               { id: 6, name: 'تكسي', icon: Car, color: 'bg-indigo-50 text-indigo-600', href: '/services/taxi' },
               { id: 7, name: 'بنك الدم', icon: Droplet, color: 'bg-red-50 text-red-600', href: '/services/blood-bank' },
-            ].map((cat) => (
+            ].map((cat: { id: number; name: string; icon: any; color: string; href?: string; onClick?: () => void }) => (
               cat.href ? (
                 <Link key={cat.id} href={cat.href} className="flex flex-col items-center gap-2 transition-transform active:scale-95 group">
                   <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-[1.25rem] flex items-center justify-center shadow-sm ${cat.color} overflow-hidden group-hover:shadow-md transition-all relative`}>
@@ -115,21 +126,12 @@ export default function RootLandingPage() {
 
         {/* Sanad Board (Link to /sanad) */}
         <section>
-          <Link href="/sanad" className="block">
-            <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden flex items-center justify-between group">
-              <div className="absolute top-0 right-0 w-40 h-40 bg-white/5 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2" />
-              <div className="absolute bottom-0 left-0 w-32 h-32 bg-primary/20 rounded-full blur-xl translate-y-1/3 -translate-x-1/4" />
-              
-              <div className="relative z-10">
-                <h2 className="text-xl font-extrabold mb-1">لوحة سند</h2>
-                <p className="text-sm text-gray-300 font-medium">الوصول إلى خدماتك الطبية وإدارة حجوزاتك</p>
-              </div>
-              
-              <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center relative z-10 group-hover:bg-white/20 transition-colors">
-                <ChevronLeft className="w-5 h-5 text-white" />
-              </div>
-            </div>
-          </Link>
+          <PromoBanner 
+            brandName="سند"
+            title="لوحة سند"
+            subtitle="الوصول إلى خدماتك الطبية وإدارة حجوزاتك"
+            href="/sanad" 
+          />
         </section>
 
         {/* Subscriptions & Packages */}
@@ -188,7 +190,7 @@ export default function RootLandingPage() {
                 </div>
                 <h4 className="font-extrabold text-gray-800 text-lg mb-1">{pkg.name}</h4>
                 <p className="text-xs text-gray-500 mb-4">{pkg.description}</p>
-                
+
                 <div className="space-y-2 mb-5 min-h-[70px]">
                   {pkg.features.map((feature, idx) => (
                     <div key={idx} className="flex items-center gap-2">
@@ -209,63 +211,35 @@ export default function RootLandingPage() {
           </div>
         </section>
 
-        {/* Featured Doctors */}
+        {/* Specialties Filter */}
+        <section className="-mx-4 mb-2">
+          <CategoryFilters
+            categories={SPECIALIZATIONS}
+            allLabel="جميع التخصصات"
+          />
+        </section>
+
+        {/* Featured / Filtered Doctors */}
         <section className="space-y-4">
           <div className="flex justify-between items-center mb-2">
-            <h3 className="text-base font-bold text-gray-800">الأطباء المتاحين</h3>
+            <h3 className="text-base font-bold text-gray-800">
+              {activeSpecialty === 'all' ? 'أطباء مقترحون' : 'الأطباء المتاحين'}
+            </h3>
             <Link href="/doctors" className="text-xs text-primary font-medium cursor-pointer">عرض الكل</Link>
           </div>
-          
+
           <div className="flex flex-col gap-4">
-            {featuredDoctors.map((doctor) => (
-              <div
-                key={doctor.id}
-                className="bg-white rounded-[2rem] p-5 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] border border-gray-100 hover:border-primary/20 transition-all duration-300"
-              >
-                <div className="flex items-start gap-4 mb-4">
-                  <div className="relative flex-shrink-0">
-                    <div className="w-16 h-16 bg-gradient-to-br from-primary/10 to-primary/5 rounded-2xl flex items-center justify-center border border-primary/10">
-                      <Stethoscope className="w-7 h-7 text-primary" />
-                    </div>
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-start mb-1">
-                      <h3 className="font-extrabold text-gray-800 text-base truncate pe-2">{doctor.name}</h3>
-                      <div className="flex items-center gap-1 bg-amber-50 text-amber-600 px-2 py-1 rounded-lg text-xs font-bold flex-shrink-0">
-                        <Star className="w-3 h-3 fill-amber-500" />
-                        {doctor.rating}
-                      </div>
-                    </div>
-                    <p className="text-xs text-gray-500 font-medium">{doctor.specialty}</p>
-                    <div className="flex flex-col gap-1.5 mt-2.5">
-                      <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                        <MapPin className="w-3.5 h-3.5 text-primary/60" />
-                        <span className="truncate">{doctor.location}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                        <Briefcase className="w-3.5 h-3.5 text-primary/60" />
-                        <span>خبرة {doctor.experience}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 pt-3 border-t border-gray-50">
-                  <div className="flex-1">
-                    <span className="text-[10px] text-gray-400 block mb-0.5">سعر الكشفية</span>
-                    <span className="text-sm font-extrabold text-primary block leading-none">{doctor.price}</span>
-                  </div>
-                  <button
-                    onClick={() => handleOpenBooking(doctor)}
-                    className="flex-1 py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-1.5 bg-primary/10 text-primary hover:bg-primary hover:text-white active:scale-95"
-                  >
-                    <CalendarClock className="w-4 h-4" />
-                    احجز موعد
-                  </button>
-                </div>
-              </div>
-            ))}
+            {filteredDoctors.length > 0 ? (
+              filteredDoctors.map((doctor) => (
+                <DoctorCard
+                  key={doctor.id}
+                  doctor={doctor}
+                  onBook={handleOpenBooking}
+                />
+              ))
+            ) : (
+              <div className="text-center py-6 text-sm text-gray-500">لا يوجد أطباء متاحين حالياً في هذا التخصص.</div>
+            )}
           </div>
         </section>
 
@@ -292,33 +266,20 @@ export default function RootLandingPage() {
         </section>
       </main>
 
-      {/* ── Homecare Reservation Drawer ── */}
-      <Drawer open={homecareDrawerOpen} onOpenChange={setHomecareDrawerOpen}>
-        <DrawerContent className="max-h-[92vh] h-auto">
-          <div className="mx-auto w-full max-w-md flex flex-col h-full overflow-y-auto hide-scrollbar pb-safe">
-            <DrawerHeader className="text-right px-5 pt-6 pb-2">
-              <DrawerTitle className="text-xl font-extrabold text-gray-900">
-                حجز خدمة تمريضية منزلية
-              </DrawerTitle>
-            </DrawerHeader>
-            
-            <div className="p-5 pb-8">
-              <HomecareReservationForm 
-                onSuccess={() => {
-                  setTimeout(() => setHomecareDrawerOpen(false), 2000);
-                }} 
-              />
-            </div>
-          </div>
-        </DrawerContent>
-      </Drawer>
-
       {/* ── Doctor Booking Drawer ── */}
-      <DoctorBookingDrawer 
+      <DoctorBookingDrawer
         doctor={selectedDoctor}
         open={bookingDrawerOpen}
         onOpenChange={setBookingDrawerOpen}
       />
     </div>
+  );
+}
+
+export default function RootLandingPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center">جاري التحميل...</div>}>
+      <RootLandingContent />
+    </Suspense>
   );
 }

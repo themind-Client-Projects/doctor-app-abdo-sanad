@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { CalendarClock, MapPin, Check, X, Clock, Stethoscope, TestTubes, Building2 } from 'lucide-react';
+import { CalendarClock, MapPin, Check, X, Clock, Stethoscope, TestTubes, Building2, Activity } from 'lucide-react';
+import { FlexibleHeader } from '@/components/shared/flexible-header';
 
 import {
   Drawer,
@@ -205,7 +206,13 @@ export default function BookingsPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50/50 pb-24 font-sans">
-      <main className="px-4 mt-2 space-y-6">
+      <FlexibleHeader 
+        title="حجوزاتي" 
+        subtitle={`${upcomingBookings.length} حجوزات قادمة`} 
+        icon={<Activity className="w-6 h-6" />} 
+        showWallet 
+      />
+      <main className="px-4 mt-6 space-y-6">
         {/* Tabs */}
         <div className="flex gap-1 bg-gray-100 p-1.5 rounded-2xl">
           <button

@@ -2,6 +2,7 @@
 
 
 import { Bell, CalendarCheck, Megaphone, Stethoscope, Clock, CheckCircle2 } from 'lucide-react';
+import { FlexibleHeader } from '@/components/shared/flexible-header';
 
 const NOTIFICATIONS = [
   {
@@ -59,9 +60,12 @@ const NOTIFICATIONS = [
 export default function NotificationsPage() {
   return (
     <div className="min-h-screen bg-gray-50 pb-20 font-sans">
-      <div className="px-5 pt-2 pb-4">
-        <h1 className="text-xl font-extrabold text-gray-900">إشعارات سند</h1>
-      </div>
+      <FlexibleHeader 
+        title="الإشعارات" 
+        subtitle="تنبيهاتك وتحديثاتك" 
+        icon={<Bell className="w-6 h-6" />} 
+        showWallet 
+      />
 
       <main className="p-4 space-y-3">
         {NOTIFICATIONS.length === 0 ? (

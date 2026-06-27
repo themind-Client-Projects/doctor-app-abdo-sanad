@@ -2,6 +2,7 @@
 
 import { Lock, MapPin, Phone, Star, ChevronLeft, Activity, Bone, HeartPulse, PersonStanding } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { FlexibleHeader } from '@/components/shared/flexible-header';
 
 
 export default function PhysiotherapyPage() {
@@ -15,11 +16,11 @@ export default function PhysiotherapyPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50/50 pb-24 font-sans">
-      {/* Page Title */}
-      <div className="px-5 pt-2 pb-4">
-        <h1 className="text-xl font-extrabold text-gray-900">العلاج الطبيعي</h1>
-        <p className="text-gray-500 text-sm mt-1 font-medium">أفضل المراكز لاستعادة حركتك ونشاطك</p>
-      </div>
+      <FlexibleHeader 
+        title="العلاج الطبيعي" 
+        subtitle="أفضل المراكز لاستعادة حركتك ونشاطك" 
+        showBackButton 
+      />
 
       <main className="px-4 mt-6 space-y-6">
         
