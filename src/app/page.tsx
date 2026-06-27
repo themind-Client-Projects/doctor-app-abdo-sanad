@@ -128,9 +128,9 @@ function RootLandingContent() {
         <section>
           <PromoBanner 
             brandName="سند"
-            title="لوحة سند"
-            subtitle="الوصول إلى خدماتك الطبية وإدارة حجوزاتك"
-            href="/sanad" 
+            title="وفر حتى 80% على جميع الخدمات الطبية"
+            subtitle="خصومات طبية في المملكة"
+            href="/services/packages" 
           />
         </section>
 

@@ -13,6 +13,7 @@ import { DoctorBookingDrawer } from '@/components/shared/doctor-booking-drawer';
 import { DoctorCard } from '@/components/shared/doctor-card';
 import { useFilters } from '@/hooks/use-filters';
 import { useLocationStore } from '@/stores/patient/location.store';
+import { CitySelectorDrawer } from '@/components/features/patient/city-selector-drawer';
 import { SPECIALIZATIONS } from '@/lib/constants/specializations';
 import { DEMO_DOCTORS } from '@/lib/constants/demo-data';
 import type { Doctor } from '@/types/patient';
@@ -145,6 +146,8 @@ function DoctorsContent() {
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
       />
+
+      <CitySelectorDrawer />
     </div>
   );
 }
