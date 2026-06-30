@@ -102,7 +102,7 @@ export default function ServicesPage() {
           brandName="سند"
           title="وفر حتى 80% على جميع الخدمات الطبية"
           subtitle="خصومات طبية في المملكة"
-          href="/services/packages" 
+          href="/sanad" 
         />
       </main>
 
