@@ -1,0 +1,722 @@
+// ─────────────────────────────────────────────────────────────
+// Warid (وريد) Healthcare Platform — Prisma Schema
+// 35 models · 11 enums · All relationships defined
+// ─────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ENUMS
+// ═══════════════════════════════════════════════════════════════
+
+enum UserRole {
+  SUPER_ADMIN
+  OPERATIONS
+  DOCTOR
+  LAB
+  PHARMACY
+  NURSE
+  DRIVER
+  RADIOLOGY
+  PATIENT
+}
+
+enum PartnerStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING
+  PAUSED
+}
+
+enum OrderStatus {
+  NEW
+  ACCEPTED
+  ASSIGNED
+  IN_TRANSIT
+  ARRIVED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  DELAYED
+}
+
+// Tracks whether order came from Complex or Sanad (req L160-161, L168-169)
+enum OrderSource {
+  COMPLEX
+  SANAD
+  DIRECT
+}
+
+enum ServiceStatus {
+  ACTIVE
+  SUSPENDED
+  PAUSED
+  REACTIVATED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  WALLET
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum Priority {
+  NORMAL
+  URGENT
+  CRITICAL
+}
+
+// Doctor appointment types (req L195-198)
+enum AppointmentType {
+  IN_PERSON  // حضوري
+  ONLINE     // أونلاين
+  HOME_VISIT // زيارة منزلية
+  SURGERY    // عمليات
+}
+
+enum BloodType {
+  A_POS
+  A_NEG
+  B_POS
+  B_NEG
+  AB_POS
+  AB_NEG
+  O_POS
+  O_NEG
+}
+
+// Operations employee availability (req L278)
+enum EmployeeAvailability {
+  AVAILABLE // متاح
+  BUSY      // مشغول
+  ON_BREAK  // استراحة
+}
+
+// Notification delivery channel
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  WHATSAPP
+}
+
+// ═══════════════════════════════════════════════════════════════
+// AUTH MODELS (Auth.js / NextAuth)
+// ═══════════════════════════════════════════════════════════════
+
+// #1 — Auth.js required: OAuth accounts (Google)
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+// #2 — Auth.js required: database sessions
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// #3 — Phone OTP verification via UltraMessages
+model OTPCode {
+  id        String   @id @default(cuid())
+  phone     String
+  code      String
+  expiresAt DateTime
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([phone, code])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CORE MODELS
+// ═══════════════════════════════════════════════════════════════
+
+// #4 — All platform users (req L10, L276-277)
+model User {
+  id            String    @id @default(cuid())
+  phone         String?   @unique
+  email         String?   @unique
+  emailVerified DateTime?
+  name          String?
+  image         String?   // avatar URL
+  role          UserRole  @default(PATIENT)
+  isActive      Boolean   @default(true)
+  governorateId String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  governorate    Governorate?    @relation(fields: [governorateId], references: [id])
+  accounts       Account[]
+  sessions       Session[]
+  partner        Partner?
+  doctorProfile  DoctorProfile?
+  employeeStatus EmployeeStatus?
+  notifications  Notification[]
+  activityLogs   ActivityLog[]
+  callsMade      CallLog[]       @relation("Caller")
+  callsReceived  CallLog[]       @relation("Receiver")
+  feedbacks      PatientFeedback[]
+}
+
+// #5 — Every service provider (req L129, L142, L151-152)
+// isSanadLinked + complexId allow ALL partner types to link to Sanad/Complex
+model Partner {
+  id            String        @id @default(cuid())
+  userId        String        @unique
+  type          UserRole      // DOCTOR, LAB, PHARMACY, NURSE, DRIVER, RADIOLOGY
+  name          String
+  phone         String
+  email         String?
+  governorateId String?
+  address       String?
+  status        PartnerStatus @default(PENDING)
+  rating        Float         @default(0)
+  totalTasks    Int           @default(0)
+  isSanadLinked Boolean       @default(false) // Can receive Sanad orders (req L142, L152, L161, L168)
+  complexId     String?                       // Linked to a medical complex (req L142, L151)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  governorate    Governorate?    @relation(fields: [governorateId], references: [id])
+  complex        MedicalComplex? @relation("PartnerComplex", fields: [complexId], references: [id])
+  ownedComplex   MedicalComplex? @relation("ComplexPartner")
+  contract       Contract?
+  serviceConfigs ServiceConfig[]
+  wallet         Wallet?
+  debts          Debt[]
+  invoices       Invoice[]
+
+  // Assigned orders
+  ordersAsNurse     Order[] @relation("AssignedNurse")
+  ordersAsDriver    Order[] @relation("AssignedDriver")
+  ordersAsLab       Order[] @relation("AssignedLab")
+  ordersAsPharmacy  Order[] @relation("AssignedPharmacy")
+  ordersAsRadiology Order[] @relation("AssignedRadiology")
+}
+
+// #6 — Medical complex entity (req L130-139)
+model MedicalComplex {
+  id        String   @id @default(cuid())
+  partnerId String   @unique
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  partner     Partner      @relation("ComplexPartner", fields: [partnerId], references: [id])
+  departments Department[]
+  partners    Partner[]    @relation("PartnerComplex") // doctors, labs, pharmacies, radiology linked to this complex
+}
+
+// #7 — Complex departments (req L135 "إدارة أقسامه")
+model Department {
+  id        String  @id @default(cuid())
+  complexId String
+  name      String
+  isActive  Boolean @default(true)
+
+  complex MedicalComplex @relation(fields: [complexId], references: [id], onDelete: Cascade)
+}
+
+// #8 — Doctor-specific data (req L140-148)
+model DoctorProfile {
+  id            String  @id @default(cuid())
+  userId        String  @unique
+  specialtyId   String?
+  complexId     String? // Linked to complex (req L142 "ربطه بمجمع")
+  isSanadLinked Boolean @default(false) // Linked to Sanad (req L142 "أو سند")
+  experience    Int?    // years
+  gender        String?
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schedules DoctorSchedule[]
+  appointments  Appointment[]
+  prescriptions Prescription[]
+  sanadSessions SanadSession[]
+}
+
+// #9 — Operations employee availability state (req L278)
+model EmployeeStatus {
+  id               String                @id @default(cuid())
+  userId           String                @unique
+  availability     EmployeeAvailability  @default(AVAILABLE)
+  lastSeen         DateTime              @default(now())
+  currentTaskCount Int                   @default(0)
+  governorateId    String?
+  area             String?
+  vehicleInfo      String?
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  governorate Governorate? @relation(fields: [governorateId], references: [id])
+}
+
+// #10 — Governorate (referenced in L174, L191, L206, L307, L438)
+model Governorate {
+  id       String  @id @default(cuid())
+  name     String  @unique
+  isActive Boolean @default(true)
+  areas    Json    @default("[]") // JSON string array of areas within the governorate
+
+  users            User[]
+  partners         Partner[]
+  employeeStatuses EmployeeStatus[]
+  orders           Order[]
+  bloodBankRequests BloodBankRequest[]
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CONTRACT & COMMISSION MODELS
+// ═══════════════════════════════════════════════════════════════
+
+// #11 — Per-partner contract (req L199-209, 8 fields)
+model Contract {
+  id          String   @id @default(cuid())
+  partnerId   String   @unique
+  startDate   DateTime // تاريخ البداية
+  endDate     DateTime // تاريخ الانتهاء
+  services    Json     @default("[]") // الخدمات — JSON string array
+  governorates Json    @default("[]") // المحافظات
+  workHours   Json     @default("{}") // ساعات العمل — JSON schedule object
+  minPrices   Json     @default("{}") // الحد الأدنى للأسعار
+  terms       String?  @db.Text       // شروط العقد
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  partner         Partner          @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  commissionRules CommissionRule[]
+}
+
+// #12 — Commission rules ⭐ MOST CRITICAL (req L210-230)
+// "أهم جزء في وريد" — per-contract, NEVER hardcoded
+model CommissionRule {
+  id           String @id @default(cuid())
+  contractId   String
+  serviceType  String // e.g. "استشارة حضورية", "تحليل منزلي"
+  partnerShare Float  // الشريك %
+  complexShare Float  @default(0) // المجمع %
+  waridShare   Float  // وريد %
+  nurseShare   Float  @default(0) // الممرض % (optional)
+  driverShare  Float  @default(0) // السائق % (optional)
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@unique([contractId, serviceType])
+}
+
+// #13 — Service configuration per partner (req L183-198)
+// 4 statuses: تفعيل, تعليق, إيقاف مؤقت, إعادة التفعيل
+model ServiceConfig {
+  id            String        @id @default(cuid())
+  partnerId     String
+  serviceType   String        // e.g. "حضوري", "أونلاين", "زيارة منزلية", "عمليات"
+  status        ServiceStatus @default(ACTIVE)
+  workHours     Json          @default("{}") // تحديد أوقات العمل
+  governorates  Json          @default("[]") // تحديد المحافظات
+  dailyCapacity Int?          // تحديد الطاقة اليومية
+  isHomeService Boolean       @default(false)
+  isBloodDraw   Boolean       @default(false) // تفعيل سحب الدم (req L153)
+
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@unique([partnerId, serviceType])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ORDER & SERVICE MODELS
+// ═══════════════════════════════════════════════════════════════
+
+// #14 — Order (req L300-316, 13 fields)
+model Order {
+  id                   String        @id @default(cuid())
+  orderNumber          String        @unique @default(cuid())
+  patientId            String        // اسم المريض
+  patientName          String
+  patientPhone         String        // رقم الهاتف
+  serviceType          String        // نوع الخدمة
+  status               OrderStatus   @default(NEW)
+  priority             Priority      @default(NORMAL) // درجة الأولوية
+  source               OrderSource   @default(DIRECT) // Complex vs Sanad vs Direct
+  governorateId        String?       // المحافظة
+  area                 String?       // المنطقة
+  address              String?       // العنوان
+  paymentMethod        PaymentMethod @default(CASH) // طريقة الدفع
+  paymentStatus        PaymentStatus @default(PENDING) // حالة الدفع
+  notes                String?       @db.Text // الملاحظات
+  assignedNurseId      String?
+  assignedDriverId     String?
+  assignedLabId        String?
+  assignedPharmacyId   String?
+  assignedRadiologyId  String?
+  operationsEmployeeId String?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  governorate      Governorate?      @relation(fields: [governorateId], references: [id])
+  assignedNurse    Partner?           @relation("AssignedNurse", fields: [assignedNurseId], references: [id])
+  assignedDriver   Partner?           @relation("AssignedDriver", fields: [assignedDriverId], references: [id])
+  assignedLab      Partner?           @relation("AssignedLab", fields: [assignedLabId], references: [id])
+  assignedPharmacy Partner?           @relation("AssignedPharmacy", fields: [assignedPharmacyId], references: [id])
+  assignedRadiology Partner?          @relation("AssignedRadiology", fields: [assignedRadiologyId], references: [id])
+  timeline         OrderTimeline[]
+  transactions     Transaction[]
+  callLogs         CallLog[]
+  labSamples       LabSample[]
+  radiologyRequests RadiologyRequest[]
+  prescriptions    Prescription[]     @relation("OrderPrescriptions")
+  feedbacks        PatientFeedback[]
+}
+
+// #15 — 11-step execution timeline (req L384-407)
+model OrderTimeline {
+  id          String    @id @default(cuid())
+  orderId     String
+  step        Int       // 1-11
+  title       String    // e.g. "تم إنشاء الطلب", "تم قبول الطلب"
+  description String?
+  completedAt DateTime?
+  completedBy String?   // userId who completed this step
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, step])
+}
+
+// #16 — Doctor appointments (req L22-25, L79-82)
+model Appointment {
+  id        String          @id @default(cuid())
+  doctorId  String
+  patientId String
+  complexId String?
+  type      AppointmentType @default(IN_PERSON)
+  date      DateTime
+  time      String          // e.g. "09:00"
+  status    String          @default("scheduled") // scheduled, completed, cancelled, no_show
+  price     Float?
+  notes     String?         @db.Text
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  doctor DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+}
+
+// #17 — Prescriptions (req L35-39, L98)
+model Prescription {
+  id          String   @id @default(cuid())
+  doctorId    String
+  patientId   String
+  pharmacyId  String?
+  orderId     String?
+  medications Json     @default("[]") // JSON array of medication objects
+  status      String   @default("new") // new, preparing, ready, delivered, returned
+  notes       String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  doctor DoctorProfile @relation(fields: [doctorId], references: [id])
+  order  Order?        @relation("OrderPrescriptions", fields: [orderId], references: [id])
+}
+
+// #18 — Lab sample tracking with 6 statuses (req L455-463)
+model LabSample {
+  id         String   @id @default(cuid())
+  orderId    String?
+  labId      String
+  nurseId    String?
+  sampleType String
+  status     String   @default("received")
+  // Statuses: received (استلمت), in_lab (وصلت المختبر), testing (قيد الفحص),
+  //           ready (النتيجة جاهزة), sent_to_doctor (أرسلت للطبيب), sent_to_patient (أرسلت للمريض)
+  results    Json?    // Test results JSON
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  order Order? @relation(fields: [orderId], references: [id])
+}
+
+// #19 — Radiology request tracking with 5 statuses (req L465-472)
+model RadiologyRequest {
+  id              String   @id @default(cuid())
+  orderId         String?
+  centerId        String
+  requestType     String
+  equipmentType   String?  // نوع الأجهزة (req L166, L371)
+  appointmentDate DateTime?
+  status          String   @default("scheduled")
+  // Statuses: scheduled (الموعد), imaged (تم التصوير), report_ready (التقرير الطبي),
+  //           images_attached (الصور المرفقة), sent_to_doctor (إرسال للطبيب)
+  report          String?  @db.Text
+  images          Json     @default("[]") // Array of Supabase Storage URLs
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  order Order? @relation(fields: [orderId], references: [id])
+}
+
+// #20 — Sanad online consultation sessions (req L445-453)
+model SanadSession {
+  id              String    @id @default(cuid())
+  doctorId        String
+  patientId       String
+  appointmentTime DateTime
+  status          String    @default("waiting")
+  // Statuses: waiting (انتظار), calling (جاري الاتصال), in_session, ended (انتهت الجلسة)
+  startedAt       DateTime?
+  endedAt         DateTime?
+  createdAt       DateTime  @default(now())
+
+  doctor DoctorProfile @relation(fields: [doctorId], references: [id])
+}
+
+// #21 — Radiology center equipment types (req L166 "أنواع الأجهزة")
+model RadiologyEquipment {
+  id       String  @id @default(cuid())
+  centerId String  // Partner ID of the radiology center
+  name     String
+  type     String  // e.g. "X-Ray", "MRI", "CT", "Ultrasound"
+  isActive Boolean @default(true)
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FINANCIAL MODELS
+// ═══════════════════════════════════════════════════════════════
+
+// #22 — Partner wallet (req L241 "رصيد كل شريك")
+model Wallet {
+  id             String   @id @default(cuid())
+  partnerId      String   @unique
+  balance        Float    @default(0)
+  pendingAmount  Float    @default(0) // المستحقات
+  totalEarnings  Float    @default(0) // إجمالي الأرباح
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  partner      Partner       @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+}
+
+// #23 — Financial transactions (req L243 "التحويلات")
+model Transaction {
+  id          String   @id @default(cuid())
+  walletId    String
+  orderId     String?
+  amount      Float
+  type        String   // "CREDIT" or "DEBIT"
+  description String?
+  createdAt   DateTime @default(now())
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  order  Order? @relation(fields: [orderId], references: [id])
+}
+
+// #24 — Invoices (req L245 "الفواتير")
+model Invoice {
+  id        String    @id @default(cuid())
+  partnerId String
+  orderId   String?
+  amount    Float
+  status    String    @default("pending") // pending, paid, overdue, cancelled
+  dueDate   DateTime
+  paidAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+}
+
+// #25 — Partner debts (req L246 "الديون")
+model Debt {
+  id        String   @id @default(cuid())
+  partnerId String
+  amount    Float
+  reason    String?
+  dueDate   DateTime
+  status    String   @default("pending") // pending, paid, overdue
+  createdAt DateTime @default(now())
+
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+}
+
+// #26 — Price configuration (req L231-238)
+model PriceConfig {
+  id              String  @id @default(cuid())
+  serviceType     String  @unique
+  basePrice       Float   // تحديد السعر الأساسي
+  sanadPrice      Float?  // تحديد سعر سند
+  complexPrice    Float?  // تحديد سعر المجمع
+  discountPercent Float?  // تحديد الخصومات
+  isActive        Boolean @default(true)
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MARKETING MODELS
+// ═══════════════════════════════════════════════════════════════
+
+// #27 — Marketing campaigns (req L237 "الحملات")
+model Campaign {
+  id             String   @id @default(cuid())
+  name           String
+  description    String?  @db.Text
+  discountType   String   // "PERCENTAGE" or "FIXED"
+  discountValue  Float
+  startDate      DateTime
+  endDate        DateTime
+  targetServices Json     @default("[]") // JSON array of service types
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+// #28 — Discount coupons (req L238 "كوبونات الخصم")
+model Coupon {
+  id            String   @id @default(cuid())
+  code          String   @unique
+  discountType  String   // "PERCENTAGE" or "FIXED"
+  discountValue Float
+  maxUses       Int      @default(0) // 0 = unlimited
+  usedCount     Int      @default(0)
+  expiresAt     DateTime
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MEDICAL, COMMUNICATION & BLOOD BANK MODELS
+// ═══════════════════════════════════════════════════════════════
+
+// #29 — Brief medical file for ops dashboard (req L409-419, 8 fields)
+model PatientMedicalRecord {
+  id                    String   @id @default(cuid())
+  patientId             String   @unique
+  medicalHistory        String?  @db.Text // التاريخ المرضي
+  chronicDiseases       Json     @default("[]") // الأمراض المزمنة
+  allergies             Json     @default("[]") // الحساسية
+  currentMedications    Json     @default("[]") // الأدوية الحالية
+  latestLabResults      Json?    // آخر التحاليل
+  latestRadiology       Json?    // آخر الأشعة
+  previousPrescriptions Json     @default("[]") // الوصفات السابقة
+  treatingDoctorId      String?  // الطبيب المعالج
+  updatedAt             DateTime @updatedAt
+}
+
+// #30 — Call logs with duration + notes (req L421-431)
+model CallLog {
+  id           String   @id @default(cuid())
+  orderId      String?
+  callerId     String
+  receiverId   String
+  receiverType String   // PATIENT, NURSE, LAB, PHARMACY, RADIOLOGY
+  duration     Int?     // seconds — مدة المكالمات (req L430)
+  notes        String?  @db.Text // تسجيل ملاحظات بعد المكالمة (req L431)
+  createdAt    DateTime @default(now())
+
+  order    Order? @relation(fields: [orderId], references: [id])
+  caller   User   @relation("Caller", fields: [callerId], references: [id])
+  receiver User   @relation("Receiver", fields: [receiverId], references: [id])
+}
+
+// #31 — Blood bank management (req L433-443, 8 fields)
+model BloodBankRequest {
+  id              String    @id @default(cuid())
+  requestType     String    // الطلبات الجديدة
+  bloodType       BloodType // زمرة الدم
+  governorateId   String?   // المحافظة
+  status          String    @default("new") // الحالة
+  donorId         String?   // المتبرع المقبول (user ID)
+  donorName       String?
+  drawAppointment DateTime? // موعد السحب
+  testStatus      String?   // حالة التحاليل
+  deliveryStatus  String?   // حالة التسليم
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  governorate Governorate? @relation(fields: [governorateId], references: [id])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FEEDBACK & SYSTEM MODELS
+// ═══════════════════════════════════════════════════════════════
+
+// #32 — Patient feedback for satisfaction reports (req L264 "رضا العملاء")
+model PatientFeedback {
+  id        String   @id @default(cuid())
+  patientId String
+  orderId   String?
+  rating    Int      // 1-5
+  comment   String?  @db.Text
+  createdAt DateTime @default(now())
+
+  patient User   @relation(fields: [patientId], references: [id])
+  order   Order? @relation(fields: [orderId], references: [id])
+}
+
+// #33 — Multi-channel notifications (req L12, L283)
+model Notification {
+  id        String              @id @default(cuid())
+  userId    String
+  title     String
+  body      String
+  type      String              // order_update, result_ready, appointment_reminder, etc.
+  channel   NotificationChannel @default(IN_APP)
+  isRead    Boolean             @default(false)
+  createdAt DateTime            @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// #34 — System-wide activity log (req L70 "النشاط الأخير")
+model ActivityLog {
+  id         String   @id @default(cuid())
+  userId     String
+  action     String   // e.g. "تم اعتماد تحليل", "تم إرسال وصفة"
+  entityType String?  // e.g. "order", "lab_sample", "prescription"
+  entityId   String?
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+// #35 — Doctor schedule management (req L146 "إدارة الجداول")
+model DoctorSchedule {
+  id        String  @id @default(cuid())
+  doctorId  String
+  dayOfWeek Int     // 0=Sunday, 6=Saturday
+  startTime String  // "09:00"
+  endTime   String  // "17:00"
+  isActive  Boolean @default(true)
+
+  doctor DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@unique([doctorId, dayOfWeek])
+}
