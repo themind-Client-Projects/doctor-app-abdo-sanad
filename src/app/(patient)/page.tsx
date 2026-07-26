@@ -21,33 +21,17 @@ import {
   Star,
 } from 'lucide-react';
 import { DoctorBookingDrawer } from '@/components/shared/doctor-booking-drawer';
-import { DEMO_DOCTORS } from '@/lib/constants/demo-data';
-import type { Doctor } from '@/types/patient';
+import { useDoctors } from '@/hooks/use-doctors';
+import { useBookingDrawer } from '@/hooks/use-booking-drawer';
 import { DoctorCard } from '@/components/shared/doctor-card';
 import { CategoryFilters } from '@/components/shared/category-filters';
 import { SPECIALIZATIONS } from '@/lib/constants/specializations';
 import { useFilters } from '@/hooks/use-filters';
 
 function RootLandingContent() {
-
-  // Doctor booking state
-  const [bookingDrawerOpen, setBookingDrawerOpen] = useState(false);
-  const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
-
   const { category: activeSpecialty } = useFilters();
-
-  // Get doctors based on specialty, or a few featured ones
-  const filteredDoctors = useMemo(() => {
-    if (activeSpecialty === 'all') {
-      return Object.values(DEMO_DOCTORS).flat().slice(0, 4);
-    }
-    return DEMO_DOCTORS[activeSpecialty] || [];
-  }, [activeSpecialty]);
-
-  const handleOpenBooking = (doctor: Doctor) => {
-    setSelectedDoctor(doctor);
-    setBookingDrawerOpen(true);
-  };
+  const { paginatedDoctors: filteredDoctors } = useDoctors({ limit: 4 });
+  const { drawerOpen, setDrawerOpen, selectedDoctor, openBooking } = useBookingDrawer();
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 pb-20 font-sans">
@@ -102,10 +86,10 @@ function RootLandingContent() {
               { id: 5, name: 'دليل اطباء', icon: BookOpen, color: 'bg-amber-50 text-amber-600', href: '/doctors-directory' },
               { id: 6, name: 'تكسي', icon: Car, color: 'bg-indigo-50 text-indigo-600', href: '/services/taxi' },
               { id: 7, name: 'بنك الدم', icon: Droplet, color: 'bg-red-50 text-red-600', href: '/services/blood-bank' },
-            ].map((cat: { id: number; name: string; icon: any; color: string; href?: string; onClick?: () => void }) => (
+            ].map((cat: { id: number; name: string; icon: React.ElementType; color: string; href?: string; onClick?: () => void }) => (
               cat.href ? (
                 <Link key={cat.id} href={cat.href} className="flex flex-col items-center gap-2 transition-transform active:scale-95 group">
-                  <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-[1.25rem] flex items-center justify-center shadow-sm ${cat.color} overflow-hidden group-hover:shadow-md transition-all relative`}>
+                  <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-[1.25rem] flex items-center justify-center shadow-sm ${cat.color} overflow-hidden group-hover:shadow-md transition-colors relative`}>
                     <div className={`absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity bg-current`} />
                     <cat.icon className="w-8 h-8 sm:w-10 sm:h-10 relative z-10 drop-shadow-sm group-hover:scale-110 transition-transform" strokeWidth={1.5} />
                   </div>
@@ -113,7 +97,7 @@ function RootLandingContent() {
                 </Link>
               ) : (
                 <button key={cat.id} onClick={cat.onClick} className="flex flex-col items-center gap-2 transition-transform active:scale-95 group">
-                  <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-[1.25rem] flex items-center justify-center shadow-sm ${cat.color} overflow-hidden group-hover:shadow-md transition-all relative`}>
+                  <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-[1.25rem] flex items-center justify-center shadow-sm ${cat.color} overflow-hidden group-hover:shadow-md transition-colors relative`}>
                     <div className={`absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity bg-current`} />
                     <cat.icon className="w-8 h-8 sm:w-10 sm:h-10 relative z-10 drop-shadow-sm group-hover:scale-110 transition-transform" strokeWidth={1.5} />
                   </div>
@@ -179,7 +163,7 @@ function RootLandingContent() {
                 btnColor: 'bg-purple-50 text-purple-600 hover:bg-purple-100'
               }
             ].map((pkg) => (
-              <div key={pkg.id} className={`min-w-[280px] bg-gradient-to-b ${pkg.theme} rounded-[2rem] p-5 shadow-sm border snap-center relative transition-all`}>
+              <div key={pkg.id} className={`min-w-[280px] bg-gradient-to-b ${pkg.theme} rounded-[2rem] p-5 shadow-sm border snap-center relative transition-colors`}>
                 {pkg.popular && (
                   <div className="absolute top-0 left-5 -translate-y-1/2 bg-emerald-500 text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-sm">
                     الأكثر طلباً
@@ -234,7 +218,7 @@ function RootLandingContent() {
                 <DoctorCard
                   key={doctor.id}
                   doctor={doctor}
-                  onBook={handleOpenBooking}
+                  onBook={openBooking}
                 />
               ))
             ) : (
@@ -267,10 +251,10 @@ function RootLandingContent() {
       </main>
 
       {/* ── Doctor Booking Drawer ── */}
-      <DoctorBookingDrawer
+      <DoctorBookingDrawer 
         doctor={selectedDoctor}
-        open={bookingDrawerOpen}
-        onOpenChange={setBookingDrawerOpen}
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
       />
     </div>
   );

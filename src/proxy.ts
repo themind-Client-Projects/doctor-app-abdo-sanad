@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { UserRole } from "@prisma/client";
 import { auth } from "@/lib/auth";
+import { roleHomePath } from "@/lib/roles";
 
 /**
  * Route groups and the roles allowed into each.
@@ -20,19 +21,6 @@ const roleRoutes: Record<string, readonly UserRole[]> = {
     "DRIVER",
     "RADIOLOGY",
   ],
-};
-
-/** Where each role belongs after signing in. */
-export const roleHomePath: Record<UserRole, string> = {
-  SUPER_ADMIN: "/admin",
-  OPERATIONS: "/operations",
-  DOCTOR: "/dashboard",
-  LAB: "/dashboard",
-  PHARMACY: "/dashboard",
-  NURSE: "/dashboard",
-  DRIVER: "/dashboard",
-  RADIOLOGY: "/dashboard",
-  PATIENT: "/",
 };
 
 /** Exact-segment match, so `/dashboardfoo` does not match `/dashboard`. */

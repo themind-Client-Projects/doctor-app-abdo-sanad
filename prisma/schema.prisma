@@ -168,6 +168,8 @@ model User {
   phone         String?   @unique
   email         String?   @unique
   emailVerified DateTime?
+  /// bcrypt hash. Null for patients, who sign in with a phone OTP instead.
+  passwordHash  String?
   name          String?
   image         String?   // avatar URL
   role          UserRole  @default(PATIENT)

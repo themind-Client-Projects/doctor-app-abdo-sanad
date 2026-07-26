@@ -2,10 +2,26 @@ import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
+import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
 
 /** Re-read role/partner/isActive from the DB if the token is older than this. */
 const TOKEN_REFRESH_SECONDS = 5 * 60;
+
+/**
+ * A valid bcrypt hash of a value nobody can supply. Compared against when no
+ * user or no password exists, so a wrong email and a wrong password take the
+ * same time — otherwise the endpoint becomes an account-enumeration oracle.
+ */
+const DUMMY_PASSWORD_HASH = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
+
+/** Cost factor for new password hashes. */
+export const BCRYPT_ROUNDS = 12;
+
+/** Hash a plaintext password for storage. */
+export function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, BCRYPT_ROUNDS);
+}
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
@@ -21,6 +37,40 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     Google({
       clientId: process.env.AUTH_GOOGLE_ID,
       clientSecret: process.env.AUTH_GOOGLE_SECRET,
+    }),
+
+    // Email + password — the staff sign-in path. Patients have no password
+    // and use the phone OTP provider below.
+    Credentials({
+      id: "email-password",
+      name: "Email and password",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        const email = typeof credentials?.email === "string" ? credentials.email.trim().toLowerCase() : "";
+        const password = typeof credentials?.password === "string" ? credentials.password : "";
+        if (!email || !password) return null;
+
+        const user = await prisma.user.findUnique({ where: { email } });
+
+        // Compare against a dummy hash when the user is absent or has no
+        // password, so response time does not reveal which emails exist.
+        const hash = user?.passwordHash ?? DUMMY_PASSWORD_HASH;
+        const passwordMatches = await bcrypt.compare(password, hash);
+
+        if (!user || !user.passwordHash || !passwordMatches) return null;
+        if (!user.isActive) return null;
+
+        return {
+          id: user.id,
+          email: user.email,
+          phone: user.phone,
+          name: user.name,
+          image: user.image,
+        };
+      },
     }),
 
     // Phone OTP credentials (verified via UltraMessages)
