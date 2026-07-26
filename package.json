@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "set-password": "tsx scripts/set-password.ts",
-    "db:push": "prisma db push"
+    "db:push": "prisma db push",
+    "check:auth": "tsx scripts/check-route-auth.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",
