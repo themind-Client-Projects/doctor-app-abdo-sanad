@@ -100,7 +100,7 @@ function LoginForm() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 aria-invalid={Boolean(error)}
-                className={inputClass}
+                className={`${inputClass} pl-4`}
               />
             </div>
           </div>
@@ -176,8 +176,11 @@ function LoginForm() {
 
 /* ---------------------------------- parts --------------------------------- */
 
+// No left padding here on purpose: fields append their own (pl-4 or pl-11).
+// Having pl-4 in the base and pl-11 appended left both classes in play, and the
+// eye button ended up sitting on top of the password text.
 const inputClass =
-  "h-12 w-full rounded-xl border border-input bg-background pr-11 pl-4 text-sm text-foreground shadow-sm outline-none transition-shadow placeholder:text-muted-foreground/70 focus:border-primary/40 focus:ring-4 focus:ring-primary/10";
+  "h-12 w-full rounded-xl border border-input bg-background pr-11 text-sm text-foreground shadow-sm outline-none transition-shadow placeholder:text-muted-foreground/70 focus:border-primary/40 focus:ring-4 focus:ring-primary/10";
 
 function AuthShell({ children }: { children: React.ReactNode }) {
   return (
