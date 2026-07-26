@@ -12,6 +12,8 @@
 import path from "node:path";
 import { config as loadEnv } from "dotenv";
 import { PrismaClient, type UserRole } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+import pg from "pg";
 import bcrypt from "bcryptjs";
 
 // Standalone scripts do not get Next.js's automatic .env loading.
@@ -45,7 +47,11 @@ async function main() {
     process.exit(1);
   }
 
-  const prisma = new PrismaClient();
+  // Prisma 7 requires a driver adapter — `new PrismaClient()` with no options
+  // throws. Mirrors src/lib/prisma.ts.
+  const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+  const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
+
   try {
     const user = await prisma.user.findUnique({
       where: { email },
@@ -92,6 +98,7 @@ async function main() {
     }
   } finally {
     await prisma.$disconnect();
+    await pool.end();
   }
 }
 
