@@ -1,40 +1,21 @@
 import { NextResponse } from "next/server";
-import type { UserRole } from "@prisma/client";
 import { auth } from "@/lib/auth";
-import { roleHomePath } from "@/lib/roles";
+import { canAccess, matchesRoute, roleHomePath, roleRoutes } from "@/lib/roles";
 
 /**
- * Route groups and the roles allowed into each.
+ * Page-level access control.
  *
  * NOTE: this is a UX redirect layer, not the security boundary. Every API route
  * enforces its own authorisation via `withAuth` (src/lib/api-auth.ts), because
  * middleware has historically been bypassable and must never be the only gate.
  */
-const roleRoutes: Record<string, readonly UserRole[]> = {
-  "/admin": ["SUPER_ADMIN"],
-  "/operations": ["OPERATIONS", "SUPER_ADMIN"],
-  "/dashboard": [
-    "DOCTOR",
-    "LAB",
-    "PHARMACY",
-    "NURSE",
-    "DRIVER",
-    "RADIOLOGY",
-  ],
-};
-
-/** Exact-segment match, so `/dashboardfoo` does not match `/dashboard`. */
-function matchesRoute(pathname: string, route: string): boolean {
-  return pathname === route || pathname.startsWith(`${route}/`);
-}
-
 export default auth((req) => {
   const { pathname } = req.nextUrl;
 
-  const matchedRoute = Object.keys(roleRoutes).find((route) =>
+  const isProtected = Object.keys(roleRoutes).some((route) =>
     matchesRoute(pathname, route)
   );
-  if (!matchedRoute) return NextResponse.next();
+  if (!isProtected) return NextResponse.next();
 
   const user = req.auth?.user;
 
@@ -47,13 +28,10 @@ export default auth((req) => {
     return NextResponse.redirect(loginUrl);
   }
 
-  const allowedRoles = roleRoutes[matchedRoute];
-  if (!allowedRoles.includes(user.role)) {
-    // Send the user somewhere they can actually use, rather than a dead end.
-    const home = roleHomePath[user.role] ?? "/";
+  if (!canAccess(user.role, pathname)) {
     const url = new URL("/unauthorized", req.url);
     url.searchParams.set("from", pathname);
-    url.searchParams.set("home", home);
+    url.searchParams.set("home", roleHomePath[user.role] ?? "/");
     return NextResponse.redirect(url);
   }
 
