@@ -15,7 +15,7 @@ const typeLabels: Record<string, string> = {
 };
 
 export function CalendarWidget({ appointments }: CalendarWidgetProps) {
-  const today = new Date().toLocaleDateString("ar-EG", {
+  const today = new Date().toLocaleDateString("ar-IQ", {
     weekday: "long",
     year: "numeric",
     month: "long",

@@ -8,7 +8,7 @@ interface EarningsWidgetProps {
 }
 
 export function EarningsWidget({ earnings }: EarningsWidgetProps) {
-  const fmt = (v: number) => `${v.toLocaleString("ar-EG")} ${earnings.currency}`;
+  const fmt = (v: number) => `${v.toLocaleString("ar-IQ")} ${earnings.currency}`;
 
   return (
     <div className="rounded-xl border border-border bg-card p-4" dir="rtl">

@@ -4,6 +4,7 @@ import Credentials from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
+import { normalizePhone } from "./phone";
 
 /** Re-read role/partner/isActive from the DB if the token is older than this. */
 const TOKEN_REFRESH_SECONDS = 5 * 60;
@@ -12,11 +13,18 @@ const TOKEN_REFRESH_SECONDS = 5 * 60;
  * A valid bcrypt hash of a value nobody can supply. Compared against when no
  * user or no password exists, so a wrong email and a wrong password take the
  * same time — otherwise the endpoint becomes an account-enumeration oracle.
+ *
+ * MUST be generated at BCRYPT_ROUNDS: bcrypt.compare takes its work factor
+ * from the stored hash, so a cheaper dummy makes the "no such user" path
+ * measurably faster and re-opens the oracle it exists to close.
  */
-const DUMMY_PASSWORD_HASH = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
+const DUMMY_PASSWORD_HASH = "$2b$12$7K5CQ4UKD8jWYBos1PrWguddIBh4TtBYC3.Bq6gFX7lzr.k87OkSa";
 
 /** Cost factor for new password hashes. */
 export const BCRYPT_ROUNDS = 12;
+
+/** Failed OTP guesses tolerated before every live code for a phone is burnt. */
+const MAX_OTP_ATTEMPTS = 5;
 
 /** Hash a plaintext password for storage. */
 export function hashPassword(password: string): Promise<string> {
@@ -84,27 +92,37 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       async authorize(credentials) {
         if (!credentials?.phone || !credentials?.code) return null;
 
-        const phone = credentials.phone as string;
-        const code = credentials.code as string;
+        // Same normalisation as /otp/send, so a code requested as 07xx can be
+        // verified as +9647xx.
+        const phone = normalizePhone(String(credentials.phone));
+        const code = String(credentials.code);
+        if (!phone) return null;
 
-        // Verify OTP from database
-        const otp = await prisma.oTPCode.findFirst({
+        // Consume the code atomically. updateMany + a count check means two
+        // concurrent verifications cannot both succeed, and a consumed code can
+        // never be replayed — previously `verified` was the only guard and the
+        // standalone /verify endpoint never set it.
+        const consumed = await prisma.oTPCode.updateMany({
           where: {
             phone,
             code,
             verified: false,
+            consumedAt: null,
+            attempts: { lt: MAX_OTP_ATTEMPTS },
             expiresAt: { gt: new Date() },
           },
-          orderBy: { createdAt: "desc" },
+          data: { verified: true, consumedAt: new Date() },
         });
 
-        if (!otp) return null;
-
-        // Mark OTP as verified
-        await prisma.oTPCode.update({
-          where: { id: otp.id },
-          data: { verified: true },
-        });
+        if (consumed.count === 0) {
+          // Count the failure against every live code for this phone, so a
+          // 6-digit space cannot be walked indefinitely.
+          await prisma.oTPCode.updateMany({
+            where: { phone, consumedAt: null, expiresAt: { gt: new Date() } },
+            data: { attempts: { increment: 1 } },
+          });
+          return null;
+        }
 
         // Find or create user
         let user = await prisma.user.findUnique({
@@ -112,8 +130,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         });
 
         if (!user) {
-          // Self-service patient signup. The role is pinned here and is never
-          // derived from input — staff roles are assigned by an admin only.
+          // Self-service patient signup only.
           user = await prisma.user.create({
             data: {
               phone,
@@ -121,6 +138,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             },
           });
         }
+
+        // CRITICAL: phone OTP is the PATIENT sign-in path only.
+        //
+        // Staff accounts are seeded with phone numbers, so without this check
+        // anyone could request an OTP for a known admin's phone and, on one
+        // correct code, receive a full SUPER_ADMIN session. Staff must sign in
+        // with email + password.
+        if (user.role !== "PATIENT") return null;
 
         // A deactivated account must not be able to sign in.
         if (!user.isActive) return null;
@@ -151,7 +176,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
       const dbUser = await prisma.user.findUnique({
         where: { id: userId },
-        include: { partner: { select: { id: true } } },
+        include: {
+          partner: { select: { id: true } },
+          doctorProfile: { select: { id: true } },
+        },
       });
 
       // User deleted or deactivated since the token was issued — strip the
@@ -160,12 +188,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         delete token.userId;
         delete token.role;
         delete token.partnerId;
+        delete token.doctorProfileId;
         return token;
       }
 
       token.userId = dbUser.id;
       token.role = dbUser.role;
       token.partnerId = dbUser.partner?.id ?? null;
+      token.doctorProfileId = dbUser.doctorProfile?.id ?? null;
       token.syncedAt = Date.now();
       return token;
     },
@@ -177,6 +207,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         session.user.id = token.userId;
         session.user.role = token.role;
         session.user.partnerId = token.partnerId ?? null;
+        session.user.doctorProfileId = token.doctorProfileId ?? null;
       }
       return session;
     },

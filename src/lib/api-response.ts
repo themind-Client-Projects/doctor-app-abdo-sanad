@@ -1,4 +1,30 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
+
+/**
+ * Convert Prisma `Decimal` values to plain numbers, recursively.
+ *
+ * Money columns are `Decimal(18,3)` for exactness in the database, but a
+ * Decimal serializes to JSON as a STRING. That silently broke arithmetic in
+ * the client — `total + wallet.balance` concatenated instead of adding, and
+ * `.toLocaleString("ar-IQ")` on a string returned it verbatim with Latin
+ * digits. Normalising here fixes every endpoint at once rather than asking
+ * each caller to remember `Number(...)`.
+ */
+function serializeDecimals<T>(value: T): T {
+  if (value === null || value === undefined) return value;
+  if (Prisma.Decimal.isDecimal(value)) return Number(value) as unknown as T;
+  if (value instanceof Date) return value;
+  if (Array.isArray(value)) return value.map(serializeDecimals) as unknown as T;
+  if (typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = serializeDecimals(v);
+    }
+    return out as T;
+  }
+  return value;
+}
 
 /**
  * The API's response contract.
@@ -58,7 +84,7 @@ export function ok<T>(
 ): NextResponse {
   return NextResponse.json(
     {
-      data,
+      data: serializeDecimals(data),
       meta: { requestId: init?.requestId, ...init?.meta },
     },
     { status: init?.status ?? 200 }
@@ -77,7 +103,7 @@ export function okList<T>(
   init?: { requestId?: string; legacy?: { total: number; page: number; pageSize: number } }
 ): NextResponse {
   return NextResponse.json({
-    data,
+    data: serializeDecimals(data),
     meta: { requestId: init?.requestId, page },
     ...(init?.legacy
       ? {

@@ -28,7 +28,7 @@ export default function MonitoringPage() {
     { label: "المستخدمين النشطين", value: data?.activeUsers ?? 0, icon: <Users size={22} />, color: "border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/20", iconColor: "text-emerald-600 dark:text-emerald-400" },
     { label: "الطلبات المباشرة", value: data?.liveRequests ?? 0, icon: <Activity size={22} />, color: "border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/20", iconColor: "text-purple-600 dark:text-purple-400" },
     { label: "الأخطاء", value: data?.errors ?? 0, icon: <AlertTriangle size={22} />, color: "border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/20", iconColor: "text-red-600 dark:text-red-400" },
-    { label: "آخر نسخة احتياطية", value: data?.lastBackup ? new Date(data.lastBackup).toLocaleString("ar-EG") : "—", icon: <Database size={22} />, color: "border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20", iconColor: "text-amber-600 dark:text-amber-400" },
+    { label: "آخر نسخة احتياطية", value: data?.lastBackup ? new Date(data.lastBackup).toLocaleString("ar-IQ") : "—", icon: <Database size={22} />, color: "border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20", iconColor: "text-amber-600 dark:text-amber-400" },
     { label: "السجل الأمني", value: `${data?.securityLog?.length ?? 0} حدث`, icon: <Shield size={22} />, color: "border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/20", iconColor: "text-indigo-600 dark:text-indigo-400" },
   ];
 

@@ -87,7 +87,7 @@ export default function CallsPage() {
                   <td className="px-4 py-3 text-sm text-muted-foreground" dir="ltr">{log.phone}</td>
                   <td className="px-4 py-3 text-sm text-muted-foreground">{log.duration || "—"}</td>
                   <td className="px-4 py-3 text-sm text-muted-foreground truncate max-w-xs">{log.notes || "—"}</td>
-                  <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(log.timestamp).toLocaleString("ar-EG")}</td>
+                  <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(log.timestamp).toLocaleString("ar-IQ")}</td>
                 </tr>
               ))}
             </tbody>

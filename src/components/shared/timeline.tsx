@@ -56,7 +56,7 @@ export function Timeline({ steps }: TimelineProps) {
               </span>
               {step?.completedAt && (
                 <span className="text-xs text-muted-foreground">
-                  {new Date(step.completedAt).toLocaleString("ar-EG", {
+                  {new Date(step.completedAt).toLocaleString("ar-IQ", {
                     month: "short",
                     day: "numeric",
                     hour: "2-digit",

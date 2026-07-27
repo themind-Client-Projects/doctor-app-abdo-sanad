@@ -1,9 +1,19 @@
 import { z } from "zod";
-import type { Prisma } from "@prisma/client";
+import type { Prisma, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { ROLES, withAuth } from "@/lib/api-auth";
+import { AuthError, isPlatformRole, partnerScope, withAuth } from "@/lib/api-auth";
 import { keysetArgs, ok, okList, toPage } from "@/lib/api-response";
 import { nonEmpty, paginationSchema, parseBody, parseQuery } from "@/lib/validation";
+
+// A prescription concerns exactly two partners: the doctor who wrote it and the
+// pharmacy dispensing it. LAB / NURSE / RADIOLOGY were in ROLES.CLINICAL and so
+// could list every prescription on the platform — they have no business here.
+const PRESCRIPTION_ROLES = [
+  "SUPER_ADMIN",
+  "OPERATIONS",
+  "DOCTOR",
+  "PHARMACY",
+] as const satisfies readonly UserRole[];
 
 // Prescription.status is a free-text `String` column. Vocabulary from
 // prisma/schema.prisma (Prescription).
@@ -47,7 +57,7 @@ const createPrescriptionSchema = z
 // GET /api/prescriptions — List prescriptions.
 // Previously took no filters at all, so a pharmacy had to page through every
 // prescription in the system to find its own.
-export const GET = withAuth({ roles: ROLES.CLINICAL }, async (req) => {
+export const GET = withAuth({ roles: PRESCRIPTION_ROLES }, async (req, _ctx, identity) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
   const { page, pageSize, patientId, doctorId, pharmacyId, status, cursor, limit } = parseQuery(
     req.nextUrl.searchParams,
@@ -59,6 +69,19 @@ export const GET = withAuth({ roles: ROLES.CLINICAL }, async (req) => {
   if (doctorId) where.doctorId = doctorId;
   if (pharmacyId) where.pharmacyId = pharmacyId;
   if (status) where.status = status;
+
+  // Tenant scope, applied LAST so it overrides the client-supplied filters —
+  // those may only narrow within the caller's own slice, never widen past it.
+  // A platform role gets `{}` and still sees everything.
+  if (identity.role === "PHARMACY") {
+    Object.assign(where, partnerScope(identity, "pharmacyId"));
+  } else if (identity.role === "DOCTOR") {
+    Object.assign(where, { doctorId: identity.doctorProfileId ?? "" });
+  } else if (!isPlatformRole(identity.role)) {
+    // Unreachable while PRESCRIPTION_ROLES holds, but keeps the default at
+    // "match nothing" if a role is ever added to the list without a scope.
+    where.id = "";
+  }
 
   // Keyset paging — preferred. Offset paging over `createdAt desc` duplicates
   // and skips rows as new prescriptions are written between requests.
@@ -95,13 +118,23 @@ export const GET = withAuth({ roles: ROLES.CLINICAL }, async (req) => {
 });
 
 // POST /api/prescriptions — Create a prescription.
-export const POST = withAuth({ roles: ROLES.CLINICAL }, async (req) => {
+export const POST = withAuth({ roles: PRESCRIPTION_ROLES }, async (req, _ctx, identity) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
   const input = await parseBody(req, createPrescriptionSchema);
 
+  // A doctor prescribes as themselves — the body's `doctorId` is not trusted,
+  // otherwise a prescription could be written under another doctor's name.
+  let doctorId = input.doctorId;
+  if (identity.role === "DOCTOR") {
+    if (!identity.partnerId) {
+      throw new AuthError(403, "ليس لديك صلاحية للوصول إلى هذا المورد");
+    }
+    doctorId = identity.partnerId;
+  }
+
   const data = await prisma.prescription.create({
     data: {
-      doctorId: input.doctorId,
+      doctorId,
       patientId: input.patientId,
       pharmacyId: input.pharmacyId ?? null,
       orderId: input.orderId ?? null,

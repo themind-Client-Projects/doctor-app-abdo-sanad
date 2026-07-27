@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { ROLES, withAuth } from "@/lib/api-auth";
+import { AuthError, ROLES, isPlatformRole, partnerScope, withAuth } from "@/lib/api-auth";
 import { keysetArgs, ok, okList, toPage } from "@/lib/api-response";
 import {
   jsonValue,
@@ -52,7 +52,7 @@ const createLabSampleSchema = z
   .strict();
 
 // GET /api/lab-samples — List samples, optionally filtered.
-export const GET = withAuth({ roles: ROLES.CLINICAL }, async (req) => {
+export const GET = withAuth({ roles: ROLES.CLINICAL }, async (req, _ctx, identity) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
   const { page, pageSize, status, labId, orderId, cursor, limit } = parseQuery(
     req.nextUrl.searchParams,
@@ -63,6 +63,14 @@ export const GET = withAuth({ roles: ROLES.CLINICAL }, async (req) => {
   if (status) where.status = status;
   if (labId) where.labId = labId;
   if (orderId) where.orderId = orderId;
+
+  // Tenant scope, applied LAST so it overrides the client-supplied `?labId=`.
+  // `labId` was only ever an optional filter, so any clinical account could
+  // page through every lab's samples by omitting it. A platform role still gets
+  // `{}` and may filter by any lab; a partner-scoped role is pinned to its own
+  // and can only narrow within it. Fails closed — no Partner row matches
+  // nothing rather than everything.
+  Object.assign(where, partnerScope(identity, "labId"));
 
   // Keyset paging — preferred. Offset paging over `createdAt desc` duplicates
   // and skips rows as new samples are received between requests.
@@ -99,13 +107,24 @@ export const GET = withAuth({ roles: ROLES.CLINICAL }, async (req) => {
 });
 
 // POST /api/lab-samples — Create a sample.
-export const POST = withAuth({ roles: ROLES.CLINICAL }, async (req) => {
+export const POST = withAuth({ roles: ROLES.CLINICAL }, async (req, _ctx, identity) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
   const input = await parseBody(req, createLabSampleSchema);
 
+  // The owning lab comes from the session, not the body — otherwise any
+  // clinical account could inject a sample into another lab's worklist.
+  // Only a platform role may create on behalf of an arbitrary lab.
+  let labId = input.labId;
+  if (!isPlatformRole(identity.role)) {
+    if (!identity.partnerId) {
+      throw new AuthError(403, "ليس لديك صلاحية للوصول إلى هذا المورد");
+    }
+    labId = identity.partnerId;
+  }
+
   const data = await prisma.labSample.create({
     data: {
-      labId: input.labId,
+      labId,
       sampleType: input.sampleType,
       nurseId: input.nurseId ?? null,
       orderId: input.orderId ?? null,

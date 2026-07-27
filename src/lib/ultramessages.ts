@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 // ─────────────────────────────────────────────────────────────
 // UltraMessages — OTP + WhatsApp notification service
 // ─────────────────────────────────────────────────────────────
@@ -94,8 +95,13 @@ export async function sendAppointmentReminderWhatsApp(
 }
 
 /**
- * Generate a random 6-digit OTP code
+ * Generate a random 6-digit OTP code.
+ *
+ * Uses a CSPRNG. `Math.random()` is xorshift128+ in V8: its internal state is
+ * recoverable from a handful of observed outputs, so an attacker who can
+ * request codes for a phone they control could PREDICT the code issued to
+ * someone else's phone — turning a 10^6 brute force into a single request.
  */
 export function generateOTPCode(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return randomInt(0, 1_000_000).toString().padStart(6, "0");
 }

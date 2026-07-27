@@ -266,15 +266,15 @@ export default function PartnerDetailPage() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="p-4 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/20">
                 <span className="text-xs text-muted-foreground block">الرصيد</span>
-                <span className="text-lg font-bold text-emerald-700 dark:text-emerald-300">{((walletData?.balance as number) ?? 0).toLocaleString("ar-EG")} ر.ي</span>
+                <span className="text-lg font-bold text-emerald-700 dark:text-emerald-300">{((walletData?.balance as number) ?? 0).toLocaleString("ar-IQ")} د.ع</span>
               </div>
               <div className="p-4 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/20">
                 <span className="text-xs text-muted-foreground block">المستحقات</span>
-                <span className="text-lg font-bold text-blue-700 dark:text-blue-300">{((walletData?.pendingAmount as number) ?? 0).toLocaleString("ar-EG")} ر.ي</span>
+                <span className="text-lg font-bold text-blue-700 dark:text-blue-300">{((walletData?.pendingAmount as number) ?? 0).toLocaleString("ar-IQ")} د.ع</span>
               </div>
               <div className="p-4 rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/20">
                 <span className="text-xs text-muted-foreground block">إجمالي الأرباح</span>
-                <span className="text-lg font-bold text-purple-700 dark:text-purple-300">{((walletData?.totalEarnings as number) ?? 0).toLocaleString("ar-EG")} ر.ي</span>
+                <span className="text-lg font-bold text-purple-700 dark:text-purple-300">{((walletData?.totalEarnings as number) ?? 0).toLocaleString("ar-IQ")} د.ع</span>
               </div>
             </div>
           </div>

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { ROLES, withAuth } from "@/lib/api-auth";
+import { ROLES, assertPartnerScope, isPlatformRole, withAuth } from "@/lib/api-auth";
 import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { jsonValue, nonEmpty, parseBody } from "@/lib/validation";
 
@@ -31,7 +31,7 @@ const updateLabSampleSchema = z
   .strict();
 
 // GET /api/lab-samples/[id]
-export const GET = withAuth<Ctx>({ roles: ROLES.CLINICAL }, async (req, { params }) => {
+export const GET = withAuth<Ctx>({ roles: ROLES.CLINICAL }, async (req, { params }, identity) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
 
@@ -40,18 +40,35 @@ export const GET = withAuth<Ctx>({ roles: ROLES.CLINICAL }, async (req, { params
     return fail(ErrorCode.NOT_FOUND, 404, "غير موجود", { requestId });
   }
 
+  // Load first, then check ownership: a partner-scoped role may only read its
+  // own lab's samples. Missing rows still 404 rather than 403, so a caller
+  // cannot use the status code to probe for ids outside its tenant.
+  if (!isPlatformRole(identity.role)) {
+    assertPartnerScope(identity, data.labId);
+  }
+
   return ok(data, { requestId });
 });
 
 // PATCH /api/lab-samples/[id] — Update a sample.
-export const PATCH = withAuth<Ctx>({ roles: ROLES.CLINICAL }, async (req, { params }) => {
+export const PATCH = withAuth<Ctx>({ roles: ROLES.CLINICAL }, async (req, { params }, identity) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
   const input = await parseBody(req, updateLabSampleSchema);
 
-  const existing = await prisma.labSample.findUnique({ where: { id }, select: { id: true } });
+  const existing = await prisma.labSample.findUnique({
+    where: { id },
+    select: { id: true, labId: true },
+  });
   if (!existing) {
     return fail(ErrorCode.NOT_FOUND, 404, "غير موجود", { requestId });
+  }
+
+  // Load first, then check ownership — writing `results` on another lab's
+  // sample is a patient-safety issue, not just a data one.
+  const platform = isPlatformRole(identity.role);
+  if (!platform) {
+    assertPartnerScope(identity, existing.labId);
   }
 
   // `undefined` leaves a column untouched in Prisma.
@@ -62,7 +79,9 @@ export const PATCH = withAuth<Ctx>({ roles: ROLES.CLINICAL }, async (req, { para
       results: (input.results ?? undefined) as Prisma.InputJsonValue | undefined,
       nurseId: input.nurseId,
       sampleType: input.sampleType,
-      labId: input.labId,
+      // Reassignment is a platform-only operation: a lab must not be able to
+      // hand another lab's sample — or its own — to a competitor.
+      labId: platform ? input.labId : undefined,
     },
   });
 

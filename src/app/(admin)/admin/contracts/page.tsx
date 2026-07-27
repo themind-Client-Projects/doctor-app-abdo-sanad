@@ -70,8 +70,8 @@ export default function ContractsPage() {
               {(contracts ?? []).map((c) => (
                 <tr key={c.id} className="hover:bg-muted/30 transition-colors">
                   <td className="px-5 py-3.5 text-sm font-medium text-foreground">{c.partner?.name || c.partnerId}</td>
-                  <td className="px-5 py-3.5 text-sm text-muted-foreground">{c.startDate ? new Date(c.startDate).toLocaleDateString("ar-EG") : "—"}</td>
-                  <td className="px-5 py-3.5 text-sm text-muted-foreground">{c.endDate ? new Date(c.endDate).toLocaleDateString("ar-EG") : "—"}</td>
+                  <td className="px-5 py-3.5 text-sm text-muted-foreground">{c.startDate ? new Date(c.startDate).toLocaleDateString("ar-IQ") : "—"}</td>
+                  <td className="px-5 py-3.5 text-sm text-muted-foreground">{c.endDate ? new Date(c.endDate).toLocaleDateString("ar-IQ") : "—"}</td>
                   <td className="px-5 py-3.5 text-sm font-medium text-foreground">{c.commissionRate}%</td>
                   <td className="px-5 py-3.5"><StatusBadge status={c.status || "ACTIVE"} size="sm" /></td>
                 </tr>

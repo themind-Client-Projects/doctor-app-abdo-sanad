@@ -49,6 +49,9 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) 
   // Fail closed: a partner-scoped user with no partner row must see nothing
   // rather than everything. No cuid is the empty string, so this matches no rows.
   const scopeId = partnerId ?? "";
+  // Appointment.doctorId FKs DoctorProfile.id, NOT Partner.id — using partnerId
+  // here silently matched zero rows, so doctor KPIs were always ٠.
+  const doctorScopeId = identity.doctorProfileId ?? "";
 
   const today = startOfBaghdadDay();
   const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
@@ -64,14 +67,14 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) 
         prisma.appointment.count({
           where: {
             date: { gte: today },
-            ...(partnerId && { doctorId: partnerId }),
+            doctorId: doctorScopeId,
           },
         }),
         // المرضى الحاليون (in-progress appointments)
         prisma.appointment.count({
           where: {
             status: "in_progress",
-            ...(partnerId && { doctorId: partnerId }),
+            doctorId: doctorScopeId,
           },
         }),
         // المواعيد القادمة — Appointment.status only ever holds
@@ -82,7 +85,7 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) 
           where: {
             date: { gt: new Date() },
             status: "scheduled",
-            ...(partnerId && { doctorId: partnerId }),
+            doctorId: doctorScopeId,
           },
         }),
         // الأرباح اليومية — from wallet transactions
@@ -100,14 +103,14 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) 
         prisma.appointment.count({
           where: {
             date: { gte: yesterday, lt: today },
-            ...(partnerId && { doctorId: partnerId }),
+            doctorId: doctorScopeId,
           },
         }),
         prisma.appointment.count({
           where: {
             date: { gte: yesterday, lt: today },
             status: "scheduled",
-            ...(partnerId && { doctorId: partnerId }),
+            doctorId: doctorScopeId,
           },
         }),
       ]);
@@ -203,16 +206,13 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) 
         // الوصفات الجديدة — Prescription.status holds
         // new | preparing | ready | delivered | returned; the previous
         // "received" filter matched nothing, so this KPI was permanently 0.
-        prisma.prescription.count({
-          where: { status: "new", createdAt: { gte: today } },
+        prisma.prescription.count({ where: { pharmacyId: scopeId, status: "new", createdAt: { gte: today } },
         }),
         // قيد التجهيز
-        prisma.prescription.count({
-          where: { status: "preparing" },
+        prisma.prescription.count({ where: { pharmacyId: scopeId, status: "preparing" },
         }),
         // المكتملة
-        prisma.prescription.count({
-          where: { status: "delivered", createdAt: { gte: today } },
+        prisma.prescription.count({ where: { pharmacyId: scopeId, status: "delivered", createdAt: { gte: today } },
         }),
         // الأرباح
         partnerId
@@ -221,8 +221,7 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) 
               _sum: { amount: true },
             })
           : Promise.resolve({ _sum: { amount: null } }),
-        prisma.prescription.count({
-          where: { status: "new", createdAt: { gte: yesterday, lt: today } },
+        prisma.prescription.count({ where: { pharmacyId: scopeId, status: "new", createdAt: { gte: yesterday, lt: today } },
         }),
       ]);
 
@@ -238,9 +237,9 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) 
     // ─── NURSE (req - implied from same pattern) ──────────
     case "NURSE": {
       const [todayTasks, currentTasks, completedTasks, nurseEarnings] = await Promise.all([
-        prisma.order.count({ where: { assignedNurseId: partnerId ?? undefined, createdAt: { gte: today } } }),
-        prisma.order.count({ where: { assignedNurseId: partnerId ?? undefined, status: { in: ["ASSIGNED", "IN_TRANSIT", "IN_PROGRESS"] } } }),
-        prisma.order.count({ where: { assignedNurseId: partnerId ?? undefined, status: "COMPLETED", createdAt: { gte: today } } }),
+        prisma.order.count({ where: { assignedNurseId: scopeId, createdAt: { gte: today } } }),
+        prisma.order.count({ where: { assignedNurseId: scopeId, status: { in: ["ASSIGNED", "IN_TRANSIT", "IN_PROGRESS"] } } }),
+        prisma.order.count({ where: { assignedNurseId: scopeId, status: "COMPLETED", createdAt: { gte: today } } }),
         partnerId
           ? prisma.transaction.aggregate({ where: { wallet: { partnerId }, type: "CREDIT", createdAt: { gte: today } }, _sum: { amount: true } })
           : Promise.resolve({ _sum: { amount: null } }),
@@ -258,9 +257,9 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) 
     // ─── DRIVER (req L42-46) ──────────────────────────────
     case "DRIVER": {
       const [todayTrips, currentTrips, completedTrips, driverEarnings] = await Promise.all([
-        prisma.order.count({ where: { assignedDriverId: partnerId ?? undefined, createdAt: { gte: today } } }),
-        prisma.order.count({ where: { assignedDriverId: partnerId ?? undefined, status: { in: ["IN_TRANSIT", "ARRIVED"] } } }),
-        prisma.order.count({ where: { assignedDriverId: partnerId ?? undefined, status: "COMPLETED", createdAt: { gte: today } } }),
+        prisma.order.count({ where: { assignedDriverId: scopeId, createdAt: { gte: today } } }),
+        prisma.order.count({ where: { assignedDriverId: scopeId, status: { in: ["IN_TRANSIT", "ARRIVED"] } } }),
+        prisma.order.count({ where: { assignedDriverId: scopeId, status: "COMPLETED", createdAt: { gte: today } } }),
         partnerId
           ? prisma.transaction.aggregate({ where: { wallet: { partnerId }, type: "CREDIT", createdAt: { gte: today } }, _sum: { amount: true } })
           : Promise.resolve({ _sum: { amount: null } }),

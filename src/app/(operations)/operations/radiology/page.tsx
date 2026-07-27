@@ -73,7 +73,7 @@ export default function RadiologyPage() {
                   <td className="px-4 py-3 text-sm font-medium text-foreground">{r.patientName}</td>
                   <td className="px-4 py-3 text-sm text-muted-foreground">{r.requestType}</td>
                   <td className="px-4 py-3 text-sm text-muted-foreground">{r.centerName}</td>
-                  <td className="px-4 py-3 text-sm text-muted-foreground">{r.scheduledDate ? new Date(r.scheduledDate).toLocaleDateString("ar-EG") : "—"}</td>
+                  <td className="px-4 py-3 text-sm text-muted-foreground">{r.scheduledDate ? new Date(r.scheduledDate).toLocaleDateString("ar-IQ") : "—"}</td>
                   <td className="px-4 py-3"><StatusBadge status={r.status} size="sm" /></td>
                   <td className="px-4 py-3">{r.hasReport ? <span className="text-emerald-600 text-xs">✓ جاهز</span> : <span className="text-muted-foreground text-xs">—</span>}</td>
                   <td className="px-4 py-3">{r.hasImages ? <span className="text-emerald-600 text-xs">✓ مرفقة</span> : <span className="text-muted-foreground text-xs">—</span>}</td>

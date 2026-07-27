@@ -102,7 +102,7 @@ export default function UsersPage() {
                       {user.isActive ? <><CheckCircle2 size={12} />نشط</> : <><Ban size={12} />معطل</>}
                     </span>
                   </td>
-                  <td className="px-5 py-3.5 text-xs text-muted-foreground">{user.createdAt ? new Date(user.createdAt).toLocaleDateString("ar-EG") : "—"}</td>
+                  <td className="px-5 py-3.5 text-xs text-muted-foreground">{user.createdAt ? new Date(user.createdAt).toLocaleDateString("ar-IQ") : "—"}</td>
                   <td className="px-5 py-3.5">
                     <button className="text-xs font-medium text-primary hover:underline">تعديل</button>
                   </td>

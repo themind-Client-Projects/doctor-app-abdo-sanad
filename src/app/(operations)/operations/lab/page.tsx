@@ -78,7 +78,7 @@ export default function LabPage() {
                     <td className="px-4 py-3 text-sm text-muted-foreground">{s.testType}</td>
                     <td className="px-4 py-3 text-sm text-muted-foreground">{s.labName}</td>
                     <td className="px-4 py-3"><span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold text-white ${step?.color || "bg-gray-500"}`}>{step?.label || s.status}</span></td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(s.createdAt).toLocaleDateString("ar-EG")}</td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(s.createdAt).toLocaleDateString("ar-IQ")}</td>
                   </tr>
                 );
               })}

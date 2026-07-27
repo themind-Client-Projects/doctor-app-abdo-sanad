@@ -69,7 +69,7 @@ export default function OperationsPage() {
               )}
             </div>
             <div className="text-2xl font-bold text-foreground mb-0.5">
-              {isLoading ? <div className="h-7 w-12 rounded bg-muted animate-pulse" /> : kpi.value.toLocaleString("ar-EG")}
+              {isLoading ? <div className="h-7 w-12 rounded bg-muted animate-pulse" /> : kpi.value.toLocaleString("ar-IQ")}
             </div>
             <span className="text-[10px] text-muted-foreground">{kpi.label}</span>
           </div>

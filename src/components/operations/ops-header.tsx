@@ -33,7 +33,7 @@ export function OpsHeader({ employeeName, role, newOrders, delayedOrders }: OpsH
   const [currentTime, setCurrentTime] = useState("");
 
   useEffect(() => {
-    const tick = () => setCurrentTime(new Date().toLocaleString("ar-EG", { weekday: "long", year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }));
+    const tick = () => setCurrentTime(new Date().toLocaleString("ar-IQ", { weekday: "long", year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }));
     tick();
     const id = setInterval(tick, 30000);
     return () => clearInterval(id);

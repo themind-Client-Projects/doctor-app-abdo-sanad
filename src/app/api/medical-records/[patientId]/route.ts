@@ -1,7 +1,13 @@
-import type { Prisma } from "@prisma/client";
+import type { Prisma, UserRole } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { AuthError, ROLES, withAuth } from "@/lib/api-auth";
+
+// Who may WRITE a patient's file. ROLES.CLINICAL also contains LAB, PHARMACY,
+// OPERATIONS and RADIOLOGY — a dispensing pharmacy could rewrite a patient's
+// allergies and current medications. Writing the file is the treating
+// clinician's job; the read side stays wider.
+const RECORD_WRITE_ROLES = ["SUPER_ADMIN", "DOCTOR", "NURSE"] as const satisfies readonly UserRole[];
 import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { parseBody } from "@/lib/validation";
 
@@ -48,10 +54,10 @@ export const GET = withAuth<Ctx>(
   }
 );
 
-// PUT /api/medical-records/[patientId] — clinical staff only.
+// PUT /api/medical-records/[patientId] — treating clinicians only.
 // Patients must not be able to rewrite their own allergies or medications.
 export const PUT = withAuth<Ctx>(
-  { roles: ROLES.CLINICAL },
+  { roles: RECORD_WRITE_ROLES },
   async (req, { params }) => {
     const requestId = req.headers.get("x-request-id") ?? undefined;
     const { patientId } = await params;

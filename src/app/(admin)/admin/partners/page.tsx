@@ -144,7 +144,7 @@ export default function PartnersPage() {
                       <span className="text-sm text-foreground">⭐ {partner.rating?.toFixed(1) || "—"}</span>
                     </td>
                     <td className="px-5 py-3.5">
-                      <span className="text-sm text-muted-foreground">{partner.totalTasks?.toLocaleString("ar-EG") || "٠"}</span>
+                      <span className="text-sm text-muted-foreground">{partner.totalTasks?.toLocaleString("ar-IQ") || "٠"}</span>
                     </td>
                     <td className="px-5 py-3.5">
                       <Link

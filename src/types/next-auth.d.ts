@@ -14,6 +14,8 @@ declare module "next-auth" {
       id: string;
       role: UserRole;
       partnerId: string | null;
+      /** DoctorProfile.id — distinct from partnerId, which is a Partner.id. */
+      doctorProfileId: string | null;
     } & DefaultSession["user"];
   }
 }
@@ -30,6 +32,7 @@ declare module "@auth/core/jwt" {
     userId?: string;
     role?: UserRole;
     partnerId?: string | null;
+    doctorProfileId?: string | null;
     /** Epoch ms of the last DB sync, used to bound role staleness. */
     syncedAt?: number;
   }

@@ -100,7 +100,7 @@ export default function OrdersPage() {
                   </span>
                   <StatusBadge status={order.status} size="sm" />
                 </div>
-                <span className="text-xs text-muted-foreground">{new Date(order.createdAt).toLocaleString("ar-EG")}</span>
+                <span className="text-xs text-muted-foreground">{new Date(order.createdAt).toLocaleString("ar-IQ")}</span>
               </div>
 
               {/* 12 fields grid (L304-316 minus map) */}

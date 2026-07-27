@@ -25,7 +25,7 @@ export interface KPICardData {
   key: string;
   label: string;
   value: number;
-  change?: number;
+  change?: number | null;
   color: "blue" | "green" | "yellow" | "purple" | "red";
   icon: string;
   href: string;
@@ -92,7 +92,7 @@ const cardStyles: Record<string, { card: string; icon: string; value: string }> 
 // Component
 // ─────────────────────────────────────────────────────────────
 
-export function KPICards({ kpis, isLoading, currency = "ر.ي" }: KPICardsProps) {
+export function KPICards({ kpis, isLoading, currency = "د.ع" }: KPICardsProps) {
   // Loading skeleton
   if (isLoading) {
     return (
@@ -114,9 +114,9 @@ export function KPICards({ kpis, isLoading, currency = "ر.ي" }: KPICardsProps)
   // Format number with Arabic locale
   const formatValue = (value: number, isCurrency?: boolean) => {
     if (isCurrency) {
-      return `${value.toLocaleString("ar-EG", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ${currency}`;
+      return `${value.toLocaleString("ar-IQ", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ${currency}`;
     }
-    return value.toLocaleString("ar-EG");
+    return value.toLocaleString("ar-IQ");
   };
 
   return (
@@ -146,7 +146,7 @@ export function KPICards({ kpis, isLoading, currency = "ر.ي" }: KPICardsProps)
             </div>
 
             {/* Trend */}
-            {kpi.change !== undefined && (
+            {kpi.change != null && (
               <div className="flex items-center gap-1">
                 {kpi.change >= 0 ? (
                   <span className="flex items-center gap-0.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">

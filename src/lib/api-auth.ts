@@ -16,6 +16,8 @@ export type Identity = {
   userId: string;
   role: UserRole;
   partnerId: string | null;
+  /** DoctorProfile.id. Doctor-owned rows FK to this, not to partnerId. */
+  doctorProfileId: string | null;
 };
 
 /** Thrown to reject a request. Caught by `withAuth` and turned into a response. */
@@ -84,6 +86,7 @@ export async function requireAuth(
     userId: user.id,
     role: user.role,
     partnerId: user.partnerId ?? null,
+    doctorProfileId: user.doctorProfileId ?? null,
   };
 
   if (opts?.roles && !opts.roles.includes(identity.role)) {
@@ -196,4 +199,29 @@ export function assertPartnerScope(identity: Identity, partnerId: string | null)
   if (!partnerId || partnerId !== identity.partnerId) {
     throw new AuthError(403, "ليس لديك صلاحية للوصول إلى هذا المورد");
   }
+}
+
+/** Roles that see the whole platform rather than one partner's slice. */
+export function isPlatformRole(role: UserRole): boolean {
+  return role === "SUPER_ADMIN" || role === "OPERATIONS";
+}
+
+/**
+ * A `where` fragment that limits a query to the caller's own partner.
+ *
+ * Authenticating the routes stopped anonymous access, but left every clinical
+ * list readable across tenants — one lab could read, and PATCH, another lab's
+ * samples. The tenant column was only ever an optional *filter*.
+ *
+ * Fails closed: a partner-scoped role with no Partner row matches nothing
+ * rather than everything.
+ *
+ * @example  where: { ...partnerScope(identity, "labId"), status: "testing" }
+ */
+export function partnerScope(
+  identity: Identity,
+  field: "labId" | "pharmacyId" | "centerId" | "doctorId" | "partnerId"
+): Record<string, string> {
+  if (isPlatformRole(identity.role)) return {};
+  return { [field]: identity.partnerId ?? "" };
 }

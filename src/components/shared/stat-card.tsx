@@ -18,7 +18,7 @@ export function StatCard({ label, value, icon, trend, color }: StatCardProps) {
       )}
       <div className="flex-1 min-w-0">
         <span className="text-lg font-bold text-foreground block">
-          {typeof value === "number" ? value.toLocaleString("ar-EG") : value}
+          {typeof value === "number" ? value.toLocaleString("ar-IQ") : value}
         </span>
         <span className="text-xs text-muted-foreground">{label}</span>
       </div>

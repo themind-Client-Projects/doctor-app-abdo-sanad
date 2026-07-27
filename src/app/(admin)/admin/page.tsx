@@ -38,8 +38,8 @@ export default function AdminDashboardPage() {
     { label: "إجمالي الطلبات اليوم", value: data?.todayOrders ?? 0, icon: <ClipboardList size={22} />, color: "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400", border: "border-blue-200 dark:border-blue-800" },
     { label: "الطلبات النشطة", value: data?.activeOrders ?? 0, icon: <Activity size={22} />, color: "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400", border: "border-emerald-200 dark:border-emerald-800" },
     { label: "الطلبات المتأخرة", value: data?.delayedOrders ?? 0, icon: <AlertTriangle size={22} />, color: "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400", border: "border-red-200 dark:border-red-800" },
-    { label: "إجمالي الإيرادات", value: `${(data?.totalRevenue ?? 0).toLocaleString("ar-EG")} ر.ي`, icon: <DollarSign size={22} />, color: "bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400", border: "border-amber-200 dark:border-amber-800" },
-    { label: "صافي أرباح وريد", value: `${(data?.waridProfit ?? 0).toLocaleString("ar-EG")} ر.ي`, icon: <TrendingUp size={22} />, color: "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400", border: "border-purple-200 dark:border-purple-800" },
+    { label: "إجمالي الإيرادات", value: `${(data?.totalRevenue ?? 0).toLocaleString("ar-IQ")} د.ع`, icon: <DollarSign size={22} />, color: "bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400", border: "border-amber-200 dark:border-amber-800" },
+    { label: "صافي أرباح وريد", value: `${(data?.waridProfit ?? 0).toLocaleString("ar-IQ")} د.ع`, icon: <TrendingUp size={22} />, color: "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400", border: "border-purple-200 dark:border-purple-800" },
     { label: "عدد المرضى", value: data?.totalPatients ?? 0, icon: <Users size={22} />, color: "bg-cyan-100 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-400", border: "border-cyan-200 dark:border-cyan-800" },
     { label: "المستخدمين النشطين", value: data?.activeUsers ?? 0, icon: <UserCheck size={22} />, color: "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400", border: "border-indigo-200 dark:border-indigo-800" },
     { label: "حالة الخدمات", value: `${data?.servicesStatus?.active ?? 0}/${data?.servicesStatus?.total ?? 0}`, icon: <CheckCircle2 size={22} />, color: "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400", border: "border-emerald-200 dark:border-emerald-800" },
@@ -64,7 +64,7 @@ export default function AdminDashboardPage() {
               {isLoading ? (
                 <div className="h-7 w-20 rounded bg-muted animate-pulse" />
               ) : (
-                typeof kpi.value === "number" ? kpi.value.toLocaleString("ar-EG") : kpi.value
+                typeof kpi.value === "number" ? kpi.value.toLocaleString("ar-IQ") : kpi.value
               )}
             </div>
           </div>
