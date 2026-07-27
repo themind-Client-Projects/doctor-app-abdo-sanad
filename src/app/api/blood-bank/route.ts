@@ -1,18 +1,44 @@
 import { NextResponse } from "next/server";
-import type { BloodType } from "@prisma/client";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { nonEmpty, parseBody } from "@/lib/validation";
 
-const BLOOD_TYPES: readonly BloodType[] = [
-  "A_POS",
-  "A_NEG",
-  "B_POS",
-  "B_NEG",
-  "AB_POS",
-  "AB_NEG",
-  "O_POS",
-  "O_NEG",
-];
+/** The `BloodType` enum from prisma/schema.prisma. */
+const bloodType = z.enum(
+  ["A_POS", "A_NEG", "B_POS", "B_NEG", "AB_POS", "AB_NEG", "O_POS", "O_NEG"],
+  { message: "زمرة الدم غير صالحة" }
+);
+
+/** An ISO string or epoch number — a bare coercion would also accept booleans. */
+const dateValue = z
+  .union([z.string(), z.number()])
+  .pipe(z.coerce.date({ message: "موعد السحب غير صالح" }));
+
+/** `""` and `null` mean "no appointment", as they did before. */
+const drawAppointment = z
+  .union([z.literal(""), z.null(), dateValue], { message: "موعد السحب غير صالح" })
+  .transform((value) => (value instanceof Date ? value : null));
+
+// `.strict()` so an unexpected key is a 400 rather than being silently written:
+// the body used to be spread straight into Prisma, so any column was writable
+// and an unknown blood group crashed as a 500 instead of a 400.
+const createBloodBankRequestSchema = z
+  .object({
+    requestType: z
+      .string({ message: "نوع الطلب مطلوب" })
+      .trim()
+      .min(1, { message: "نوع الطلب مطلوب" }),
+    bloodType,
+    governorateId: nonEmpty.optional(),
+    status: nonEmpty.default("new"),
+    donorId: nonEmpty.optional(),
+    donorName: z.string().optional(),
+    drawAppointment: drawAppointment.optional(),
+    testStatus: z.string().optional(),
+    deliveryStatus: z.string().optional(),
+  })
+  .strict();
 
 // GET /api/blood-bank — Blood bank requests (req L433-443)
 export const GET = withAuth({ roles: ROLES.OPERATIONS }, async () => {
@@ -24,50 +50,22 @@ export const GET = withAuth({ roles: ROLES.OPERATIONS }, async () => {
 });
 
 // POST /api/blood-bank — Create a request.
-// The body used to be spread straight into Prisma, so any column was writable
-// and an unknown blood group crashed as a 500 instead of a 400.
 export const POST = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
-  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-  }
-
-  const { requestType, bloodType } = body;
-  if (typeof requestType !== "string" || !requestType) {
-    return NextResponse.json({ error: "نوع الطلب مطلوب" }, { status: 400 });
-  }
-  if (typeof bloodType !== "string" || !BLOOD_TYPES.includes(bloodType as BloodType)) {
-    return NextResponse.json({ error: "زمرة الدم غير صالحة" }, { status: 400 });
-  }
-
-  const drawAppointment = parseDate(body.drawAppointment);
-  if (drawAppointment === "invalid") {
-    return NextResponse.json({ error: "موعد السحب غير صالح" }, { status: 400 });
-  }
-
-  const str = (v: unknown) => (typeof v === "string" && v ? v : null);
+  const input = await parseBody(req, createBloodBankRequestSchema);
 
   const data = await prisma.bloodBankRequest.create({
     data: {
-      requestType,
-      bloodType: bloodType as BloodType,
-      governorateId: str(body.governorateId),
-      status: typeof body.status === "string" && body.status ? body.status : "new",
-      donorId: str(body.donorId),
-      donorName: str(body.donorName),
-      drawAppointment,
-      testStatus: str(body.testStatus),
-      deliveryStatus: str(body.deliveryStatus),
+      requestType: input.requestType,
+      bloodType: input.bloodType,
+      governorateId: input.governorateId ?? null,
+      status: input.status,
+      donorId: input.donorId ?? null,
+      donorName: input.donorName ?? null,
+      drawAppointment: input.drawAppointment ?? null,
+      testStatus: input.testStatus ?? null,
+      deliveryStatus: input.deliveryStatus ?? null,
     },
   });
 
   return NextResponse.json({ data }, { status: 201 });
 });
-
-/** null when absent, "invalid" when unparseable — so callers get a 400. */
-function parseDate(value: unknown): Date | null | "invalid" {
-  if (value === undefined || value === null || value === "") return null;
-  if (typeof value !== "string" && typeof value !== "number") return "invalid";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "invalid" : date;
-}

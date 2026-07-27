@@ -1,24 +1,37 @@
 import { NextResponse } from "next/server";
-import type { AppointmentType } from "@prisma/client";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { AuthError, ROLES, withAuth } from "@/lib/api-auth";
+import { nonEmpty, parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-const APPOINTMENT_STATUSES: readonly string[] = [
-  "scheduled",
-  "completed",
-  "cancelled",
-  "no_show",
-];
-const APPOINTMENT_TYPES: readonly string[] = [
-  "IN_PERSON",
-  "ONLINE",
-  "HOME_VISIT",
-  "SURGERY",
-];
+const appointmentStatus = z.enum(["scheduled", "completed", "cancelled", "no_show"], {
+  message: "حالة غير صالحة",
+});
+const appointmentType = z.enum(["IN_PERSON", "ONLINE", "HOME_VISIT", "SURGERY"], {
+  message: "نوع الموعد غير صالح",
+});
 
 const PATIENT_ROLES = [...ROLES.CLINICAL, "PATIENT"] as const;
+
+// The body was spread into update, so the client could set `price` (and
+// doctorId / patientId). All three are deliberately absent: `price` is
+// server-controlled, and a booking cannot be moved to another doctor or patient.
+// `.strict()` makes an unknown key (including `price`) a 400.
+const updateAppointmentSchema = z
+  .object({
+    type: appointmentType.optional(),
+    date: z
+      .union([z.string(), z.number()], { message: "التاريخ غير صالح" })
+      .pipe(z.coerce.date({ message: "التاريخ غير صالح" }))
+      .optional(),
+    time: nonEmpty.optional(),
+    status: appointmentStatus.optional(),
+    notes: z.string().optional(),
+    complexId: nonEmpty.optional(),
+  })
+  .strict();
 
 // GET /api/appointments/[id]
 export const GET = withAuth<Ctx>({ roles: PATIENT_ROLES }, async (_req, { params }, identity) => {
@@ -41,35 +54,10 @@ export const GET = withAuth<Ctx>({ roles: PATIENT_ROLES }, async (_req, { params
 });
 
 // PATCH /api/appointments/[id] — Update an appointment.
-// The body was spread into update, so the client could set `price` (and
-// doctorId/patientId). `price` is server-controlled and not accepted here.
 export const PATCH = withAuth<Ctx>({ roles: PATIENT_ROLES }, async (req, { params }, identity) => {
   const { id } = await params;
 
-  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-  }
-
-  const { type, date, time, status, notes, complexId } = body;
-
-  if (type !== undefined && !APPOINTMENT_TYPES.includes(type as string)) {
-    return NextResponse.json({ error: "نوع الموعد غير صالح" }, { status: 400 });
-  }
-  if (status !== undefined && !APPOINTMENT_STATUSES.includes(status as string)) {
-    return NextResponse.json({ error: "حالة غير صالحة" }, { status: 400 });
-  }
-
-  let parsedDate: Date | undefined;
-  if (date !== undefined) {
-    if (typeof date !== "string" && typeof date !== "number") {
-      return NextResponse.json({ error: "التاريخ غير صالح" }, { status: 400 });
-    }
-    parsedDate = new Date(date);
-    if (Number.isNaN(parsedDate.getTime())) {
-      return NextResponse.json({ error: "التاريخ غير صالح" }, { status: 400 });
-    }
-  }
+  const input = await parseBody(req, updateAppointmentSchema);
 
   const existing = await prisma.appointment.findUnique({
     where: { id },
@@ -86,12 +74,12 @@ export const PATCH = withAuth<Ctx>({ roles: PATIENT_ROLES }, async (req, { param
   const appointment = await prisma.appointment.update({
     where: { id },
     data: {
-      type: type === undefined ? undefined : (type as AppointmentType),
-      date: parsedDate,
-      time: typeof time === "string" ? time : undefined,
-      status: typeof status === "string" ? status : undefined,
-      notes: typeof notes === "string" ? notes : undefined,
-      complexId: typeof complexId === "string" ? complexId : undefined,
+      type: input.type,
+      date: input.date,
+      time: input.time,
+      status: input.status,
+      notes: input.notes,
+      complexId: input.complexId,
     },
   });
 

@@ -1,59 +1,50 @@
 import { NextResponse } from "next/server";
-import type { BloodType } from "@prisma/client";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { nonEmpty, parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-const BLOOD_TYPES: readonly BloodType[] = [
-  "A_POS",
-  "A_NEG",
-  "B_POS",
-  "B_NEG",
-  "AB_POS",
-  "AB_NEG",
-  "O_POS",
-  "O_NEG",
-];
+/** The `BloodType` enum from prisma/schema.prisma. */
+const bloodType = z.enum(
+  ["A_POS", "A_NEG", "B_POS", "B_NEG", "AB_POS", "AB_NEG", "O_POS", "O_NEG"],
+  { message: "زمرة الدم غير صالحة" }
+);
+
+/** An ISO string or epoch number — a bare coercion would also accept booleans. */
+const dateValue = z
+  .union([z.string(), z.number()])
+  .pipe(z.coerce.date({ message: "موعد السحب غير صالح" }));
+
+/** `""` and `null` clear the appointment, as they did before. */
+const drawAppointment = z
+  .union([z.literal(""), z.null(), dateValue], { message: "موعد السحب غير صالح" })
+  .transform((value) => (value instanceof Date ? value : null));
+
+// Allow-list of the editable columns — the body used to be spread into
+// prisma.bloodBankRequest.update, so every column (including the id) was
+// rewritable in one call. `.strict()` makes an unknown key a 400.
+const updateBloodBankRequestSchema = z
+  .object({
+    requestType: nonEmpty.optional(),
+    bloodType: bloodType.optional(),
+    governorateId: nonEmpty.optional(),
+    status: nonEmpty.optional(),
+    donorId: nonEmpty.optional(),
+    donorName: z.string().optional(),
+    drawAppointment: drawAppointment.optional(),
+    testStatus: z.string().optional(),
+    deliveryStatus: z.string().optional(),
+  })
+  .strict();
 
 // PATCH /api/blood-bank/[id] — Update a request (req L433-443).
-// The body used to be spread into prisma.bloodBankRequest.update, so every
-// column — including the id — was rewritable in one call.
 export const PATCH = withAuth<Ctx>(
   { roles: ROLES.OPERATIONS },
   async (req, { params }) => {
     const { id } = await params;
-    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!body || typeof body !== "object") {
-      return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-    }
-
-    if (
-      body.bloodType !== undefined &&
-      !BLOOD_TYPES.includes(body.bloodType as BloodType)
-    ) {
-      return NextResponse.json({ error: "زمرة الدم غير صالحة" }, { status: 400 });
-    }
-
-    let drawAppointment: Date | null | undefined;
-    if (body.drawAppointment !== undefined) {
-      if (body.drawAppointment === null || body.drawAppointment === "") {
-        drawAppointment = null;
-      } else if (
-        typeof body.drawAppointment === "string" ||
-        typeof body.drawAppointment === "number"
-      ) {
-        const date = new Date(body.drawAppointment);
-        if (Number.isNaN(date.getTime())) {
-          return NextResponse.json({ error: "موعد السحب غير صالح" }, { status: 400 });
-        }
-        drawAppointment = date;
-      } else {
-        return NextResponse.json({ error: "موعد السحب غير صالح" }, { status: 400 });
-      }
-    }
-
-    const str = (v: unknown) => (typeof v === "string" ? v : undefined);
+    const input = await parseBody(req, updateBloodBankRequestSchema);
 
     const existing = await prisma.bloodBankRequest.findUnique({
       where: { id },
@@ -63,18 +54,19 @@ export const PATCH = withAuth<Ctx>(
       return NextResponse.json({ error: "غير موجود" }, { status: 404 });
     }
 
+    // `undefined` leaves a column untouched in Prisma.
     const data = await prisma.bloodBankRequest.update({
       where: { id },
       data: {
-        requestType: str(body.requestType),
-        bloodType: body.bloodType as BloodType | undefined,
-        governorateId: str(body.governorateId),
-        status: str(body.status),
-        donorId: str(body.donorId),
-        donorName: str(body.donorName),
-        drawAppointment,
-        testStatus: str(body.testStatus),
-        deliveryStatus: str(body.deliveryStatus),
+        requestType: input.requestType,
+        bloodType: input.bloodType,
+        governorateId: input.governorateId,
+        status: input.status,
+        donorId: input.donorId,
+        donorName: input.donorName,
+        drawAppointment: input.drawAppointment,
+        testStatus: input.testStatus,
+        deliveryStatus: input.deliveryStatus,
       },
     });
 

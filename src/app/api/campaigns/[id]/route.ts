@@ -1,63 +1,54 @@
 import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { dateish, jsonValue, nonEmpty, parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-const DISCOUNT_TYPES = ["PERCENTAGE", "FIXED"] as const;
+const discountType = z.enum(["PERCENTAGE", "FIXED"], { message: "نوع الخصم غير صالح" });
 
-const date = (v: unknown) => {
-  if (typeof v !== "string" && typeof v !== "number") return undefined;
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? undefined : d;
-};
+const discountValue = z
+  .number({ message: "قيمة الخصم غير صالحة" })
+  .finite({ message: "قيمة الخصم غير صالحة" })
+  .nonnegative({ message: "قيمة الخصم غير صالحة" });
+
+/** A Prisma `Json` column: any JSON value, with `null` meaning "leave alone". */
+const jsonInput = jsonValue
+  .optional()
+  .transform((v) => (v === undefined || v === null ? undefined : (v as Prisma.InputJsonValue)));
+
+const updateCampaignSchema = z
+  .object({
+    name: nonEmpty.optional(),
+    description: z.string().optional(),
+    discountType: discountType.optional(),
+    discountValue: discountValue.optional(),
+    startDate: dateish.optional(),
+    endDate: dateish.optional(),
+    targetServices: jsonInput,
+    isActive: z.boolean().optional(),
+  })
+  .strict();
 
 // PUT /api/campaigns/[id] — the body used to be spread straight into update.
 export const PUT = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
   const { id } = await params;
-  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-  }
-
-  const { name, description, discountType, discountValue, targetServices, isActive } = body;
-
-  if (
-    discountType !== undefined &&
-    (typeof discountType !== "string" ||
-      !DISCOUNT_TYPES.includes(discountType as (typeof DISCOUNT_TYPES)[number]))
-  ) {
-    return NextResponse.json({ error: "نوع الخصم غير صالح" }, { status: 400 });
-  }
-  if (
-    discountValue !== undefined &&
-    (typeof discountValue !== "number" || !Number.isFinite(discountValue) || discountValue < 0)
-  ) {
-    return NextResponse.json({ error: "قيمة الخصم غير صالحة" }, { status: 400 });
-  }
-  if (
-    (body.startDate !== undefined && !date(body.startDate)) ||
-    (body.endDate !== undefined && !date(body.endDate))
-  ) {
-    return NextResponse.json({ error: "تاريخ غير صالح" }, { status: 400 });
-  }
+  const input = await parseBody(req, updateCampaignSchema);
 
   const data = await prisma.campaign.update({
     where: { id },
     // Explicit allow-list — never spread the request body into Prisma.
     data: {
-      name: typeof name === "string" ? name : undefined,
-      description: typeof description === "string" ? description : undefined,
-      discountType: typeof discountType === "string" ? discountType : undefined,
-      discountValue: typeof discountValue === "number" ? discountValue : undefined,
-      startDate: date(body.startDate),
-      endDate: date(body.endDate),
-      targetServices:
-        targetServices === undefined || targetServices === null
-          ? undefined
-          : (targetServices as Prisma.InputJsonValue),
-      isActive: typeof isActive === "boolean" ? isActive : undefined,
+      name: input.name,
+      description: input.description,
+      discountType: input.discountType,
+      discountValue: input.discountValue,
+      startDate: input.startDate,
+      endDate: input.endDate,
+      targetServices: input.targetServices,
+      isActive: input.isActive,
     },
   });
 

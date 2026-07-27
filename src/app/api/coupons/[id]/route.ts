@@ -1,58 +1,47 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { dateish, nonEmpty, parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-const DISCOUNT_TYPES = ["PERCENTAGE", "FIXED"] as const;
+const discountType = z.enum(["PERCENTAGE", "FIXED"], { message: "نوع الخصم غير صالح" });
 
-const date = (v: unknown) => {
-  if (typeof v !== "string" && typeof v !== "number") return undefined;
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? undefined : d;
-};
+const discountValue = z
+  .number({ message: "قيمة الخصم غير صالحة" })
+  .finite({ message: "قيمة الخصم غير صالحة" })
+  .nonnegative({ message: "قيمة الخصم غير صالحة" });
+
+// `usedCount` is server-owned and deliberately absent, so `.strict()` turns an
+// attempt to reset it (and revive an exhausted coupon) into a 400.
+const updateCouponSchema = z
+  .object({
+    code: nonEmpty.optional(),
+    discountType: discountType.optional(),
+    discountValue: discountValue.optional(),
+    maxUses: z.number().int().nonnegative().optional(),
+    expiresAt: dateish.optional(),
+    isActive: z.boolean().optional(),
+  })
+  .strict();
 
 // PUT /api/coupons/[id] — the body used to be spread into update, so a caller
 // could reset `usedCount` and revive an exhausted coupon.
 export const PUT = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
   const { id } = await params;
-  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-  }
-
-  const { code, discountType, discountValue, maxUses, isActive } = body;
-
-  if (
-    discountType !== undefined &&
-    (typeof discountType !== "string" ||
-      !DISCOUNT_TYPES.includes(discountType as (typeof DISCOUNT_TYPES)[number]))
-  ) {
-    return NextResponse.json({ error: "نوع الخصم غير صالح" }, { status: 400 });
-  }
-  if (
-    discountValue !== undefined &&
-    (typeof discountValue !== "number" || !Number.isFinite(discountValue) || discountValue < 0)
-  ) {
-    return NextResponse.json({ error: "قيمة الخصم غير صالحة" }, { status: 400 });
-  }
-  if (body.expiresAt !== undefined && !date(body.expiresAt)) {
-    return NextResponse.json({ error: "تاريخ الانتهاء غير صالح" }, { status: 400 });
-  }
+  const input = await parseBody(req, updateCouponSchema);
 
   const data = await prisma.coupon.update({
     where: { id },
     // Explicit allow-list — `usedCount` is server-owned and not writable here.
     data: {
-      code: typeof code === "string" ? code : undefined,
-      discountType: typeof discountType === "string" ? discountType : undefined,
-      discountValue: typeof discountValue === "number" ? discountValue : undefined,
-      expiresAt: date(body.expiresAt),
-      maxUses:
-        typeof maxUses === "number" && Number.isInteger(maxUses) && maxUses >= 0
-          ? maxUses
-          : undefined,
-      isActive: typeof isActive === "boolean" ? isActive : undefined,
+      code: input.code,
+      discountType: input.discountType,
+      discountValue: input.discountValue,
+      expiresAt: input.expiresAt,
+      maxUses: input.maxUses,
+      isActive: input.isActive,
     },
   });
 

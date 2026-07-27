@@ -1,22 +1,40 @@
 import { NextResponse } from "next/server";
-import type { Prisma, ServiceStatus } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { jsonValue, parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-const SERVICE_STATUSES: readonly ServiceStatus[] = [
-  "ACTIVE",
-  "SUSPENDED",
-  "PAUSED",
-  "REACTIVATED",
-];
+/** A Prisma `Json` column: any JSON value, with `null` meaning "leave alone". */
+const jsonInput = jsonValue
+  .optional()
+  .transform((v) => (v === undefined || v === null ? undefined : (v as Prisma.InputJsonValue)));
 
-const bool = (v: unknown) => (typeof v === "boolean" ? v : undefined);
-const json = (v: unknown) =>
-  v === undefined || v === null ? undefined : (v as Prisma.InputJsonValue);
-const int = (v: unknown) =>
-  typeof v === "number" && Number.isInteger(v) ? v : undefined;
+const serviceStatus = z.enum(["ACTIVE", "SUSPENDED", "PAUSED", "REACTIVATED"], {
+  message: "حالة غير صالحة",
+});
+
+// `partnerId` always comes from the route param and is deliberately absent, so a
+// body can no longer write a config onto a different partner.
+const serviceConfigSchema = z
+  .object({
+    serviceType: z.string().trim().min(1, { message: "نوع الخدمة مطلوب" }),
+    status: serviceStatus.optional(),
+    workHours: jsonInput,
+    governorates: jsonInput,
+    dailyCapacity: z.number().int().optional(),
+    isHomeService: z.boolean().optional(),
+    isBloodDraw: z.boolean().optional(),
+  })
+  .strict();
+
+const updateServicesSchema = z
+  .object({
+    configs: z.array(serviceConfigSchema).min(1, { message: "قائمة الخدمات غير صالحة" }),
+  })
+  .strict();
 
 // GET — List partner service configs (req L183-198)
 export const GET = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (_req, { params }) => {
@@ -31,52 +49,10 @@ export const GET = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (_req, { params }
 // assumed to be an array — a malformed body threw inside .map and 500'd.
 export const PUT = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
   const { id } = await params;
-  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  const configs = body?.configs;
-
-  if (!Array.isArray(configs)) {
-    return NextResponse.json({ error: "قائمة الخدمات غير صالحة" }, { status: 400 });
-  }
-
-  const parsed: {
-    serviceType: string;
-    fields: {
-      status: ServiceStatus | undefined;
-      workHours: Prisma.InputJsonValue | undefined;
-      governorates: Prisma.InputJsonValue | undefined;
-      dailyCapacity: number | undefined;
-      isHomeService: boolean | undefined;
-      isBloodDraw: boolean | undefined;
-    };
-  }[] = [];
-
-  for (const raw of configs) {
-    if (!raw || typeof raw !== "object") {
-      return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-    }
-    const c = raw as Record<string, unknown>;
-    if (typeof c.serviceType !== "string" || c.serviceType.length === 0) {
-      return NextResponse.json({ error: "نوع الخدمة مطلوب" }, { status: 400 });
-    }
-    if (c.status !== undefined && !SERVICE_STATUSES.includes(c.status as ServiceStatus)) {
-      return NextResponse.json({ error: "حالة غير صالحة" }, { status: 400 });
-    }
-    parsed.push({
-      serviceType: c.serviceType,
-      // Explicit allow-list — partnerId always comes from the route param.
-      fields: {
-        status: c.status === undefined ? undefined : (c.status as ServiceStatus),
-        workHours: json(c.workHours),
-        governorates: json(c.governorates),
-        dailyCapacity: int(c.dailyCapacity),
-        isHomeService: bool(c.isHomeService),
-        isBloodDraw: bool(c.isBloodDraw),
-      },
-    });
-  }
+  const { configs } = await parseBody(req, updateServicesSchema);
 
   const results = await prisma.$transaction(
-    parsed.map(({ serviceType, fields }) =>
+    configs.map(({ serviceType, ...fields }) =>
       prisma.serviceConfig.upsert({
         where: { partnerId_serviceType: { partnerId: id, serviceType } },
         update: fields,

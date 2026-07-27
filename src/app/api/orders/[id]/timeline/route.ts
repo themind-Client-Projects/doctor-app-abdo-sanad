@@ -1,12 +1,29 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 /** The execution timeline is a fixed 11-step ladder (req L384-407). */
 const MIN_STEP = 1;
 const MAX_STEP = 11;
+
+const stepError = { message: "رقم الخطوة غير صالح" };
+
+// `completedBy` is deliberately absent — it is the verified caller, not a
+// client-supplied id. `.strict()` makes an unknown key a 400.
+const createTimelineEntrySchema = z
+  .object({
+    step: z.number(stepError).int(stepError).min(MIN_STEP, stepError).max(MAX_STEP, stepError),
+    title: z
+      .string({ message: "عنوان الخطوة مطلوب" })
+      .trim()
+      .min(1, { message: "عنوان الخطوة مطلوب" }),
+    description: z.string().trim().optional(),
+  })
+  .strict();
 
 // GET /api/orders/[id]/timeline — Get order timeline (req L384-407, 11 steps)
 export const GET = withAuth<Ctx>(
@@ -31,23 +48,7 @@ export const POST = withAuth<Ctx>(
   { roles: ROLES.OPERATIONS },
   async (req, { params }, identity) => {
     const { id } = await params;
-    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!body || typeof body !== "object") {
-      return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-    }
-
-    const { step, title } = body;
-    if (
-      typeof step !== "number" ||
-      !Number.isInteger(step) ||
-      step < MIN_STEP ||
-      step > MAX_STEP
-    ) {
-      return NextResponse.json({ error: "رقم الخطوة غير صالح" }, { status: 400 });
-    }
-    if (typeof title !== "string" || !title.trim()) {
-      return NextResponse.json({ error: "عنوان الخطوة مطلوب" }, { status: 400 });
-    }
+    const { step, title, description } = await parseBody(req, createTimelineEntrySchema);
 
     const order = await prisma.order.findUnique({ where: { id }, select: { id: true } });
     if (!order) {
@@ -67,11 +68,8 @@ export const POST = withAuth<Ctx>(
       data: {
         orderId: id,
         step,
-        title: title.trim(),
-        description:
-          typeof body.description === "string" && body.description.trim()
-            ? body.description.trim()
-            : null,
+        title,
+        description: description || null,
         completedAt: new Date(),
         completedBy: identity.userId,
       },

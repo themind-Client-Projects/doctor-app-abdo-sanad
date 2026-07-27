@@ -1,8 +1,19 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
+
+// `reason` is the only client input; the acting employee is the verified caller,
+// so no actor id is accepted here. `.strict()` makes an unknown key a 400.
+const rejectOrderSchema = z
+  .object({
+    // An empty reason is recorded as "no reason given", as it was before.
+    reason: z.string().trim().optional(),
+  })
+  .strict();
 
 // POST /api/orders/[id]/reject — Reject order (req L319 "رفض")
 //
@@ -14,11 +25,8 @@ export const POST = withAuth<Ctx>(
   { roles: ROLES.OPERATIONS },
   async (req, { params }, identity) => {
     const { id } = await params;
-    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-    const reason =
-      body && typeof body.reason === "string" && body.reason.trim()
-        ? body.reason.trim()
-        : null;
+    const input = await parseBody(req, rejectOrderSchema);
+    const reason = input.reason || null;
 
     const existing = await prisma.order.findUnique({
       where: { id },

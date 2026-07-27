@@ -1,9 +1,27 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { parseBody } from "@/lib/validation";
 
 /** req L445-453 — waiting → calling → in_session → ended. */
-const SESSION_STATUSES = ["waiting", "calling", "in_session", "ended"] as const;
+const sessionStatus = z.enum(["waiting", "calling", "in_session", "ended"], {
+  message: "حالة الجلسة غير صالحة",
+});
+
+// `.strict()` so an unexpected key is a 400 rather than being silently written —
+// the body used to be spread straight into Prisma, so every column was writable
+// and a missing appointmentTime surfaced as a 500 rather than a 400.
+const createSanadSessionSchema = z
+  .object({
+    doctorId: z.string({ message: "الطبيب مطلوب" }).trim().min(1, { message: "الطبيب مطلوب" }),
+    patientId: z.string({ message: "المريض مطلوب" }).trim().min(1, { message: "المريض مطلوب" }),
+    appointmentTime: z
+      .union([z.string(), z.number()], { message: "موعد الجلسة مطلوب" })
+      .pipe(z.coerce.date({ message: "موعد الجلسة غير صالح" })),
+    status: sessionStatus.default("waiting"),
+  })
+  .strict();
 
 // GET /api/sanad-sessions — Online consultation sessions (req L445-453)
 export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
@@ -22,41 +40,15 @@ export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
 });
 
 // POST /api/sanad-sessions — Book a session.
-// The body used to be spread straight into Prisma, so every column was writable
-// and a missing appointmentTime surfaced as a 500 rather than a 400.
 export const POST = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
-  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-  }
-
-  const { doctorId, patientId, appointmentTime, status } = body;
-  if (typeof doctorId !== "string" || !doctorId) {
-    return NextResponse.json({ error: "الطبيب مطلوب" }, { status: 400 });
-  }
-  if (typeof patientId !== "string" || !patientId) {
-    return NextResponse.json({ error: "المريض مطلوب" }, { status: 400 });
-  }
-  if (typeof appointmentTime !== "string" && typeof appointmentTime !== "number") {
-    return NextResponse.json({ error: "موعد الجلسة مطلوب" }, { status: 400 });
-  }
-  const scheduledAt = new Date(appointmentTime);
-  if (Number.isNaN(scheduledAt.getTime())) {
-    return NextResponse.json({ error: "موعد الجلسة غير صالح" }, { status: 400 });
-  }
-  if (
-    status !== undefined &&
-    !SESSION_STATUSES.includes(status as (typeof SESSION_STATUSES)[number])
-  ) {
-    return NextResponse.json({ error: "حالة الجلسة غير صالحة" }, { status: 400 });
-  }
+  const input = await parseBody(req, createSanadSessionSchema);
 
   const data = await prisma.sanadSession.create({
     data: {
-      doctorId,
-      patientId,
-      appointmentTime: scheduledAt,
-      status: (status as string) ?? "waiting",
+      doctorId: input.doctorId,
+      patientId: input.patientId,
+      appointmentTime: input.appointmentTime,
+      status: input.status,
     },
   });
 

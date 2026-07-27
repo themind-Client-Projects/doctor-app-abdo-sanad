@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { UserRole } from "@prisma/client";
 import { auth } from "./auth";
+import { ValidationError } from "./validation";
 
 /**
  * The authenticated caller, resolved once per request.
@@ -127,6 +128,28 @@ function toErrorResponse(req: NextRequest, error: unknown): NextResponse {
   if (error instanceof AuthError) {
     return NextResponse.json({ error: error.message }, { status: error.status });
   }
+
+  // Validation failures are the caller's fault, not the server's. These used to
+  // surface as 500s, so a client could not tell a bad request from an outage.
+  if (error instanceof ValidationError) {
+    return NextResponse.json(
+      { error: "بيانات غير صالحة", details: error.issues },
+      { status: 400 }
+    );
+  }
+
+  // Prisma errors that are really client errors.
+  const code = (error as { code?: string } | null)?.code;
+  if (code === "P2025") {
+    return NextResponse.json({ error: "غير موجود" }, { status: 404 });
+  }
+  if (code === "P2002") {
+    return NextResponse.json({ error: "السجل موجود مسبقاً" }, { status: 409 });
+  }
+  if (code === "P2003") {
+    return NextResponse.json({ error: "مرجع غير صالح" }, { status: 409 });
+  }
+
   console.error(`[api] ${req.method} ${req.nextUrl.pathname}`, error);
   return NextResponse.json({ error: "فشل" }, { status: 500 });
 }

@@ -1,41 +1,54 @@
 import { NextResponse } from "next/server";
-import type { PartnerStatus, UserRole } from "@prisma/client";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { nonEmpty, paginationSchema, parseBody, parseQuery } from "@/lib/validation";
 
-const PARTNER_TYPES: readonly UserRole[] = [
-  "DOCTOR",
-  "LAB",
-  "PHARMACY",
-  "NURSE",
-  "DRIVER",
-  "RADIOLOGY",
-];
+const partnerType = z.enum(
+  ["DOCTOR", "LAB", "PHARMACY", "NURSE", "DRIVER", "RADIOLOGY"],
+  { message: "نوع الشريك غير صالح" }
+);
 
-const PARTNER_STATUSES: readonly PartnerStatus[] = [
-  "ACTIVE",
-  "SUSPENDED",
-  "PENDING",
-  "PAUSED",
-];
+const partnerStatus = z.enum(["ACTIVE", "SUSPENDED", "PENDING", "PAUSED"], {
+  message: "حالة غير صالحة",
+});
+
+const listQuerySchema = paginationSchema.extend({
+  type: partnerType.optional(),
+  status: partnerStatus.optional(),
+});
+
+// `rating` and `totalTasks` are derived server-side and are deliberately absent,
+// so `.strict()` turns an attempt to set them into a 400.
+const createPartnerSchema = z
+  .object({
+    userId: z.string().trim().min(1, { message: "المستخدم والاسم ورقم الهاتف مطلوبة" }),
+    type: partnerType,
+    name: z.string().trim().min(1, { message: "المستخدم والاسم ورقم الهاتف مطلوبة" }),
+    phone: z.string().trim().min(1, { message: "المستخدم والاسم ورقم الهاتف مطلوبة" }),
+    email: z.string().trim().min(1).optional(),
+    governorateId: nonEmpty.optional(),
+    address: z.string().trim().min(1).optional(),
+    status: partnerStatus.default("PENDING"),
+    isSanadLinked: z.boolean().default(false),
+    complexId: nonEmpty.optional(),
+  })
+  .strict();
 
 // GET /api/partners — List all partners (req L128-182).
 // Dispatch (OPERATIONS) needs to read partners to assign orders.
 export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
-  const { searchParams } = req.nextUrl;
-  const type = searchParams.get("type");
-  const status = searchParams.get("status");
-
-  // Clamp: pageSize was unbounded and a non-numeric ?page produced skip: NaN.
-  const page = Math.max(1, parseInt(searchParams.get("page") || "1") || 1);
-  const pageSize = Math.min(
-    100,
-    Math.max(1, parseInt(searchParams.get("pageSize") || "20") || 20)
+  // Clamped by `paginationSchema`: pageSize was unbounded and a non-numeric
+  // ?page produced skip: NaN.
+  const { page, pageSize, type, status } = parseQuery(
+    req.nextUrl.searchParams,
+    listQuerySchema
   );
 
-  const where: Record<string, unknown> = {};
-  if (type && PARTNER_TYPES.includes(type as UserRole)) where.type = type;
-  if (status && PARTNER_STATUSES.includes(status as PartnerStatus)) where.status = status;
+  const where = {
+    ...(type ? { type } : {}),
+    ...(status ? { status } : {}),
+  };
 
   const [partners, total] = await Promise.all([
     prisma.partner.findMany({
@@ -66,40 +79,21 @@ export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
 // `rating`, `totalTasks` or `status: "ACTIVE"` on a partner that had not been
 // vetted. Only the fields below are writable.
 export const POST = withAuth({ roles: ROLES.ADMIN }, async (req) => {
-  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-  }
-
-  const { userId, type, name, phone, email, governorateId, address, status, isSanadLinked, complexId } =
-    body;
-
-  if (typeof userId !== "string" || typeof name !== "string" || typeof phone !== "string") {
-    return NextResponse.json(
-      { error: "المستخدم والاسم ورقم الهاتف مطلوبة" },
-      { status: 400 }
-    );
-  }
-  if (typeof type !== "string" || !PARTNER_TYPES.includes(type as UserRole)) {
-    return NextResponse.json({ error: "نوع الشريك غير صالح" }, { status: 400 });
-  }
-  if (status !== undefined && !PARTNER_STATUSES.includes(status as PartnerStatus)) {
-    return NextResponse.json({ error: "حالة غير صالحة" }, { status: 400 });
-  }
+  const input = await parseBody(req, createPartnerSchema);
 
   const partner = await prisma.partner.create({
     // Explicit allow-list — never spread the request body into Prisma.
     data: {
-      userId,
-      type: type as UserRole,
-      name,
-      phone,
-      email: typeof email === "string" ? email : null,
-      governorateId: typeof governorateId === "string" ? governorateId : null,
-      address: typeof address === "string" ? address : null,
-      status: (status as PartnerStatus) ?? "PENDING",
-      isSanadLinked: typeof isSanadLinked === "boolean" ? isSanadLinked : false,
-      complexId: typeof complexId === "string" ? complexId : null,
+      userId: input.userId,
+      type: input.type,
+      name: input.name,
+      phone: input.phone,
+      email: input.email ?? null,
+      governorateId: input.governorateId ?? null,
+      address: input.address ?? null,
+      status: input.status,
+      isSanadLinked: input.isSanadLinked,
+      complexId: input.complexId ?? null,
       wallet: { create: {} }, // Auto-create wallet
     },
     include: { wallet: true },

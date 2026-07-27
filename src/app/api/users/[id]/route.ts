@@ -1,8 +1,22 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
+
+// `role` is deliberately absent: with `.strict()` a `role` key is an
+// unrecognised key and therefore a 400, rather than being silently dropped.
+const updateUserSchema = z
+  .object({
+    name: z.string().trim().min(1).optional(),
+    email: z.string().trim().toLowerCase().email().optional(),
+    phone: z.string().trim().min(6).optional(),
+    isActive: z.boolean().optional(),
+    governorateId: z.string().trim().min(1).optional(),
+  })
+  .strict();
 
 // GET /api/users/[id] — Read a single user.
 export const GET = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (_req, { params }) => {
@@ -23,29 +37,17 @@ export const GET = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (_req, { params }
 // for this endpoint and are rejected outright rather than silently dropped.
 export const PATCH = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
   const { id } = await params;
-  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-  }
-
-  if ("role" in body) {
-    return NextResponse.json(
-      { error: "لا يمكن تغيير الدور من هذا المسار" },
-      { status: 400 }
-    );
-  }
-
-  const { name, email, phone, isActive, governorateId } = body;
+  const input = await parseBody(req, updateUserSchema);
 
   const data = await prisma.user.update({
     where: { id },
     // Explicit allow-list — never spread the request body into Prisma.
     data: {
-      name: typeof name === "string" ? name : undefined,
-      email: typeof email === "string" ? email.trim().toLowerCase() : undefined,
-      phone: typeof phone === "string" ? phone : undefined,
-      isActive: typeof isActive === "boolean" ? isActive : undefined,
-      governorateId: typeof governorateId === "string" ? governorateId : undefined,
+      name: input.name,
+      email: input.email,
+      phone: input.phone,
+      isActive: input.isActive,
+      governorateId: input.governorateId,
     },
     select: {
       id: true,

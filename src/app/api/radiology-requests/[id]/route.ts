@@ -1,23 +1,38 @@
 import { NextResponse } from "next/server";
-import type { Prisma } from "@prisma/client";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { nonEmpty, parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 // Free-text `String` column — see prisma/schema.prisma (RadiologyRequest).
-const RADIOLOGY_STATUSES: readonly string[] = [
-  "scheduled",
-  "imaged",
-  "report_ready",
-  "images_attached",
-  "sent_to_doctor",
-];
+const radiologyStatus = z.enum(
+  ["scheduled", "imaged", "report_ready", "images_attached", "sent_to_doctor"],
+  { message: "حالة غير صالحة" }
+);
 
 /** `images` is a JSON array of storage URLs. */
-function isImageList(value: unknown): boolean {
-  return Array.isArray(value) && value.every((u) => typeof u === "string");
-}
+const images = z.array(z.string(), { message: "الصور غير صالحة" });
+
+/** An ISO string or epoch number — a bare coercion would also accept booleans. */
+const appointmentDate = z
+  .union([z.string(), z.number()], { message: "تاريخ الموعد غير صالح" })
+  .pipe(z.coerce.date({ message: "تاريخ الموعد غير صالح" }));
+
+// Allow-list of the editable columns: `report` is the radiologist's finding and
+// `images` are the study URLs; the body used to be spread into update, so either
+// could be rewritten by anyone. `.strict()` makes an unknown key a 400.
+const updateRadiologyRequestSchema = z
+  .object({
+    status: radiologyStatus.optional(),
+    report: z.string().optional(),
+    images: images.optional(),
+    equipmentType: z.string().optional(),
+    appointmentDate: appointmentDate.optional(),
+    requestType: nonEmpty.optional(),
+  })
+  .strict();
 
 // GET /api/radiology-requests/[id]
 export const GET = withAuth<Ctx>({ roles: ROLES.CLINICAL }, async (_req, { params }) => {
@@ -32,35 +47,9 @@ export const GET = withAuth<Ctx>({ roles: ROLES.CLINICAL }, async (_req, { param
 });
 
 // PATCH /api/radiology-requests/[id] — Update a request.
-// `report` is the radiologist's finding and `images` are the study URLs; the
-// body used to be spread into update, so either could be rewritten by anyone.
 export const PATCH = withAuth<Ctx>({ roles: ROLES.CLINICAL }, async (req, { params }) => {
   const { id } = await params;
-
-  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-  }
-
-  const { status, report, images, equipmentType, appointmentDate, requestType } = body;
-
-  if (status !== undefined && !RADIOLOGY_STATUSES.includes(status as string)) {
-    return NextResponse.json({ error: "حالة غير صالحة" }, { status: 400 });
-  }
-  if (images !== undefined && !isImageList(images)) {
-    return NextResponse.json({ error: "الصور غير صالحة" }, { status: 400 });
-  }
-
-  let parsedDate: Date | undefined;
-  if (appointmentDate !== undefined) {
-    if (typeof appointmentDate !== "string" && typeof appointmentDate !== "number") {
-      return NextResponse.json({ error: "تاريخ الموعد غير صالح" }, { status: 400 });
-    }
-    parsedDate = new Date(appointmentDate);
-    if (Number.isNaN(parsedDate.getTime())) {
-      return NextResponse.json({ error: "تاريخ الموعد غير صالح" }, { status: 400 });
-    }
-  }
+  const input = await parseBody(req, updateRadiologyRequestSchema);
 
   const existing = await prisma.radiologyRequest.findUnique({
     where: { id },
@@ -70,16 +59,16 @@ export const PATCH = withAuth<Ctx>({ roles: ROLES.CLINICAL }, async (req, { para
     return NextResponse.json({ error: "غير موجود" }, { status: 404 });
   }
 
-  // Explicit allow-list — `undefined` leaves a column untouched in Prisma.
+  // `undefined` leaves a column untouched in Prisma.
   const data = await prisma.radiologyRequest.update({
     where: { id },
     data: {
-      status: typeof status === "string" ? status : undefined,
-      report: typeof report === "string" ? report : undefined,
-      images: images === undefined ? undefined : (images as Prisma.InputJsonValue),
-      equipmentType: typeof equipmentType === "string" ? equipmentType : undefined,
-      appointmentDate: parsedDate,
-      requestType: typeof requestType === "string" ? requestType : undefined,
+      status: input.status,
+      report: input.report,
+      images: input.images,
+      equipmentType: input.equipmentType,
+      appointmentDate: input.appointmentDate,
+      requestType: input.requestType,
     },
   });
 

@@ -1,19 +1,33 @@
 import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { jsonValue, parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-const str = (v: unknown) => (typeof v === "string" ? v : undefined);
-const bool = (v: unknown) => (typeof v === "boolean" ? v : undefined);
-const json = (v: unknown) =>
-  v === undefined || v === null ? undefined : (v as Prisma.InputJsonValue);
-const date = (v: unknown) => {
-  if (typeof v !== "string" && typeof v !== "number") return undefined;
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? undefined : d;
-};
+/** A Prisma `Json` column: any JSON value, with `null` meaning "leave alone". */
+const jsonInput = jsonValue
+  .optional()
+  .transform((v) => (v === undefined || v === null ? undefined : (v as Prisma.InputJsonValue)));
+
+/** `dateish`, carrying the message this route already returned. */
+const requiredDate = z.coerce.date({ message: "تاريخ البداية وتاريخ الانتهاء مطلوبان" });
+
+// `partnerId` always comes from the route param and is deliberately absent.
+const updateContractSchema = z
+  .object({
+    startDate: requiredDate,
+    endDate: requiredDate,
+    services: jsonInput,
+    governorates: jsonInput,
+    workHours: jsonInput,
+    minPrices: jsonInput,
+    terms: z.string().optional(),
+    isActive: z.boolean().optional(),
+  })
+  .strict();
 
 // GET /api/partners/[id]/contract
 export const GET = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (_req, { params }) => {
@@ -31,30 +45,18 @@ export const GET = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (_req, { params }
 // on the model — including `partnerId` — was writable.
 export const PUT = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
   const { id } = await params;
-  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-  }
-
-  const startDate = date(body.startDate);
-  const endDate = date(body.endDate);
-  if (!startDate || !endDate) {
-    return NextResponse.json(
-      { error: "تاريخ البداية وتاريخ الانتهاء مطلوبان" },
-      { status: 400 }
-    );
-  }
+  const input = await parseBody(req, updateContractSchema);
 
   // Explicit allow-list — never spread the request body into Prisma.
   const fields = {
-    startDate,
-    endDate,
-    services: json(body.services),
-    governorates: json(body.governorates),
-    workHours: json(body.workHours),
-    minPrices: json(body.minPrices),
-    terms: str(body.terms),
-    isActive: bool(body.isActive),
+    startDate: input.startDate,
+    endDate: input.endDate,
+    services: input.services,
+    governorates: input.governorates,
+    workHours: input.workHours,
+    minPrices: input.minPrices,
+    terms: input.terms,
+    isActive: input.isActive,
   };
 
   const data = await prisma.contract.upsert({

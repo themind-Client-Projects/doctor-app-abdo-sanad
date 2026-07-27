@@ -1,16 +1,29 @@
 import { NextResponse } from "next/server";
-import type { PartnerStatus } from "@prisma/client";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { nonEmpty, parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-const PARTNER_STATUSES: readonly PartnerStatus[] = [
-  "ACTIVE",
-  "SUSPENDED",
-  "PENDING",
-  "PAUSED",
-];
+const partnerStatus = z.enum(["ACTIVE", "SUSPENDED", "PENDING", "PAUSED"], {
+  message: "حالة غير صالحة",
+});
+
+// `rating`, `totalTasks` and `userId` are derived/immutable here and are
+// deliberately absent — `.strict()` makes an attempt to set them a 400.
+const updatePartnerSchema = z
+  .object({
+    name: nonEmpty.optional(),
+    phone: nonEmpty.optional(),
+    email: nonEmpty.optional(),
+    governorateId: nonEmpty.optional(),
+    address: nonEmpty.optional(),
+    status: partnerStatus.optional(),
+    isSanadLinked: z.boolean().optional(),
+    complexId: nonEmpty.optional(),
+  })
+  .strict();
 
 // GET /api/partners/[id] — dispatch (OPERATIONS) reads partner detail.
 export const GET = withAuth<Ctx>({ roles: ROLES.OPERATIONS }, async (_req, { params }) => {
@@ -38,28 +51,19 @@ export const GET = withAuth<Ctx>({ roles: ROLES.OPERATIONS }, async (_req, { par
 // fields; rating/totalTasks are derived and must not be set over the wire.
 export const PATCH = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
   const { id } = await params;
-  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-  }
-
-  const { name, phone, email, governorateId, address, status, isSanadLinked, complexId } = body;
-
-  if (status !== undefined && !PARTNER_STATUSES.includes(status as PartnerStatus)) {
-    return NextResponse.json({ error: "حالة غير صالحة" }, { status: 400 });
-  }
+  const input = await parseBody(req, updatePartnerSchema);
 
   const partner = await prisma.partner.update({
     where: { id },
     data: {
-      name: typeof name === "string" ? name : undefined,
-      phone: typeof phone === "string" ? phone : undefined,
-      email: typeof email === "string" ? email : undefined,
-      governorateId: typeof governorateId === "string" ? governorateId : undefined,
-      address: typeof address === "string" ? address : undefined,
-      status: status === undefined ? undefined : (status as PartnerStatus),
-      isSanadLinked: typeof isSanadLinked === "boolean" ? isSanadLinked : undefined,
-      complexId: typeof complexId === "string" ? complexId : undefined,
+      name: input.name,
+      phone: input.phone,
+      email: input.email,
+      governorateId: input.governorateId,
+      address: input.address,
+      status: input.status,
+      isSanadLinked: input.isSanadLinked,
+      complexId: input.complexId,
     },
   });
 

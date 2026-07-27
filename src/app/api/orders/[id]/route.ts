@@ -1,11 +1,30 @@
 import { NextResponse } from "next/server";
-import type { Priority } from "@prisma/client";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { nonEmpty, parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-const PRIORITIES: readonly Priority[] = ["NORMAL", "URGENT", "CRITICAL"];
+const orderPriority = z.enum(["NORMAL", "URGENT", "CRITICAL"], {
+  message: "أولوية غير صالحة",
+});
+
+// Only genuinely editable descriptive fields are allow-listed. `status` and
+// `paymentStatus` belong to the accept / reject / hold endpoints and are
+// deliberately absent, as are the assignment columns and `patientId`.
+// `.strict()` so an unexpected key is a 400 rather than being silently ignored.
+const updateOrderSchema = z
+  .object({
+    patientName: nonEmpty.optional(),
+    patientPhone: nonEmpty.optional(),
+    governorateId: nonEmpty.optional(),
+    area: z.string().optional(),
+    address: z.string().optional(),
+    notes: z.string().optional(),
+    priority: orderPriority.optional(),
+  })
+  .strict();
 
 // GET /api/orders/[id] — Get order details
 export const GET = withAuth<Ctx>(
@@ -41,32 +60,22 @@ export const GET = withAuth<Ctx>(
 //
 // This used to spread the raw body into prisma.order.update, so one call could
 // set `status` / `paymentStatus`, reassign every partner, or rewrite
-// `patientId` — bypassing the entire order lifecycle. Only genuinely editable
-// descriptive fields are allow-listed here; `status` and `paymentStatus` belong
-// to the accept / reject / hold endpoints and are deliberately NOT settable.
+// `patientId` — bypassing the entire order lifecycle.
 export const PATCH = withAuth<Ctx>(
   { roles: ROLES.OPERATIONS },
   async (req, { params }) => {
     const { id } = await params;
-    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!body || typeof body !== "object") {
-      return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-    }
+    const input = await parseBody(req, updateOrderSchema);
 
-    if (body.priority !== undefined && !PRIORITIES.includes(body.priority as Priority)) {
-      return NextResponse.json({ error: "أولوية غير صالحة" }, { status: 400 });
-    }
-
-    const str = (v: unknown) => (typeof v === "string" ? v : undefined);
-
+    // `undefined` leaves a column untouched in Prisma.
     const data = {
-      patientName: str(body.patientName),
-      patientPhone: str(body.patientPhone),
-      governorateId: str(body.governorateId),
-      area: str(body.area),
-      address: str(body.address),
-      notes: str(body.notes),
-      priority: body.priority as Priority | undefined,
+      patientName: input.patientName,
+      patientPhone: input.patientPhone,
+      governorateId: input.governorateId,
+      area: input.area,
+      address: input.address,
+      notes: input.notes,
+      priority: input.priority,
     };
 
     const existing = await prisma.order.findUnique({ where: { id }, select: { id: true } });

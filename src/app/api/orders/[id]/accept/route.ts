@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
+
+// Accepting takes no input: `.strict()` on an empty object means a body that
+// still carries an `employeeId` is a 400 instead of being quietly ignored.
+const acceptOrderSchema = z.object({}).strict();
 
 // POST /api/orders/[id]/accept — Accept order (req L318 "قبول")
 //
@@ -15,8 +21,9 @@ type Ctx = { params: Promise<{ id: string }> };
 // created when it is absent, making a repeated accept a no-op.
 export const POST = withAuth<Ctx>(
   { roles: ROLES.OPERATIONS },
-  async (_req, { params }, identity) => {
+  async (req, { params }, identity) => {
     const { id } = await params;
+    await parseBody(req, acceptOrderSchema);
 
     const existing = await prisma.order.findUnique({
       where: { id },

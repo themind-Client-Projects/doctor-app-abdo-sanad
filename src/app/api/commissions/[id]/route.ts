@@ -1,44 +1,41 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { nonEmpty, parseBody, percentage } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-const share = (v: unknown) =>
-  typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 100 ? v : undefined;
+// `contractId` is deliberately absent — a rule must not be repointed at another
+// partner's contract. `.strict()` makes an attempt to do so a 400.
+const updateCommissionSchema = z
+  .object({
+    serviceType: nonEmpty.optional(),
+    partnerShare: percentage.optional(),
+    complexShare: percentage.optional(),
+    waridShare: percentage.optional(),
+    nurseShare: percentage.optional(),
+    driverShare: percentage.optional(),
+  })
+  .strict();
 
 // PUT /api/commissions/[id] — update a commission rule.
 // The body used to be spread into update, so `contractId` could be repointed at
 // another partner's contract and the shares accepted any value.
 export const PUT = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
   const { id } = await params;
-  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-  }
-
-  for (const key of [
-    "partnerShare",
-    "complexShare",
-    "waridShare",
-    "nurseShare",
-    "driverShare",
-  ] as const) {
-    if (body[key] !== undefined && share(body[key]) === undefined) {
-      return NextResponse.json({ error: "نسب العمولة غير صالحة" }, { status: 400 });
-    }
-  }
+  const input = await parseBody(req, updateCommissionSchema);
 
   const data = await prisma.commissionRule.update({
     where: { id },
     // Explicit allow-list — contractId is not rewritable here.
     data: {
-      serviceType: typeof body.serviceType === "string" ? body.serviceType : undefined,
-      partnerShare: share(body.partnerShare),
-      complexShare: share(body.complexShare),
-      waridShare: share(body.waridShare),
-      nurseShare: share(body.nurseShare),
-      driverShare: share(body.driverShare),
+      serviceType: input.serviceType,
+      partnerShare: input.partnerShare,
+      complexShare: input.complexShare,
+      waridShare: input.waridShare,
+      nurseShare: input.nurseShare,
+      driverShare: input.driverShare,
     },
   });
 

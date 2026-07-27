@@ -1,9 +1,27 @@
 import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { AuthError, ROLES, withAuth } from "@/lib/api-auth";
+import { parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ patientId: string }> };
+
+/** Json columns: absent stays absent so a partial update can't blank a field. */
+const jsonField = z.unknown().optional();
+
+const updateRecordSchema = z
+  .object({
+    medicalHistory: z.string().optional(),
+    chronicDiseases: jsonField,
+    allergies: jsonField,
+    currentMedications: jsonField,
+    latestLabResults: jsonField,
+    latestRadiology: jsonField,
+    previousPrescriptions: jsonField,
+    treatingDoctorId: z.string().trim().min(1).optional(),
+  })
+  .strict();
 
 // GET /api/medical-records/[patientId] — Brief medical file (req L409-419, 8 fields)
 //
@@ -35,25 +53,20 @@ export const PUT = withAuth<Ctx>(
   { roles: ROLES.CLINICAL },
   async (req, { params }) => {
     const { patientId } = await params;
-    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!body || typeof body !== "object") {
-      return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-    }
+    const input = await parseBody(req, updateRecordSchema);
 
-    // Explicit allow-list — the body used to be spread into upsert, so any
-    // column on the model was writable.
-    const str = (v: unknown) => (typeof v === "string" ? v : undefined);
-    const json = (v: unknown) => (v === undefined ? undefined : (v as Prisma.InputJsonValue));
+    const json = (v: unknown) =>
+      v === undefined ? undefined : (v as Prisma.InputJsonValue);
 
     const fields = {
-      medicalHistory: str(body.medicalHistory),
-      chronicDiseases: json(body.chronicDiseases),
-      allergies: json(body.allergies),
-      currentMedications: json(body.currentMedications),
-      latestLabResults: json(body.latestLabResults),
-      latestRadiology: json(body.latestRadiology),
-      previousPrescriptions: json(body.previousPrescriptions),
-      treatingDoctorId: str(body.treatingDoctorId),
+      medicalHistory: input.medicalHistory,
+      chronicDiseases: json(input.chronicDiseases),
+      allergies: json(input.allergies),
+      currentMedications: json(input.currentMedications),
+      latestLabResults: json(input.latestLabResults),
+      latestRadiology: json(input.latestRadiology),
+      previousPrescriptions: json(input.previousPrescriptions),
+      treatingDoctorId: input.treatingDoctorId,
     };
 
     const data = await prisma.patientMedicalRecord.upsert({

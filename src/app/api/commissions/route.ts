@@ -1,9 +1,20 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { parseBody, percentage } from "@/lib/validation";
 
-const share = (v: unknown) =>
-  typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 100 ? v : undefined;
+const createCommissionSchema = z
+  .object({
+    contractId: z.string().trim().min(1, { message: "العقد ونوع الخدمة مطلوبان" }),
+    serviceType: z.string().trim().min(1, { message: "العقد ونوع الخدمة مطلوبان" }),
+    partnerShare: percentage,
+    waridShare: percentage,
+    complexShare: percentage.default(0),
+    nurseShare: percentage.default(0),
+    driverShare: percentage.default(0),
+  })
+  .strict();
 
 // GET /api/commissions — List commission rules (req L210-230 ⭐)
 export const GET = withAuth({ roles: ROLES.ADMIN }, async () => {
@@ -18,32 +29,18 @@ export const GET = withAuth({ roles: ROLES.ADMIN }, async () => {
 // revenue split (the most critical config in the product) could be written with
 // missing or nonsense values.
 export const POST = withAuth({ roles: ROLES.ADMIN }, async (req) => {
-  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-  }
-
-  const { contractId, serviceType } = body;
-  const partnerShare = share(body.partnerShare);
-  const waridShare = share(body.waridShare);
-
-  if (typeof contractId !== "string" || typeof serviceType !== "string") {
-    return NextResponse.json({ error: "العقد ونوع الخدمة مطلوبان" }, { status: 400 });
-  }
-  if (partnerShare === undefined || waridShare === undefined) {
-    return NextResponse.json({ error: "نسب العمولة غير صالحة" }, { status: 400 });
-  }
+  const input = await parseBody(req, createCommissionSchema);
 
   const data = await prisma.commissionRule.create({
     // Explicit allow-list — never spread the request body into Prisma.
     data: {
-      contractId,
-      serviceType,
-      partnerShare,
-      waridShare,
-      complexShare: share(body.complexShare) ?? 0,
-      nurseShare: share(body.nurseShare) ?? 0,
-      driverShare: share(body.driverShare) ?? 0,
+      contractId: input.contractId,
+      serviceType: input.serviceType,
+      partnerShare: input.partnerShare,
+      waridShare: input.waridShare,
+      complexShare: input.complexShare,
+      nurseShare: input.nurseShare,
+      driverShare: input.driverShare,
     },
   });
 

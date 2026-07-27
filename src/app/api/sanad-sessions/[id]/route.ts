@@ -1,48 +1,43 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 /** req L445-453 — waiting → calling → in_session → ended. */
-const SESSION_STATUSES = ["waiting", "calling", "in_session", "ended"] as const;
+const sessionStatus = z.enum(["waiting", "calling", "in_session", "ended"], {
+  message: "حالة الجلسة غير صالحة",
+});
+
+/** An ISO string or epoch number — a bare coercion would also accept booleans. */
+const dateValue = z
+  .union([z.string(), z.number()])
+  .pipe(z.coerce.date({ message: "تاريخ غير صالح" }));
+
+/** `""` and `null` clear the timestamp, as they did before. */
+const nullableTimestamp = z
+  .union([z.literal(""), z.null(), dateValue], { message: "تاريخ غير صالح" })
+  .transform((value) => (value instanceof Date ? value : null));
+
+// The body used to be spread into prisma.sanadSession.update, so a caller could
+// rewrite doctorId / patientId and hand somebody else's consultation over — both
+// are deliberately absent here. `.strict()` makes an unknown key a 400.
+const updateSanadSessionSchema = z
+  .object({
+    status: sessionStatus.optional(),
+    startedAt: nullableTimestamp.optional(),
+    endedAt: nullableTimestamp.optional(),
+  })
+  .strict();
 
 // PATCH /api/sanad-sessions/[id] — Advance a session (req L445-453).
-// The body used to be spread into prisma.sanadSession.update, so a caller could
-// rewrite doctorId / patientId and hand somebody else's consultation over.
 export const PATCH = withAuth<Ctx>(
   { roles: ROLES.OPERATIONS },
   async (req, { params }) => {
     const { id } = await params;
-    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!body || typeof body !== "object") {
-      return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-    }
-
-    if (
-      body.status !== undefined &&
-      !SESSION_STATUSES.includes(body.status as (typeof SESSION_STATUSES)[number])
-    ) {
-      return NextResponse.json({ error: "حالة الجلسة غير صالحة" }, { status: 400 });
-    }
-
-    const timestamps: { startedAt?: Date | null; endedAt?: Date | null } = {};
-    for (const key of ["startedAt", "endedAt"] as const) {
-      const value = body[key];
-      if (value === undefined) continue;
-      if (value === null || value === "") {
-        timestamps[key] = null;
-        continue;
-      }
-      if (typeof value !== "string" && typeof value !== "number") {
-        return NextResponse.json({ error: "تاريخ غير صالح" }, { status: 400 });
-      }
-      const date = new Date(value);
-      if (Number.isNaN(date.getTime())) {
-        return NextResponse.json({ error: "تاريخ غير صالح" }, { status: 400 });
-      }
-      timestamps[key] = date;
-    }
+    const input = await parseBody(req, updateSanadSessionSchema);
 
     const existing = await prisma.sanadSession.findUnique({
       where: { id },
@@ -52,11 +47,13 @@ export const PATCH = withAuth<Ctx>(
       return NextResponse.json({ error: "غير موجود" }, { status: 404 });
     }
 
+    // `undefined` leaves a column untouched in Prisma.
     const data = await prisma.sanadSession.update({
       where: { id },
       data: {
-        status: typeof body.status === "string" ? body.status : undefined,
-        ...timestamps,
+        status: input.status,
+        startedAt: input.startedAt,
+        endedAt: input.endedAt,
       },
     });
 

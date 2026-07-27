@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import type { Prisma, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -14,7 +16,19 @@ const SLOTS = {
   radiology: { column: "assignedRadiologyId", partnerType: "RADIOLOGY" },
 } as const satisfies Record<string, { column: string; partnerType: UserRole }>;
 
-type SlotName = keyof typeof SLOTS;
+// The five assignee slots — anything else is a 400, not a Prisma crash.
+// `.strict()` so an unexpected key (e.g. a `status`) cannot ride along.
+const assignOrderSchema = z
+  .object({
+    type: z.enum(["nurse", "driver", "lab", "pharmacy", "radiology"], {
+      message: "نوع غير صالح",
+    }),
+    partnerId: z
+      .string({ message: "معرف الشريك مطلوب" })
+      .trim()
+      .min(1, { message: "معرف الشريك مطلوب" }),
+  })
+  .strict();
 
 // POST /api/orders/[id]/assign — Assign service provider (req L324-382 Dispatch Center)
 //
@@ -26,20 +40,9 @@ export const POST = withAuth<Ctx>(
   { roles: ROLES.OPERATIONS },
   async (req, { params }, identity) => {
     const { id } = await params;
-    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!body || typeof body !== "object") {
-      return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-    }
+    const { type, partnerId } = await parseBody(req, assignOrderSchema);
 
-    const { type, partnerId } = body;
-    if (typeof type !== "string" || !(type in SLOTS)) {
-      return NextResponse.json({ error: "نوع غير صالح" }, { status: 400 });
-    }
-    if (typeof partnerId !== "string" || !partnerId) {
-      return NextResponse.json({ error: "معرف الشريك مطلوب" }, { status: 400 });
-    }
-
-    const slot = SLOTS[type as SlotName];
+    const slot = SLOTS[type];
 
     const order = await prisma.order.findUnique({ where: { id }, select: { id: true } });
     if (!order) {

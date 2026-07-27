@@ -1,6 +1,26 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { nonEmpty, parseBody } from "@/lib/validation";
+
+// `callerId` is deliberately absent — it is the verified caller, never a
+// client-supplied id. `.strict()` makes an unknown key a 400.
+const createCallLogSchema = z
+  .object({
+    orderId: nonEmpty.optional(),
+    receiverId: z
+      .string({ message: "المستقبل مطلوب" })
+      .trim()
+      .min(1, { message: "المستقبل مطلوب" }),
+    receiverType: z
+      .string({ message: "نوع المستقبل مطلوب" })
+      .trim()
+      .min(1, { message: "نوع المستقبل مطلوب" }),
+    duration: z.number().int().nonnegative().optional(),
+    notes: z.string().optional(),
+  })
+  .strict();
 
 // GET /api/call-logs — Recent calls (req L421-431)
 export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
@@ -26,32 +46,16 @@ export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
 // The body used to be spread straight into prisma.callLog.create, so the caller
 // id was whatever the client claimed. It is now the verified session user.
 export const POST = withAuth({ roles: ROLES.OPERATIONS }, async (req, _ctx, identity) => {
-  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-  }
-
-  const { receiverId, receiverType } = body;
-  if (typeof receiverId !== "string" || !receiverId) {
-    return NextResponse.json({ error: "المستقبل مطلوب" }, { status: 400 });
-  }
-  if (typeof receiverType !== "string" || !receiverType) {
-    return NextResponse.json({ error: "نوع المستقبل مطلوب" }, { status: 400 });
-  }
-
-  const duration =
-    typeof body.duration === "number" && Number.isFinite(body.duration)
-      ? Math.max(0, Math.trunc(body.duration))
-      : null;
+  const input = await parseBody(req, createCallLogSchema);
 
   const data = await prisma.callLog.create({
     data: {
-      orderId: typeof body.orderId === "string" && body.orderId ? body.orderId : null,
+      orderId: input.orderId ?? null,
       callerId: identity.userId,
-      receiverId,
-      receiverType,
-      duration,
-      notes: typeof body.notes === "string" ? body.notes : null,
+      receiverId: input.receiverId,
+      receiverType: input.receiverType,
+      duration: input.duration ?? null,
+      notes: input.notes ?? null,
     },
   });
 

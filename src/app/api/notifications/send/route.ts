@@ -1,11 +1,32 @@
 import { NextResponse } from "next/server";
-import type { NotificationChannel } from "@prisma/client";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { parseBody } from "@/lib/validation";
 import { sendEmail } from "@/lib/resend";
 import { sendWhatsAppNotification } from "@/lib/ultramessages";
 
-const CHANNELS: readonly NotificationChannel[] = ["IN_APP", "EMAIL", "WHATSAPP"];
+/** The `NotificationChannel` enum from prisma/schema.prisma. */
+const notificationChannel = z.enum(["IN_APP", "EMAIL", "WHATSAPP"], {
+  message: "قناة غير صالحة",
+});
+
+const requiredField = z
+  .string({ message: "بيانات غير صالحة" })
+  .trim()
+  .min(1, { message: "بيانات غير صالحة" });
+
+// `.strict()` so an unexpected key is a 400 rather than being silently ignored.
+const sendNotificationSchema = z
+  .object({
+    userId: requiredField,
+    title: requiredField,
+    body: requiredField,
+    type: requiredField,
+    // An explicit `null` still means "in-app", as it did before.
+    channel: notificationChannel.nullable().optional(),
+  })
+  .strict();
 
 /**
  * Escape text before it is interpolated into an HTML email body.
@@ -30,33 +51,12 @@ function escapeHtml(value: string): string {
 // Operations-only: this is a send-anything-to-anyone primitive, and it was open
 // to unauthenticated callers.
 export const POST = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
-  const payload = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!payload || typeof payload !== "object") {
-    return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-  }
+  const { userId, title, body, type, channel } = await parseBody(
+    req,
+    sendNotificationSchema
+  );
 
-  const { userId, title, body, type, channel } = payload;
-
-  if (
-    typeof userId !== "string" ||
-    typeof title !== "string" ||
-    typeof body !== "string" ||
-    typeof type !== "string" ||
-    !userId.trim() ||
-    !title.trim() ||
-    !body.trim() ||
-    !type.trim()
-  ) {
-    return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-  }
-
-  if (channel !== undefined && channel !== null && typeof channel !== "string") {
-    return NextResponse.json({ error: "قناة غير صالحة" }, { status: 400 });
-  }
-  const resolvedChannel = (channel as string | undefined | null) || "IN_APP";
-  if (!CHANNELS.includes(resolvedChannel as NotificationChannel)) {
-    return NextResponse.json({ error: "قناة غير صالحة" }, { status: 400 });
-  }
+  const resolvedChannel = channel ?? "IN_APP";
 
   // Confirm the recipient exists *before* writing the row — an unknown userId
   // used to create an orphan notification and only then fail.
@@ -75,7 +75,7 @@ export const POST = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
       title,
       body,
       type,
-      channel: resolvedChannel as NotificationChannel,
+      channel: resolvedChannel,
     },
   });
 

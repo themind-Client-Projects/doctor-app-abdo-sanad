@@ -1,8 +1,22 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { amount, parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ partnerId: string }> };
+
+// `walletId` is deliberately absent — it is resolved from the route param only.
+// `.strict()` turns a client-supplied `walletId` into a 400 instead of letting
+// it reach Prisma.
+const createTransferSchema = z
+  .object({
+    amount,
+    type: z.enum(["CREDIT", "DEBIT"], { message: "نوع العملية غير صالح" }),
+    description: z.string().optional(),
+    orderId: z.string().optional(),
+  })
+  .strict();
 
 export const GET = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (_req, { params }) => {
   const { partnerId } = await params;
@@ -26,19 +40,7 @@ export const GET = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (_req, { params }
 // straight to the DB). walletId now comes only from the looked-up wallet.
 export const POST = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
   const { partnerId } = await params;
-  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-  }
-
-  const { amount, type, description, orderId } = body;
-
-  if (typeof amount !== "number" || !Number.isFinite(amount)) {
-    return NextResponse.json({ error: "المبلغ غير صالح" }, { status: 400 });
-  }
-  if (type !== "CREDIT" && type !== "DEBIT") {
-    return NextResponse.json({ error: "نوع العملية غير صالح" }, { status: 400 });
-  }
+  const input = await parseBody(req, createTransferSchema);
 
   const wallet = await prisma.wallet.findUnique({ where: { partnerId } });
   if (!wallet) return NextResponse.json({ error: "غير موجود" }, { status: 404 });
@@ -47,10 +49,10 @@ export const POST = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }
     // Explicit allow-list — never spread the request body into Prisma.
     data: {
       walletId: wallet.id,
-      amount,
-      type,
-      description: typeof description === "string" ? description : null,
-      orderId: typeof orderId === "string" ? orderId : null,
+      amount: input.amount,
+      type: input.type,
+      description: input.description ?? null,
+      orderId: input.orderId ?? null,
     },
   });
 

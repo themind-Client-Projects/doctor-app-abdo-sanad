@@ -1,37 +1,61 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import {
+  jsonValue,
+  nonEmpty,
+  paginationSchema,
+  parseBody,
+  parseQuery,
+} from "@/lib/validation";
 
 // LabSample.status is a free-text `String` column, so without validation a
 // caller could write {"status":"banana"} and drop a sample out of every
 // worklist. Vocabulary from prisma/schema.prisma (LabSample).
-const SAMPLE_STATUSES: readonly string[] = [
-  "received",
-  "in_lab",
-  "testing",
-  "ready",
-  "sent_to_doctor",
-  "sent_to_patient",
-];
+const sampleStatus = z.enum(
+  ["received", "in_lab", "testing", "ready", "sent_to_doctor", "sent_to_patient"],
+  { message: "حالة غير صالحة" }
+);
+
+/** `results` is a Json column: an object of test results. */
+const results = z.record(z.string(), jsonValue);
+
+/** `?status=` with no value means "no filter", as it did before. */
+const emptyToUndefined = (value: unknown) => (value === "" ? undefined : value);
+
+const listQuerySchema = paginationSchema.extend({
+  status: z.preprocess(emptyToUndefined, sampleStatus.optional()),
+  labId: z.preprocess(emptyToUndefined, nonEmpty.optional()),
+  orderId: z.preprocess(emptyToUndefined, nonEmpty.optional()),
+});
+
+// `.strict()` so an unexpected key is a 400 rather than being silently written —
+// the raw body used to be spread into prisma.labSample.create.
+const createLabSampleSchema = z
+  .object({
+    labId: z.string({ message: "المختبر مطلوب" }).trim().min(1, { message: "المختبر مطلوب" }),
+    sampleType: z
+      .string({ message: "نوع العينة مطلوب" })
+      .trim()
+      .min(1, { message: "نوع العينة مطلوب" }),
+    nurseId: nonEmpty.optional(),
+    orderId: nonEmpty.optional(),
+    status: sampleStatus.default("received"),
+    results: results.nullish(),
+  })
+  .strict();
 
 // GET /api/lab-samples — List samples, optionally filtered.
 export const GET = withAuth({ roles: ROLES.CLINICAL }, async (req) => {
-  const sp = req.nextUrl.searchParams;
-  const status = sp.get("status");
-  const labId = sp.get("labId");
-  const orderId = sp.get("orderId");
-
-  const page = Math.max(1, parseInt(sp.get("page") || "1") || 1);
-  const pageSize = Math.min(100, Math.max(1, parseInt(sp.get("pageSize") || "20") || 20));
+  const { page, pageSize, status, labId, orderId } = parseQuery(
+    req.nextUrl.searchParams,
+    listQuerySchema
+  );
 
   const where: Prisma.LabSampleWhereInput = {};
-  if (status) {
-    if (!SAMPLE_STATUSES.includes(status)) {
-      return NextResponse.json({ error: "حالة غير صالحة" }, { status: 400 });
-    }
-    where.status = status;
-  }
+  if (status) where.status = status;
   if (labId) where.labId = labId;
   if (orderId) where.orderId = orderId;
 
@@ -55,41 +79,17 @@ export const GET = withAuth({ roles: ROLES.CLINICAL }, async (req) => {
 });
 
 // POST /api/lab-samples — Create a sample.
-// The raw body used to be spread into prisma.labSample.create, so an anonymous
-// caller could attach fabricated `results` to a sample at creation time.
 export const POST = withAuth({ roles: ROLES.CLINICAL }, async (req) => {
-  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-  }
-
-  const { labId, sampleType, nurseId, orderId, status, results } = body;
-
-  if (typeof labId !== "string" || !labId.trim()) {
-    return NextResponse.json({ error: "المختبر مطلوب" }, { status: 400 });
-  }
-  if (typeof sampleType !== "string" || !sampleType.trim()) {
-    return NextResponse.json({ error: "نوع العينة مطلوب" }, { status: 400 });
-  }
-  if (status !== undefined && !SAMPLE_STATUSES.includes(status as string)) {
-    return NextResponse.json({ error: "حالة غير صالحة" }, { status: 400 });
-  }
-  if (results !== undefined && results !== null && typeof results !== "object") {
-    return NextResponse.json({ error: "النتائج غير صالحة" }, { status: 400 });
-  }
+  const input = await parseBody(req, createLabSampleSchema);
 
   const data = await prisma.labSample.create({
-    // Explicit allow-list — never spread the request body into Prisma.
     data: {
-      labId,
-      sampleType,
-      nurseId: typeof nurseId === "string" ? nurseId : null,
-      orderId: typeof orderId === "string" ? orderId : null,
-      status: typeof status === "string" ? status : "received",
-      results:
-        results === undefined || results === null
-          ? undefined
-          : (results as Prisma.InputJsonValue),
+      labId: input.labId,
+      sampleType: input.sampleType,
+      nurseId: input.nurseId ?? null,
+      orderId: input.orderId ?? null,
+      status: input.status,
+      results: (input.results ?? undefined) as Prisma.InputJsonValue | undefined,
     },
   });
 

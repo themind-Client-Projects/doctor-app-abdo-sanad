@@ -1,49 +1,59 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { nonEmpty, paginationSchema, parseBody, parseQuery } from "@/lib/validation";
 
 // Prescription.status is a free-text `String` column. Vocabulary from
 // prisma/schema.prisma (Prescription).
-const PRESCRIPTION_STATUSES: readonly string[] = [
-  "new",
-  "preparing",
-  "ready",
-  "delivered",
-  "returned",
-];
+const prescriptionStatus = z.enum(["new", "preparing", "ready", "delivered", "returned"], {
+  message: "حالة غير صالحة",
+});
 
 /** `medications` is the core clinical payload: a JSON array of objects. */
-function isMedicationList(value: unknown): boolean {
-  return (
-    Array.isArray(value) &&
-    value.every((m) => typeof m === "object" && m !== null && !Array.isArray(m))
-  );
-}
+const medications = z
+  .array(z.record(z.string(), z.unknown()), { message: "الأدوية غير صالحة" })
+  .min(1, { message: "الأدوية غير صالحة" });
+
+/** `?status=` with no value means "no filter", as it did before. */
+const emptyToUndefined = (value: unknown) => (value === "" ? undefined : value);
+
+const listQuerySchema = paginationSchema.extend({
+  patientId: z.preprocess(emptyToUndefined, nonEmpty.optional()),
+  doctorId: z.preprocess(emptyToUndefined, nonEmpty.optional()),
+  pharmacyId: z.preprocess(emptyToUndefined, nonEmpty.optional()),
+  status: z.preprocess(emptyToUndefined, prescriptionStatus.optional()),
+});
+
+// `.strict()` so an unexpected key is a 400 rather than being silently written —
+// the body used to be spread straight into prisma.prescription.create.
+const createPrescriptionSchema = z
+  .object({
+    doctorId: z.string({ message: "الطبيب مطلوب" }).trim().min(1, { message: "الطبيب مطلوب" }),
+    patientId: z.string({ message: "المريض مطلوب" }).trim().min(1, { message: "المريض مطلوب" }),
+    pharmacyId: nonEmpty.optional(),
+    orderId: nonEmpty.optional(),
+    medications,
+    status: prescriptionStatus.default("new"),
+    notes: z.string().optional(),
+  })
+  .strict();
 
 // GET /api/prescriptions — List prescriptions.
 // Previously took no filters at all, so a pharmacy had to page through every
 // prescription in the system to find its own.
 export const GET = withAuth({ roles: ROLES.CLINICAL }, async (req) => {
-  const sp = req.nextUrl.searchParams;
-  const patientId = sp.get("patientId");
-  const doctorId = sp.get("doctorId");
-  const pharmacyId = sp.get("pharmacyId");
-  const status = sp.get("status");
-
-  const page = Math.max(1, parseInt(sp.get("page") || "1") || 1);
-  const pageSize = Math.min(100, Math.max(1, parseInt(sp.get("pageSize") || "20") || 20));
+  const { page, pageSize, patientId, doctorId, pharmacyId, status } = parseQuery(
+    req.nextUrl.searchParams,
+    listQuerySchema
+  );
 
   const where: Prisma.PrescriptionWhereInput = {};
   if (patientId) where.patientId = patientId;
   if (doctorId) where.doctorId = doctorId;
   if (pharmacyId) where.pharmacyId = pharmacyId;
-  if (status) {
-    if (!PRESCRIPTION_STATUSES.includes(status)) {
-      return NextResponse.json({ error: "حالة غير صالحة" }, { status: 400 });
-    }
-    where.status = status;
-  }
+  if (status) where.status = status;
 
   const [data, total] = await Promise.all([
     prisma.prescription.findMany({
@@ -65,39 +75,18 @@ export const GET = withAuth({ roles: ROLES.CLINICAL }, async (req) => {
 });
 
 // POST /api/prescriptions — Create a prescription.
-// The body used to be spread straight into prisma.prescription.create, so an
-// unauthenticated caller could write any column of a prescription record.
 export const POST = withAuth({ roles: ROLES.CLINICAL }, async (req) => {
-  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-  }
-
-  const { doctorId, patientId, pharmacyId, orderId, medications, status, notes } = body;
-
-  if (typeof doctorId !== "string" || !doctorId.trim()) {
-    return NextResponse.json({ error: "الطبيب مطلوب" }, { status: 400 });
-  }
-  if (typeof patientId !== "string" || !patientId.trim()) {
-    return NextResponse.json({ error: "المريض مطلوب" }, { status: 400 });
-  }
-  if (!isMedicationList(medications)) {
-    return NextResponse.json({ error: "الأدوية غير صالحة" }, { status: 400 });
-  }
-  if (status !== undefined && !PRESCRIPTION_STATUSES.includes(status as string)) {
-    return NextResponse.json({ error: "حالة غير صالحة" }, { status: 400 });
-  }
+  const input = await parseBody(req, createPrescriptionSchema);
 
   const data = await prisma.prescription.create({
-    // Explicit allow-list — never spread the request body into Prisma.
     data: {
-      doctorId,
-      patientId,
-      pharmacyId: typeof pharmacyId === "string" ? pharmacyId : null,
-      orderId: typeof orderId === "string" ? orderId : null,
-      medications: medications as Prisma.InputJsonValue,
-      status: typeof status === "string" ? status : "new",
-      notes: typeof notes === "string" ? notes : null,
+      doctorId: input.doctorId,
+      patientId: input.patientId,
+      pharmacyId: input.pharmacyId ?? null,
+      orderId: input.orderId ?? null,
+      medications: input.medications as Prisma.InputJsonValue,
+      status: input.status,
+      notes: input.notes ?? null,
     },
   });
 

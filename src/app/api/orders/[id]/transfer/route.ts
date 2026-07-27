@@ -1,8 +1,21 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { AuthError, ROLES, withAuth } from "@/lib/api-auth";
+import { parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
+
+// Only the transfer target is accepted — the employee handing the order on is
+// the verified caller. `.strict()` makes an unknown key a 400.
+const transferOrderSchema = z
+  .object({
+    targetEmployeeId: z
+      .string({ message: "الموظف المستهدف مطلوب" })
+      .trim()
+      .min(1, { message: "الموظف المستهدف مطلوب" }),
+  })
+  .strict();
 
 // POST /api/orders/[id]/transfer — Transfer order (req L321 "تحويل")
 //
@@ -15,13 +28,7 @@ export const POST = withAuth<Ctx>(
   { roles: ROLES.OPERATIONS },
   async (req, { params }, identity) => {
     const { id } = await params;
-    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-    const targetEmployeeId =
-      body && typeof body.targetEmployeeId === "string" ? body.targetEmployeeId : null;
-
-    if (!targetEmployeeId) {
-      return NextResponse.json({ error: "الموظف المستهدف مطلوب" }, { status: 400 });
-    }
+    const { targetEmployeeId } = await parseBody(req, transferOrderSchema);
 
     const order = await prisma.order.findUnique({
       where: { id },

@@ -1,43 +1,60 @@
 import { NextResponse } from "next/server";
-import type { AppointmentType, Prisma } from "@prisma/client";
+import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { nonEmpty, paginationSchema, parseBody, parseQuery } from "@/lib/validation";
 
-// Appointment.status is a free-text `String` column; `type` is a real enum.
-const APPOINTMENT_STATUSES: readonly string[] = [
-  "scheduled",
-  "completed",
-  "cancelled",
-  "no_show",
-];
-const APPOINTMENT_TYPES: readonly string[] = [
-  "IN_PERSON",
-  "ONLINE",
-  "HOME_VISIT",
-  "SURGERY",
-];
+// Appointment.status is a free-text `String` column; `type` is a real enum
+// (`AppointmentType` in prisma/schema.prisma).
+const appointmentStatus = z.enum(["scheduled", "completed", "cancelled", "no_show"], {
+  message: "حالة غير صالحة",
+});
+const appointmentType = z.enum(["IN_PERSON", "ONLINE", "HOME_VISIT", "SURGERY"], {
+  message: "نوع الموعد غير صالح",
+});
+
+/** `?status=` with no value means "no filter", as it did before. */
+const emptyToUndefined = (value: unknown) => (value === "" ? undefined : value);
+
+const listQuerySchema = paginationSchema.extend({
+  doctorId: z.preprocess(emptyToUndefined, nonEmpty.optional()),
+  patientId: z.preprocess(emptyToUndefined, nonEmpty.optional()),
+  status: z.preprocess(emptyToUndefined, appointmentStatus.optional()),
+});
+
+// `price` is intentionally absent: this used to be
+// `prisma.appointment.create({ data: body })`, which let the client dictate it —
+// POST {"price":0} bought a free consultation. It is server-controlled and never
+// read from the body. `.strict()` makes an unknown key (including `price`) a 400.
+const createAppointmentSchema = z
+  .object({
+    doctorId: z.string({ message: "الطبيب مطلوب" }).trim().min(1, { message: "الطبيب مطلوب" }),
+    patientId: nonEmpty.optional(),
+    complexId: nonEmpty.optional(),
+    type: appointmentType.default("IN_PERSON"),
+    date: z
+      .union([z.string(), z.number()], { message: "التاريخ مطلوب" })
+      .pipe(z.coerce.date({ message: "التاريخ غير صالح" })),
+    time: z.string({ message: "الوقت مطلوب" }).trim().min(1, { message: "الوقت مطلوب" }),
+    status: appointmentStatus.default("scheduled"),
+    notes: z.string().optional(),
+  })
+  .strict();
 
 // GET /api/appointments — List appointments.
 export const GET = withAuth(
   { roles: [...ROLES.CLINICAL, "PATIENT"] },
   async (req, _ctx, identity) => {
-    const sp = req.nextUrl.searchParams;
-    const doctorId = sp.get("doctorId");
-    const patientId = sp.get("patientId");
-    const status = sp.get("status");
-
-    const page = Math.max(1, parseInt(sp.get("page") || "1") || 1);
-    const pageSize = Math.min(100, Math.max(1, parseInt(sp.get("pageSize") || "20") || 20));
+    const { page, pageSize, doctorId, patientId, status } = parseQuery(
+      req.nextUrl.searchParams,
+      listQuerySchema
+    );
 
     const where: Prisma.AppointmentWhereInput = {};
     if (doctorId) where.doctorId = doctorId;
     if (patientId) where.patientId = patientId;
-    if (status) {
-      if (!APPOINTMENT_STATUSES.includes(status)) {
-        return NextResponse.json({ error: "حالة غير صالحة" }, { status: 400 });
-      }
-      where.status = status;
-    }
+    if (status) where.status = status;
 
     // A patient sees only their own appointments, whatever ?patientId= says.
     if (identity.role === "PATIENT") where.patientId = identity.userId;
@@ -64,47 +81,14 @@ export const GET = withAuth(
 );
 
 // POST /api/appointments — Create an appointment.
-//
-// This used to be `prisma.appointment.create({ data: body })`, which let the
-// client dictate `price` — POST {"price":0} bought a free consultation. `price`
-// is now never read from the body: it stays unset and is server-controlled.
 export const POST = withAuth(
   { roles: [...ROLES.CLINICAL, "PATIENT"] },
   async (req, _ctx, identity) => {
-    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!body || typeof body !== "object") {
-      return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-    }
-
-    const { doctorId, patientId, complexId, type, date, time, status, notes } = body;
-
-    if (typeof doctorId !== "string" || !doctorId.trim()) {
-      return NextResponse.json({ error: "الطبيب مطلوب" }, { status: 400 });
-    }
-    if (typeof time !== "string" || !time.trim()) {
-      return NextResponse.json({ error: "الوقت مطلوب" }, { status: 400 });
-    }
-    if (typeof date !== "string" && typeof date !== "number") {
-      return NextResponse.json({ error: "التاريخ مطلوب" }, { status: 400 });
-    }
-    const parsedDate = new Date(date);
-    if (Number.isNaN(parsedDate.getTime())) {
-      return NextResponse.json({ error: "التاريخ غير صالح" }, { status: 400 });
-    }
-    if (type !== undefined && !APPOINTMENT_TYPES.includes(type as string)) {
-      return NextResponse.json({ error: "نوع الموعد غير صالح" }, { status: 400 });
-    }
-    if (status !== undefined && !APPOINTMENT_STATUSES.includes(status as string)) {
-      return NextResponse.json({ error: "حالة غير صالحة" }, { status: 400 });
-    }
+    const input = await parseBody(req, createAppointmentSchema);
 
     // A patient may only book for themselves; staff book on a patient's behalf.
     const resolvedPatientId =
-      identity.role === "PATIENT"
-        ? identity.userId
-        : typeof patientId === "string" && patientId.trim()
-          ? patientId
-          : null;
+      identity.role === "PATIENT" ? identity.userId : (input.patientId ?? null);
     if (!resolvedPatientId) {
       return NextResponse.json({ error: "المريض مطلوب" }, { status: 400 });
     }
@@ -113,14 +97,14 @@ export const POST = withAuth(
       // Explicit allow-list. `price` is intentionally absent — it must never
       // come from the client.
       data: {
-        doctorId,
+        doctorId: input.doctorId,
         patientId: resolvedPatientId,
-        complexId: typeof complexId === "string" ? complexId : null,
-        type: (type as AppointmentType) ?? "IN_PERSON",
-        date: parsedDate,
-        time,
-        status: typeof status === "string" ? status : "scheduled",
-        notes: typeof notes === "string" ? notes : null,
+        complexId: input.complexId ?? null,
+        type: input.type,
+        date: input.date,
+        time: input.time,
+        status: input.status,
+        notes: input.notes ?? null,
       },
     });
 

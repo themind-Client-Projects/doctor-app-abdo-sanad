@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import type { UserRole } from "@prisma/client";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { paginationSchema, parseBody, parseQuery } from "@/lib/validation";
 
-const VALID_ROLES: readonly UserRole[] = [
+const userRole = z.enum([
   "SUPER_ADMIN",
   "OPERATIONS",
   "DOCTOR",
@@ -13,23 +14,33 @@ const VALID_ROLES: readonly UserRole[] = [
   "DRIVER",
   "RADIOLOGY",
   "PATIENT",
-];
+]);
+
+const listQuerySchema = paginationSchema.extend({
+  role: userRole.optional(),
+});
+
+// `.strict()` so an unexpected key is a 400 rather than being silently ignored.
+const createUserSchema = z
+  .object({
+    name: z.string().trim().min(1).optional(),
+    email: z.string().trim().toLowerCase().email().optional(),
+    phone: z.string().trim().min(6).optional(),
+    role: userRole.default("PATIENT"),
+    governorateId: z.string().trim().min(1).optional(),
+    isActive: z.boolean().default(true),
+  })
+  .strict()
+  .refine((v) => Boolean(v.email || v.phone), {
+    message: "البريد الإلكتروني أو رقم الهاتف مطلوب",
+    path: ["email"],
+  });
 
 // GET /api/users — List users (req L265)
 export const GET = withAuth({ roles: ROLES.ADMIN }, async (req) => {
-  const { searchParams } = req.nextUrl;
-  const role = searchParams.get("role");
+  const { page, pageSize, role } = parseQuery(req.nextUrl.searchParams, listQuerySchema);
 
-  // Clamp: pageSize was unbounded, so ?pageSize=1000000 dumped the table, and
-  // a non-numeric ?page produced skip: NaN and a 500.
-  const page = Math.max(1, parseInt(searchParams.get("page") || "1") || 1);
-  const pageSize = Math.min(
-    100,
-    Math.max(1, parseInt(searchParams.get("pageSize") || "20") || 20)
-  );
-
-  const where: Record<string, unknown> = {};
-  if (role && VALID_ROLES.includes(role as UserRole)) where.role = role;
+  const where = role ? { role } : {};
 
   const [users, total] = await Promise.all([
     prisma.user.findMany({
@@ -61,35 +72,19 @@ export const GET = withAuth({ roles: ROLES.ADMIN }, async (req) => {
 });
 
 // POST /api/users — Create a user.
-// Previously spread the raw body straight into prisma.user.create, so an
-// anonymous caller could POST {"role":"SUPER_ADMIN"} and mint an admin.
+// Previously spread the raw body into prisma.user.create, so an anonymous
+// caller could POST {"role":"SUPER_ADMIN"} and mint an admin.
 export const POST = withAuth({ roles: ROLES.ADMIN }, async (req) => {
-  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-  }
-
-  const { name, email, phone, role, governorateId, isActive } = body;
-
-  if (typeof email !== "string" && typeof phone !== "string") {
-    return NextResponse.json(
-      { error: "البريد الإلكتروني أو رقم الهاتف مطلوب" },
-      { status: 400 }
-    );
-  }
-  if (role !== undefined && !VALID_ROLES.includes(role as UserRole)) {
-    return NextResponse.json({ error: "دور غير صالح" }, { status: 400 });
-  }
+  const input = await parseBody(req, createUserSchema);
 
   const data = await prisma.user.create({
-    // Explicit allow-list — never spread the request body into Prisma.
     data: {
-      name: typeof name === "string" ? name : null,
-      email: typeof email === "string" ? email.trim().toLowerCase() : null,
-      phone: typeof phone === "string" ? phone : null,
-      role: (role as UserRole) ?? "PATIENT",
-      governorateId: typeof governorateId === "string" ? governorateId : null,
-      isActive: typeof isActive === "boolean" ? isActive : true,
+      name: input.name ?? null,
+      email: input.email ?? null,
+      phone: input.phone ?? null,
+      role: input.role,
+      governorateId: input.governorateId ?? null,
+      isActive: input.isActive,
     },
     select: {
       id: true,

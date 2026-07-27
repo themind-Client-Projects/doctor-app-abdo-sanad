@@ -1,6 +1,15 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { parseBody } from "@/lib/validation";
+
+const createComplexSchema = z
+  .object({
+    partnerId: z.string().trim().min(1, { message: "الشريك والاسم مطلوبان" }),
+    name: z.string().trim().min(1, { message: "الشريك والاسم مطلوبان" }),
+  })
+  .strict();
 
 export const GET = withAuth({ roles: ROLES.OPERATIONS }, async () => {
   const data = await prisma.medicalComplex.findMany({
@@ -14,19 +23,11 @@ export const GET = withAuth({ roles: ROLES.OPERATIONS }, async () => {
 
 // POST /api/complexes — the body used to be spread straight into create.
 export const POST = withAuth({ roles: ROLES.ADMIN }, async (req) => {
-  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-  }
-
-  const { partnerId, name } = body;
-  if (typeof partnerId !== "string" || typeof name !== "string" || name.length === 0) {
-    return NextResponse.json({ error: "الشريك والاسم مطلوبان" }, { status: 400 });
-  }
+  const input = await parseBody(req, createComplexSchema);
 
   const data = await prisma.medicalComplex.create({
     // Explicit allow-list — never spread the request body into Prisma.
-    data: { partnerId, name },
+    data: { partnerId: input.partnerId, name: input.name },
   });
   return NextResponse.json({ data }, { status: 201 });
 });

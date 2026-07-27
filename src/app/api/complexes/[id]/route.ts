@@ -1,8 +1,18 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
+
+// `partnerId` (the complex owner) is deliberately absent — only the name is
+// editable, and `.strict()` makes any other key a 400.
+const updateComplexSchema = z
+  .object({
+    name: z.string().trim().min(1, { message: "الاسم مطلوب" }),
+  })
+  .strict();
 
 export const GET = withAuth<Ctx>({ roles: ROLES.OPERATIONS }, async (_req, { params }) => {
   const { id } = await params;
@@ -21,12 +31,7 @@ export const GET = withAuth<Ctx>({ roles: ROLES.OPERATIONS }, async (_req, { par
 // owner) was rewritable by anyone. Only the name is editable here.
 export const PATCH = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
   const { id } = await params;
-  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  const name = body && typeof body === "object" ? body.name : undefined;
-
-  if (typeof name !== "string" || name.length === 0) {
-    return NextResponse.json({ error: "الاسم مطلوب" }, { status: 400 });
-  }
+  const { name } = await parseBody(req, updateComplexSchema);
 
   const data = await prisma.medicalComplex.update({ where: { id }, data: { name } });
   return NextResponse.json({ data });
