@@ -12,6 +12,10 @@ loadEnv({ path: path.join(__dirname, ".env") });
 
 export default defineConfig({
   schema: path.join(__dirname, "prisma", "schema.prisma"),
+  // Prisma 7 reads the seed command from here, not from package.json.
+  migrations: {
+    seed: "tsx prisma/seed.ts",
+  },
   datasource: {
     // DDL must go over the session-mode connection. DATABASE_URL points at the
     // transaction pooler, which does not reliably support DDL or advisory
