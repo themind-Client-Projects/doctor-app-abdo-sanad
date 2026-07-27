@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { nonEmpty, parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -26,7 +26,8 @@ const updatePartnerSchema = z
   .strict();
 
 // GET /api/partners/[id] — dispatch (OPERATIONS) reads partner detail.
-export const GET = withAuth<Ctx>({ roles: ROLES.OPERATIONS }, async (_req, { params }) => {
+export const GET = withAuth<Ctx>({ roles: ROLES.OPERATIONS }, async (req, { params }) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
   const partner = await prisma.partner.findUnique({
     where: { id },
@@ -41,8 +42,8 @@ export const GET = withAuth<Ctx>({ roles: ROLES.OPERATIONS }, async (_req, { par
       invoices: true,
     },
   });
-  if (!partner) return NextResponse.json({ error: "الشريك غير موجود" }, { status: 404 });
-  return NextResponse.json({ data: partner });
+  if (!partner) return fail(ErrorCode.NOT_FOUND, 404, "الشريك غير موجود", { requestId });
+  return ok(partner, { requestId });
 });
 
 // PATCH /api/partners/[id]
@@ -50,6 +51,7 @@ export const GET = withAuth<Ctx>({ roles: ROLES.OPERATIONS }, async (_req, { par
 // and `userId` were all client-writable. Allow-list only the editable profile
 // fields; rating/totalTasks are derived and must not be set over the wire.
 export const PATCH = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
   const input = await parseBody(req, updatePartnerSchema);
 
@@ -67,12 +69,13 @@ export const PATCH = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params 
     },
   });
 
-  return NextResponse.json({ data: partner });
+  return ok(partner, { requestId });
 });
 
 // DELETE /api/partners/[id]
-export const DELETE = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (_req, { params }) => {
+export const DELETE = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
   await prisma.partner.delete({ where: { id } });
-  return NextResponse.json({ message: "تم الحذف" });
+  return ok({ message: "تم الحذف" }, { requestId });
 });

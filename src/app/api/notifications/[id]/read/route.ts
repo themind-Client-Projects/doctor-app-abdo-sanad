@@ -1,6 +1,6 @@
-import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { AuthError, withAuth } from "@/lib/api-auth";
+import { ErrorCode, fail, ok } from "@/lib/api-response";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -10,7 +10,8 @@ type Ctx = { params: Promise<{ id: string }> };
 // Any signed-in user may call this, but only for their own rows. The id used to
 // be trusted outright, so anyone could flip `isRead` on any user's notification
 // — silently hiding an alert from the person it was meant for.
-export const PATCH = withAuth<Ctx>({}, async (_req, { params }, identity) => {
+export const PATCH = withAuth<Ctx>({}, async (req, { params }, identity) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
 
   const notification = await prisma.notification.findUnique({
@@ -18,7 +19,7 @@ export const PATCH = withAuth<Ctx>({}, async (_req, { params }, identity) => {
     select: { userId: true },
   });
   if (!notification) {
-    return NextResponse.json({ error: "الإشعار غير موجود" }, { status: 404 });
+    return fail(ErrorCode.NOT_FOUND, 404, "الإشعار غير موجود", { requestId });
   }
   if (notification.userId !== identity.userId) {
     throw new AuthError(403, "ليس لديك صلاحية");
@@ -29,5 +30,5 @@ export const PATCH = withAuth<Ctx>({}, async (_req, { params }, identity) => {
     data: { isRead: true },
   });
 
-  return NextResponse.json({ data });
+  return ok(data, { requestId });
 });

@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { ok } from "@/lib/api-response";
 import { jsonValue, parseBody, serviceTypeSchema } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -37,10 +37,11 @@ const updateServicesSchema = z
   .strict();
 
 // GET — List partner service configs (req L183-198)
-export const GET = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (_req, { params }) => {
+export const GET = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
   const data = await prisma.serviceConfig.findMany({ where: { partnerId: id } });
-  return NextResponse.json({ data });
+  return ok(data, { requestId });
 });
 
 // PUT — Update/create service configs.
@@ -48,6 +49,7 @@ export const GET = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (_req, { params }
 // the body and write a config onto a different partner. `configs` was also
 // assumed to be an array — a malformed body threw inside .map and 500'd.
 export const PUT = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
   const { configs } = await parseBody(req, updateServicesSchema);
 
@@ -61,5 +63,5 @@ export const PUT = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params })
     )
   );
 
-  return NextResponse.json({ data: results });
+  return ok(results, { requestId });
 });

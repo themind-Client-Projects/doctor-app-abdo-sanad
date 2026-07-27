@@ -1,13 +1,14 @@
-import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { ok } from "@/lib/api-response";
 
 // GET /api/dashboard/tasks — Current tasks per role (req L48-58 ⭐)
 //
 // `role` used to come from the query string, so any signed-in caller could ask
 // for another role's work queue. It is now the caller's own session role; the
 // `?role=` parameter the web client still sends is ignored.
-export const GET = withAuth({ roles: ROLES.STAFF }, async (_req, _ctx, identity) => {
+export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -43,5 +44,5 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (_req, _ctx, identity)
       });
   }
 
-  return NextResponse.json({ data });
+  return ok(data, { requestId });
 });

@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -22,6 +22,7 @@ const acceptOrderSchema = z.object({}).strict();
 export const POST = withAuth<Ctx>(
   { roles: ROLES.OPERATIONS },
   async (req, { params }, identity) => {
+    const requestId = req.headers.get("x-request-id") ?? undefined;
     const { id } = await params;
     await parseBody(req, acceptOrderSchema);
 
@@ -30,7 +31,7 @@ export const POST = withAuth<Ctx>(
       select: { id: true },
     });
     if (!existing) {
-      return NextResponse.json({ error: "الطلب غير موجود" }, { status: 404 });
+      return fail(ErrorCode.NOT_FOUND, 404, "الطلب غير موجود", { requestId });
     }
 
     const alreadyAccepted = await prisma.orderTimeline.findUnique({
@@ -58,6 +59,6 @@ export const POST = withAuth<Ctx>(
       },
     });
 
-    return NextResponse.json({ data: order });
+    return ok(order, { requestId });
   }
 );

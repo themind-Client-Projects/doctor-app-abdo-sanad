@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { ok } from "@/lib/api-response";
 import { dateish, nonEmpty, parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -29,6 +29,7 @@ const updateCouponSchema = z
 // PUT /api/coupons/[id] — the body used to be spread into update, so a caller
 // could reset `usedCount` and revive an exhausted coupon.
 export const PUT = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
   const input = await parseBody(req, updateCouponSchema);
 
@@ -45,11 +46,12 @@ export const PUT = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params })
     },
   });
 
-  return NextResponse.json({ data });
+  return ok(data, { requestId });
 });
 
-export const DELETE = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (_req, { params }) => {
+export const DELETE = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
   await prisma.coupon.delete({ where: { id } });
-  return NextResponse.json({ message: "تم الحذف" });
+  return ok({ message: "تم الحذف" }, { requestId });
 });

@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { parseBody } from "@/lib/validation";
 import { sendEmail } from "@/lib/resend";
 import { sendWhatsAppNotification } from "@/lib/ultramessages";
@@ -51,6 +51,7 @@ function escapeHtml(value: string): string {
 // Operations-only: this is a send-anything-to-anyone primitive, and it was open
 // to unauthenticated callers.
 export const POST = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const { userId, title, body, type, channel } = await parseBody(
     req,
     sendNotificationSchema
@@ -65,7 +66,7 @@ export const POST = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
     select: { email: true, phone: true },
   });
   if (!user) {
-    return NextResponse.json({ error: "المستخدم غير موجود" }, { status: 404 });
+    return fail(ErrorCode.NOT_FOUND, 404, "المستخدم غير موجود", { requestId });
   }
 
   // Explicit allow-list — never spread the request body into Prisma.
@@ -92,5 +93,5 @@ export const POST = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
     await sendWhatsAppNotification(user.phone, `${title}\n${body}`).catch(console.error);
   }
 
-  return NextResponse.json({ data: notification }, { status: 201 });
+  return ok(notification, { status: 201, requestId });
 });

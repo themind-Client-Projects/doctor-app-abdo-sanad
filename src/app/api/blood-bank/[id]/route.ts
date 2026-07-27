@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { nonEmpty, parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -43,6 +43,7 @@ const updateBloodBankRequestSchema = z
 export const PATCH = withAuth<Ctx>(
   { roles: ROLES.OPERATIONS },
   async (req, { params }) => {
+    const requestId = req.headers.get("x-request-id") ?? undefined;
     const { id } = await params;
     const input = await parseBody(req, updateBloodBankRequestSchema);
 
@@ -51,7 +52,7 @@ export const PATCH = withAuth<Ctx>(
       select: { id: true },
     });
     if (!existing) {
-      return NextResponse.json({ error: "غير موجود" }, { status: 404 });
+      return fail(ErrorCode.NOT_FOUND, 404, "غير موجود", { requestId });
     }
 
     // `undefined` leaves a column untouched in Prisma.
@@ -70,6 +71,6 @@ export const PATCH = withAuth<Ctx>(
       },
     });
 
-    return NextResponse.json({ data });
+    return ok(data, { requestId });
   }
 );

@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -28,13 +28,16 @@ const createTimelineEntrySchema = z
 // GET /api/orders/[id]/timeline — Get order timeline (req L384-407, 11 steps)
 export const GET = withAuth<Ctx>(
   { roles: ROLES.OPERATIONS },
-  async (_req, { params }) => {
+  async (req, { params }) => {
+    const requestId = req.headers.get("x-request-id") ?? undefined;
     const { id } = await params;
     const timeline = await prisma.orderTimeline.findMany({
       where: { orderId: id },
       orderBy: { step: "asc" },
     });
-    return NextResponse.json({ data: timeline });
+    // Not paged: the timeline is a bounded 11-step ladder ordered by `step`,
+    // not by `createdAt`, so a keyset cursor has nothing stable to sit on.
+    return ok(timeline, { requestId });
   }
 );
 
@@ -47,12 +50,13 @@ export const GET = withAuth<Ctx>(
 export const POST = withAuth<Ctx>(
   { roles: ROLES.OPERATIONS },
   async (req, { params }, identity) => {
+    const requestId = req.headers.get("x-request-id") ?? undefined;
     const { id } = await params;
     const { step, title, description } = await parseBody(req, createTimelineEntrySchema);
 
     const order = await prisma.order.findUnique({ where: { id }, select: { id: true } });
     if (!order) {
-      return NextResponse.json({ error: "الطلب غير موجود" }, { status: 404 });
+      return fail(ErrorCode.NOT_FOUND, 404, "الطلب غير موجود", { requestId });
     }
 
     // @@unique([orderId, step]) — report the clash instead of throwing a 500.
@@ -61,7 +65,7 @@ export const POST = withAuth<Ctx>(
       select: { id: true },
     });
     if (duplicate) {
-      return NextResponse.json({ error: "الخطوة مسجلة مسبقاً" }, { status: 409 });
+      return fail(ErrorCode.DUPLICATE_RESOURCE, 409, "الخطوة مسجلة مسبقاً", { requestId });
     }
 
     const entry = await prisma.orderTimeline.create({
@@ -75,6 +79,6 @@ export const POST = withAuth<Ctx>(
       },
     });
 
-    return NextResponse.json({ data: entry }, { status: 201 });
+    return ok(entry, { status: 201, requestId });
   }
 );

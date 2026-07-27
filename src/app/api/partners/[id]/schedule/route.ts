@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { ok } from "@/lib/api-response";
 import { parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -27,10 +27,11 @@ const updateScheduleSchema = z
   })
   .strict();
 
-export const GET = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (_req, { params }) => {
+export const GET = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
   const data = await prisma.doctorSchedule.findMany({ where: { doctorId: id } });
-  return NextResponse.json({ data });
+  return ok(data, { requestId });
 });
 
 // PUT — Replace the whole schedule.
@@ -42,6 +43,7 @@ export const GET = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (_req, { params }
 // failure rolls the delete back. Entries are also allow-listed, so `doctorId`
 // in the body can no longer write onto another doctor.
 export const PUT = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
   const { schedules } = await parseBody(req, updateScheduleSchema);
 
@@ -52,5 +54,5 @@ export const PUT = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params })
     prisma.doctorSchedule.createMany({ data: rows }),
   ]);
 
-  return NextResponse.json({ data });
+  return ok(data, { requestId });
 });

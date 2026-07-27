@@ -1,6 +1,6 @@
-import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { ok } from "@/lib/api-response";
 
 type Alert = {
   id: string;
@@ -12,7 +12,9 @@ type Alert = {
 };
 
 // GET /api/dashboard/alerts — Active alerts (req L60-68)
-export const GET = withAuth({ roles: ROLES.STAFF }, async (_req, _ctx, identity) => {
+export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
+
   // Get critical/urgent orders and recent issues
   const [criticalOrders, delayedOrders, unreadAlerts] = await Promise.all([
     prisma.order.findMany({
@@ -66,5 +68,5 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (_req, _ctx, identity)
     })),
   ];
 
-  return NextResponse.json({ data: alerts });
+  return ok(alerts, { requestId });
 });

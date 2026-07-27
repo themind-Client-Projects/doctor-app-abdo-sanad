@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { ok } from "@/lib/api-response";
 import { dateish, jsonValue, nonEmpty, parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -34,6 +34,7 @@ const updateCampaignSchema = z
 
 // PUT /api/campaigns/[id] — the body used to be spread straight into update.
 export const PUT = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
   const input = await parseBody(req, updateCampaignSchema);
 
@@ -52,11 +53,12 @@ export const PUT = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params })
     },
   });
 
-  return NextResponse.json({ data });
+  return ok(data, { requestId });
 });
 
-export const DELETE = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (_req, { params }) => {
+export const DELETE = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
   await prisma.campaign.delete({ where: { id } });
-  return NextResponse.json({ message: "تم الحذف" });
+  return ok({ message: "تم الحذف" }, { requestId });
 });

@@ -1,6 +1,6 @@
-import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { ok } from "@/lib/api-response";
 
 // GET /api/search?q=... — Global search (req L11 "البحث الشامل")
 //
@@ -8,9 +8,11 @@ import { ROLES, withAuth } from "@/lib/api-auth";
 // (name / email / phone / role) and partners, so this is staff-only — a patient
 // must never be able to enumerate the platform's directory.
 export const GET = withAuth({ roles: ROLES.STAFF }, async (req) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const q = req.nextUrl.searchParams.get("q");
+  // Too short to search — an empty result set, not an error. Status unchanged.
   if (!q || q.length < 2) {
-    return NextResponse.json({ data: [] });
+    return ok([], { requestId });
   }
 
   const [orders, partners, users] = await Promise.all([
@@ -75,5 +77,5 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (req) => {
     })),
   ];
 
-  return NextResponse.json({ data: results });
+  return ok(results, { requestId });
 });

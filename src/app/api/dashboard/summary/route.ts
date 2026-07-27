@@ -1,6 +1,6 @@
-import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { ok } from "@/lib/api-response";
 import { decimalToNumber } from "@/lib/validation";
 
 // ─────────────────────────────────────────────────────────────
@@ -41,7 +41,8 @@ type Kpi = {
   isCurrency?: boolean;
 };
 
-export const GET = withAuth({ roles: ROLES.STAFF }, async (_req, _ctx, identity) => {
+export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const role = identity.role;
   const partnerId = identity.partnerId;
 
@@ -299,7 +300,7 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (_req, _ctx, identity)
       kpis = [];
   }
 
-  return NextResponse.json({ data: { role, kpis } });
+  return ok({ role, kpis }, { requestId });
 });
 
 /** Percentage change vs yesterday — `null` when it cannot be expressed. */

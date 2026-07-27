@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { AuthError, ROLES, withAuth } from "@/lib/api-auth";
+import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { nonEmpty, parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -34,7 +34,8 @@ const updateAppointmentSchema = z
   .strict();
 
 // GET /api/appointments/[id]
-export const GET = withAuth<Ctx>({ roles: PATIENT_ROLES }, async (_req, { params }, identity) => {
+export const GET = withAuth<Ctx>({ roles: PATIENT_ROLES }, async (req, { params }, identity) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
 
   const appointment = await prisma.appointment.findUnique({
@@ -42,7 +43,7 @@ export const GET = withAuth<Ctx>({ roles: PATIENT_ROLES }, async (_req, { params
     include: { doctor: true },
   });
   if (!appointment) {
-    return NextResponse.json({ error: "الموعد غير موجود" }, { status: 404 });
+    return fail(ErrorCode.NOT_FOUND, 404, "الموعد غير موجود", { requestId });
   }
 
   // Authentication alone would let any signed-up patient read every booking.
@@ -50,11 +51,12 @@ export const GET = withAuth<Ctx>({ roles: PATIENT_ROLES }, async (_req, { params
     throw new AuthError(403, "ليس لديك صلاحية");
   }
 
-  return NextResponse.json({ data: appointment });
+  return ok(appointment, { requestId });
 });
 
 // PATCH /api/appointments/[id] — Update an appointment.
 export const PATCH = withAuth<Ctx>({ roles: PATIENT_ROLES }, async (req, { params }, identity) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
 
   const input = await parseBody(req, updateAppointmentSchema);
@@ -64,7 +66,7 @@ export const PATCH = withAuth<Ctx>({ roles: PATIENT_ROLES }, async (req, { param
     select: { id: true, patientId: true },
   });
   if (!existing) {
-    return NextResponse.json({ error: "الموعد غير موجود" }, { status: 404 });
+    return fail(ErrorCode.NOT_FOUND, 404, "الموعد غير موجود", { requestId });
   }
   if (identity.role === "PATIENT" && existing.patientId !== identity.userId) {
     throw new AuthError(403, "ليس لديك صلاحية");
@@ -83,13 +85,14 @@ export const PATCH = withAuth<Ctx>({ roles: PATIENT_ROLES }, async (req, { param
     },
   });
 
-  return NextResponse.json({ data: appointment });
+  return ok(appointment, { requestId });
 });
 
 // DELETE /api/appointments/[id] — Cancel an appointment.
 export const DELETE = withAuth<Ctx>(
   { roles: PATIENT_ROLES },
-  async (_req, { params }, identity) => {
+  async (req, { params }, identity) => {
+    const requestId = req.headers.get("x-request-id") ?? undefined;
     const { id } = await params;
 
     const existing = await prisma.appointment.findUnique({
@@ -97,7 +100,7 @@ export const DELETE = withAuth<Ctx>(
       select: { id: true, patientId: true },
     });
     if (!existing) {
-      return NextResponse.json({ error: "الموعد غير موجود" }, { status: 404 });
+      return fail(ErrorCode.NOT_FOUND, 404, "الموعد غير موجود", { requestId });
     }
     // A patient may only cancel their own booking — this route previously
     // deleted any appointment by id, with no authentication at all.
@@ -107,6 +110,6 @@ export const DELETE = withAuth<Ctx>(
 
     await prisma.appointment.delete({ where: { id } });
 
-    return NextResponse.json({ message: "تم حذف الموعد" });
+    return ok({ message: "تم حذف الموعد" }, { requestId });
   }
 );

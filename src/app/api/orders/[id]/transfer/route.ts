@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { AuthError, ROLES, withAuth } from "@/lib/api-auth";
+import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -27,6 +27,7 @@ const transferOrderSchema = z
 export const POST = withAuth<Ctx>(
   { roles: ROLES.OPERATIONS },
   async (req, { params }, identity) => {
+    const requestId = req.headers.get("x-request-id") ?? undefined;
     const { id } = await params;
     const { targetEmployeeId } = await parseBody(req, transferOrderSchema);
 
@@ -35,7 +36,7 @@ export const POST = withAuth<Ctx>(
       select: { id: true, operationsEmployeeId: true },
     });
     if (!order) {
-      return NextResponse.json({ error: "الطلب غير موجود" }, { status: 404 });
+      return fail(ErrorCode.NOT_FOUND, 404, "الطلب غير موجود", { requestId });
     }
 
     if (
@@ -51,12 +52,14 @@ export const POST = withAuth<Ctx>(
       select: { id: true, role: true, isActive: true },
     });
     if (!target || !target.isActive) {
-      return NextResponse.json({ error: "الموظف غير موجود" }, { status: 404 });
+      return fail(ErrorCode.NOT_FOUND, 404, "الموظف غير موجود", { requestId });
     }
     if (target.role !== "OPERATIONS" && target.role !== "SUPER_ADMIN") {
-      return NextResponse.json(
-        { error: "لا يمكن تحويل الطلب إلى هذا المستخدم" },
-        { status: 400 }
+      return fail(
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+        400,
+        "لا يمكن تحويل الطلب إلى هذا المستخدم",
+        { requestId }
       );
     }
 
@@ -65,6 +68,6 @@ export const POST = withAuth<Ctx>(
       data: { operationsEmployeeId: targetEmployeeId },
     });
 
-    return NextResponse.json({ data: updated });
+    return ok(updated, { requestId });
   }
 );

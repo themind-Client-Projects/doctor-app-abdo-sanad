@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { jsonValue, parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -30,20 +30,22 @@ const updateContractSchema = z
   .strict();
 
 // GET /api/partners/[id]/contract
-export const GET = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (_req, { params }) => {
+export const GET = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
   const data = await prisma.contract.findUnique({
     where: { partnerId: id },
     include: { commissionRules: true },
   });
-  if (!data) return NextResponse.json({ error: "غير موجود" }, { status: 404 });
-  return NextResponse.json({ data });
+  if (!data) return fail(ErrorCode.NOT_FOUND, 404, "غير موجود", { requestId });
+  return ok(data, { requestId });
 });
 
 // PUT /api/partners/[id]/contract — create or replace the partner contract.
 // The body used to be spread into upsert (both update and create), so any column
 // on the model — including `partnerId` — was writable.
 export const PUT = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
   const input = await parseBody(req, updateContractSchema);
 
@@ -65,5 +67,5 @@ export const PUT = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params })
     create: { partnerId: id, ...fields },
   });
 
-  return NextResponse.json({ data });
+  return ok(data, { requestId });
 });

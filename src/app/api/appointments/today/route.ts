@@ -1,11 +1,12 @@
-import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { ok } from "@/lib/api-response";
 
 // GET /api/appointments/today — Today's appointments only (req L82).
 // Staff-facing worklist: this is the whole day's schedule across patients, so
 // it is clinical-staff only, never PATIENT.
-export const GET = withAuth({ roles: ROLES.CLINICAL }, async () => {
+export const GET = withAuth({ roles: ROLES.CLINICAL }, async (req) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today);
@@ -17,5 +18,5 @@ export const GET = withAuth({ roles: ROLES.CLINICAL }, async () => {
     orderBy: { time: "asc" },
   });
 
-  return NextResponse.json({ data: appointments });
+  return ok(appointments, { requestId });
 });

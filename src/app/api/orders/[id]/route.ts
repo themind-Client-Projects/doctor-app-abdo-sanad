@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { nonEmpty, parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -29,7 +29,8 @@ const updateOrderSchema = z
 // GET /api/orders/[id] — Get order details
 export const GET = withAuth<Ctx>(
   { roles: ROLES.OPERATIONS },
-  async (_req, { params }) => {
+  async (req, { params }) => {
+    const requestId = req.headers.get("x-request-id") ?? undefined;
     const { id } = await params;
     const order = await prisma.order.findUnique({
       where: { id },
@@ -49,10 +50,10 @@ export const GET = withAuth<Ctx>(
     });
 
     if (!order) {
-      return NextResponse.json({ error: "الطلب غير موجود" }, { status: 404 });
+      return fail(ErrorCode.NOT_FOUND, 404, "الطلب غير موجود", { requestId });
     }
 
-    return NextResponse.json({ data: order });
+    return ok(order, { requestId });
   }
 );
 
@@ -64,6 +65,7 @@ export const GET = withAuth<Ctx>(
 export const PATCH = withAuth<Ctx>(
   { roles: ROLES.OPERATIONS },
   async (req, { params }) => {
+    const requestId = req.headers.get("x-request-id") ?? undefined;
     const { id } = await params;
     const input = await parseBody(req, updateOrderSchema);
 
@@ -80,24 +82,25 @@ export const PATCH = withAuth<Ctx>(
 
     const existing = await prisma.order.findUnique({ where: { id }, select: { id: true } });
     if (!existing) {
-      return NextResponse.json({ error: "الطلب غير موجود" }, { status: 404 });
+      return fail(ErrorCode.NOT_FOUND, 404, "الطلب غير موجود", { requestId });
     }
 
     const order = await prisma.order.update({ where: { id }, data });
 
-    return NextResponse.json({ data: order });
+    return ok(order, { requestId });
   }
 );
 
 // DELETE /api/orders/[id] — Delete order. Destructive, so admin only.
-export const DELETE = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (_req, { params }) => {
+export const DELETE = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
 
   const existing = await prisma.order.findUnique({ where: { id }, select: { id: true } });
   if (!existing) {
-    return NextResponse.json({ error: "الطلب غير موجود" }, { status: 404 });
+    return fail(ErrorCode.NOT_FOUND, 404, "الطلب غير موجود", { requestId });
   }
 
   await prisma.order.delete({ where: { id } });
-  return NextResponse.json({ message: "تم حذف الطلب" });
+  return ok({ message: "تم حذف الطلب" }, { requestId });
 });

@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { parseBody, parseQuery } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -24,18 +24,20 @@ const deleteQuerySchema = z.object({
   departmentId: z.string().trim().min(1, { message: "معرف القسم مطلوب" }),
 });
 
-export const GET = withAuth<Ctx>({ roles: ROLES.OPERATIONS }, async (_req, { params }) => {
+export const GET = withAuth<Ctx>({ roles: ROLES.OPERATIONS }, async (req, { params }) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
   const data = await prisma.department.findMany({ where: { complexId: id } });
-  return NextResponse.json({ data });
+  return ok(data, { requestId });
 });
 
 export const POST = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
   const { name } = await parseBody(req, createDepartmentSchema);
 
   const data = await prisma.department.create({ data: { complexId: id, name } });
-  return NextResponse.json({ data }, { status: 201 });
+  return ok(data, { status: 201, requestId });
 });
 
 // DELETE — departmentId comes from the JSON body (kept for existing callers),
@@ -45,6 +47,7 @@ export const POST = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }
 // this complex: it previously deleted by bare id, so any department of any
 // complex could be removed through any complex's URL.
 export const DELETE = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
 
   const sentJsonBody = (req.headers.get("content-type") ?? "").includes("application/json");
@@ -55,7 +58,7 @@ export const DELETE = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params
   const { count } = await prisma.department.deleteMany({
     where: { id: departmentId, complexId: id },
   });
-  if (count === 0) return NextResponse.json({ error: "غير موجود" }, { status: 404 });
+  if (count === 0) return fail(ErrorCode.NOT_FOUND, 404, "غير موجود", { requestId });
 
-  return NextResponse.json({ message: "تم الحذف" });
+  return ok({ message: "تم الحذف" }, { requestId });
 });

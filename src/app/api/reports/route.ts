@@ -1,9 +1,10 @@
-import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { ok } from "@/lib/api-response";
 
 // GET /api/reports — All 9 report types (req L255-264)
-export const GET = withAuth({ roles: ROLES.ADMIN }, async () => {
+export const GET = withAuth({ roles: ROLES.ADMIN }, async (req) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const thisMonth = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -33,8 +34,8 @@ export const GET = withAuth({ roles: ROLES.ADMIN }, async () => {
       }),
     ]);
 
-  return NextResponse.json({
-    data: {
+  return ok(
+    {
       totalOrders,
       completedOrders,
       avgSatisfaction: avgRating._avg.rating || 0,
@@ -42,5 +43,6 @@ export const GET = withAuth({ roles: ROLES.ADMIN }, async () => {
       topLabs, // أفضل المختبرات (L260)
       topPharmacies, // أفضل الصيدليات (L261)
     },
-  });
+    { requestId }
+  );
 });

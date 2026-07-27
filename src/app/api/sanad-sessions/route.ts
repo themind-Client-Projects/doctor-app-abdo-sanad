@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
-import { parseBody } from "@/lib/validation";
+import { keysetArgs, ok, okList, toPage } from "@/lib/api-response";
+import { parseBody, parseQuery } from "@/lib/validation";
 
 /** req L445-453 — waiting → calling → in_session → ended. */
 const sessionStatus = z.enum(["waiting", "calling", "in_session", "ended"], {
@@ -23,24 +23,34 @@ const createSanadSessionSchema = z
   })
   .strict();
 
+// `limit` alone could only ever return the newest N rows — there was no way to
+// reach row N+1. `cursor` walks the whole list.
+const listQuerySchema = z.object({
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
 // GET /api/sanad-sessions — Online consultation sessions (req L445-453)
 export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
-  const limit = Math.min(
-    100,
-    Math.max(1, parseInt(req.nextUrl.searchParams.get("limit") || "50") || 50)
-  );
+  const requestId = req.headers.get("x-request-id") ?? undefined;
+  const { cursor, limit } = parseQuery(req.nextUrl.searchParams, listQuerySchema);
 
-  const data = await prisma.sanadSession.findMany({
+  const keyset = keysetArgs(cursor, limit);
+
+  // No pre-existing filter on this list, so the cursor predicate — which
+  // `keysetArgs` puts in `where` — is the whole clause.
+  const rows = await prisma.sanadSession.findMany({
+    ...keyset,
     include: { doctor: { select: { userId: true } } },
-    orderBy: { createdAt: "desc" },
-    take: limit,
   });
 
-  return NextResponse.json({ data });
+  const { items, page } = toPage(rows, limit);
+  return okList(items, page, { requestId });
 });
 
 // POST /api/sanad-sessions — Book a session.
 export const POST = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const input = await parseBody(req, createSanadSessionSchema);
 
   const data = await prisma.sanadSession.create({
@@ -52,5 +62,5 @@ export const POST = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
     },
   });
 
-  return NextResponse.json({ data }, { status: 201 });
+  return ok(data, { status: 201, requestId });
 });

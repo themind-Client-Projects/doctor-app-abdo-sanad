@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import type { Prisma, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -39,6 +39,7 @@ const assignOrderSchema = z
 export const POST = withAuth<Ctx>(
   { roles: ROLES.OPERATIONS },
   async (req, { params }, identity) => {
+    const requestId = req.headers.get("x-request-id") ?? undefined;
     const { id } = await params;
     const { type, partnerId } = await parseBody(req, assignOrderSchema);
 
@@ -46,7 +47,7 @@ export const POST = withAuth<Ctx>(
 
     const order = await prisma.order.findUnique({ where: { id }, select: { id: true } });
     if (!order) {
-      return NextResponse.json({ error: "الطلب غير موجود" }, { status: 404 });
+      return fail(ErrorCode.NOT_FOUND, 404, "الطلب غير موجود", { requestId });
     }
 
     // The partner id used to be written straight through, so a bad id failed on
@@ -56,10 +57,12 @@ export const POST = withAuth<Ctx>(
       select: { id: true, type: true },
     });
     if (!partner) {
-      return NextResponse.json({ error: "الشريك غير موجود" }, { status: 404 });
+      return fail(ErrorCode.NOT_FOUND, 404, "الشريك غير موجود", { requestId });
     }
     if (partner.type !== slot.partnerType) {
-      return NextResponse.json({ error: "نوع الشريك لا يطابق المهمة" }, { status: 400 });
+      return fail(ErrorCode.BUSINESS_RULE_VIOLATION, 400, "نوع الشريك لا يطابق المهمة", {
+        requestId,
+      });
     }
 
     const data: Prisma.OrderUncheckedUpdateInput = { status: "ASSIGNED" };
@@ -82,6 +85,6 @@ export const POST = withAuth<Ctx>(
       },
     });
 
-    return NextResponse.json({ data: updated });
+    return ok(updated, { requestId });
   }
 );

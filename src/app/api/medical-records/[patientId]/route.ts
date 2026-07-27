@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { AuthError, ROLES, withAuth } from "@/lib/api-auth";
+import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ patientId: string }> };
@@ -30,7 +30,8 @@ const updateRecordSchema = z
 // It was previously readable — and writable — by anyone who could guess an id.
 export const GET = withAuth<Ctx>(
   { roles: [...ROLES.CLINICAL, "PATIENT"] },
-  async (_req, { params }, identity) => {
+  async (req, { params }, identity) => {
+    const requestId = req.headers.get("x-request-id") ?? undefined;
     const { patientId } = await params;
 
     // A patient may only read their own record.
@@ -40,10 +41,10 @@ export const GET = withAuth<Ctx>(
 
     const data = await prisma.patientMedicalRecord.findUnique({ where: { patientId } });
     if (!data) {
-      return NextResponse.json({ error: "الملف غير موجود" }, { status: 404 });
+      return fail(ErrorCode.NOT_FOUND, 404, "الملف غير موجود", { requestId });
     }
 
-    return NextResponse.json({ data });
+    return ok(data, { requestId });
   }
 );
 
@@ -52,6 +53,7 @@ export const GET = withAuth<Ctx>(
 export const PUT = withAuth<Ctx>(
   { roles: ROLES.CLINICAL },
   async (req, { params }) => {
+    const requestId = req.headers.get("x-request-id") ?? undefined;
     const { patientId } = await params;
     const input = await parseBody(req, updateRecordSchema);
 
@@ -75,6 +77,6 @@ export const PUT = withAuth<Ctx>(
       create: { patientId, ...fields },
     });
 
-    return NextResponse.json({ data });
+    return ok(data, { requestId });
   }
 );

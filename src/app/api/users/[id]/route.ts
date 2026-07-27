@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -19,14 +19,15 @@ const updateUserSchema = z
   .strict();
 
 // GET /api/users/[id] — Read a single user.
-export const GET = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (_req, { params }) => {
+export const GET = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
   const data = await prisma.user.findUnique({
     where: { id },
     include: { partner: true, governorate: true },
   });
-  if (!data) return NextResponse.json({ error: "غير موجود" }, { status: 404 });
-  return NextResponse.json({ data });
+  if (!data) return fail(ErrorCode.NOT_FOUND, 404, "غير موجود", { requestId });
+  return ok(data, { requestId });
 });
 
 // PATCH /api/users/[id] — Update a user's profile fields.
@@ -36,6 +37,7 @@ export const GET = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (_req, { params }
 // Only the profile fields below are writable here; role changes are out of scope
 // for this endpoint and are rejected outright rather than silently dropped.
 export const PATCH = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
   const input = await parseBody(req, updateUserSchema);
 
@@ -60,12 +62,13 @@ export const PATCH = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params 
     },
   });
 
-  return NextResponse.json({ data });
+  return ok(data, { requestId });
 });
 
 // DELETE /api/users/[id]
-export const DELETE = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (_req, { params }) => {
+export const DELETE = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
   await prisma.user.delete({ where: { id } });
-  return NextResponse.json({ message: "تم الحذف" });
+  return ok({ message: "تم الحذف" }, { requestId });
 });
