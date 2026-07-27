@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { decimalToNumber } from "@/lib/validation";
 
 // ─────────────────────────────────────────────────────────────
 // GET /api/dashboard/summary — Role-specific KPIs
@@ -141,7 +142,7 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (_req, _ctx, identity)
         {
           key: "todayEarnings",
           label: "الأرباح اليومية",
-          value: todayEarnings._sum.amount ?? 0,
+          value: decimalToNumber(todayEarnings._sum.amount),
           change: null,
           color: "purple",
           icon: "wallet",
@@ -189,7 +190,7 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (_req, _ctx, identity)
         { key: "todaySamples", label: "عينات اليوم", value: todaySamples, change: calcChange(todaySamples, yesterdaySamples), color: "blue", icon: "flask", href: "/dashboard/samples" },
         { key: "inTesting", label: "قيد الفحص", value: inTesting, change: null, color: "yellow", icon: "loader", href: "/dashboard/samples?status=testing" },
         { key: "readyResults", label: "النتائج الجاهزة", value: readyResults, change: null, color: "green", icon: "check-circle", href: "/dashboard/results" },
-        { key: "labEarnings", label: "الأرباح", value: labEarnings._sum.amount ?? 0, change: null, color: "purple", icon: "wallet", href: "/dashboard/finance", isCurrency: true },
+        { key: "labEarnings", label: "الأرباح", value: decimalToNumber(labEarnings._sum.amount), change: null, color: "purple", icon: "wallet", href: "/dashboard/finance", isCurrency: true },
       ];
       break;
     }
@@ -228,7 +229,7 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (_req, _ctx, identity)
         { key: "newPrescriptions", label: "الوصفات الجديدة", value: newPrescriptions, change: calcChange(newPrescriptions, yesterdayPrescriptions), color: "blue", icon: "file-text", href: "/dashboard/prescriptions" },
         { key: "inPreparation", label: "قيد التجهيز", value: inPreparation, change: null, color: "yellow", icon: "loader", href: "/dashboard/prescriptions?status=preparing" },
         { key: "completed", label: "المكتملة", value: completed, change: null, color: "green", icon: "check-circle", href: "/dashboard/prescriptions?status=delivered" },
-        { key: "pharmEarnings", label: "الأرباح", value: pharmEarnings._sum.amount ?? 0, change: null, color: "purple", icon: "wallet", href: "/dashboard/finance", isCurrency: true },
+        { key: "pharmEarnings", label: "الأرباح", value: decimalToNumber(pharmEarnings._sum.amount), change: null, color: "purple", icon: "wallet", href: "/dashboard/finance", isCurrency: true },
       ];
       break;
     }
@@ -248,7 +249,7 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (_req, _ctx, identity)
         { key: "todayTasks", label: "مهام اليوم", value: todayTasks, change: null, color: "blue", icon: "clipboard", href: "/dashboard/visits" },
         { key: "currentTasks", label: "الحالية", value: currentTasks, change: null, color: "yellow", icon: "loader", href: "/dashboard/visits?status=current" },
         { key: "completedTasks", label: "المكتملة", value: completedTasks, change: null, color: "green", icon: "check-circle", href: "/dashboard/visits?status=completed" },
-        { key: "nurseEarnings", label: "الأرباح", value: nurseEarnings._sum.amount ?? 0, change: null, color: "purple", icon: "wallet", href: "/dashboard/finance", isCurrency: true },
+        { key: "nurseEarnings", label: "الأرباح", value: decimalToNumber(nurseEarnings._sum.amount), change: null, color: "purple", icon: "wallet", href: "/dashboard/finance", isCurrency: true },
       ];
       break;
     }
@@ -268,7 +269,7 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (_req, _ctx, identity)
         { key: "todayTrips", label: "الرحلات", value: todayTrips, change: null, color: "blue", icon: "truck", href: "/dashboard/trips" },
         { key: "currentTrips", label: "قيد التنفيذ", value: currentTrips, change: null, color: "yellow", icon: "loader", href: "/dashboard/trips?status=current" },
         { key: "completedTrips", label: "المكتملة", value: completedTrips, change: null, color: "green", icon: "check-circle", href: "/dashboard/trips?status=completed" },
-        { key: "driverEarnings", label: "الأرباح", value: driverEarnings._sum.amount ?? 0, change: null, color: "purple", icon: "wallet", href: "/dashboard/finance", isCurrency: true },
+        { key: "driverEarnings", label: "الأرباح", value: decimalToNumber(driverEarnings._sum.amount), change: null, color: "purple", icon: "wallet", href: "/dashboard/finance", isCurrency: true },
       ];
       break;
     }
@@ -289,7 +290,7 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (_req, _ctx, identity)
         { key: "todayRequests", label: "طلبات اليوم", value: todayRequests, change: null, color: "blue", icon: "scan", href: "/dashboard/requests" },
         { key: "inImaging", label: "قيد التصوير", value: inImaging, change: null, color: "yellow", icon: "loader", href: "/dashboard/requests?status=imaging" },
         { key: "readyReports", label: "التقارير الجاهزة", value: readyReports, change: null, color: "green", icon: "check-circle", href: "/dashboard/reports" },
-        { key: "radEarnings", label: "الأرباح", value: radEarnings._sum.amount ?? 0, change: null, color: "purple", icon: "wallet", href: "/dashboard/finance", isCurrency: true },
+        { key: "radEarnings", label: "الأرباح", value: decimalToNumber(radEarnings._sum.amount), change: null, color: "purple", icon: "wallet", href: "/dashboard/finance", isCurrency: true },
       ];
       break;
     }

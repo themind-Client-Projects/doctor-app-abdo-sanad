@@ -3,7 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
-import { jsonValue, parseBody } from "@/lib/validation";
+import { jsonValue, parseBody, serviceTypeSchema } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -20,7 +20,7 @@ const serviceStatus = z.enum(["ACTIVE", "SUSPENDED", "PAUSED", "REACTIVATED"], {
 // body can no longer write a config onto a different partner.
 const serviceConfigSchema = z
   .object({
-    serviceType: z.string().trim().min(1, { message: "نوع الخدمة مطلوب" }),
+    serviceType: serviceTypeSchema,
     status: serviceStatus.optional(),
     workHours: jsonInput,
     governorates: jsonInput,

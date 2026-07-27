@@ -2,11 +2,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
-import { amount, parseBody } from "@/lib/validation";
+import { amount, parseBody, serviceTypeSchema } from "@/lib/validation";
 
 const createPricingSchema = z
   .object({
-    serviceType: z.string().trim().min(1, { message: "نوع الخدمة مطلوب" }),
+    serviceType: serviceTypeSchema,
     basePrice: amount,
     sanadPrice: amount.nullish(),
     complexPrice: amount.nullish(),

@@ -2,13 +2,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
-import { amount, nonEmpty, parseBody } from "@/lib/validation";
+import { amount, nonEmpty, parseBody, serviceTypeSchema } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 const updatePricingSchema = z
   .object({
-    serviceType: nonEmpty.optional(),
+    serviceType: serviceTypeSchema.optional(),
     basePrice: amount.optional(),
     // Nullable columns: an explicit `null` clears them.
     sanadPrice: amount.nullish(),

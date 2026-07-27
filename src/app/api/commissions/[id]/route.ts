@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
-import { nonEmpty, parseBody, percentage } from "@/lib/validation";
+import { nonEmpty, parseBody, percentage, serviceTypeSchema } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -10,7 +10,7 @@ type Ctx = { params: Promise<{ id: string }> };
 // partner's contract. `.strict()` makes an attempt to do so a 400.
 const updateCommissionSchema = z
   .object({
-    serviceType: nonEmpty.optional(),
+    serviceType: serviceTypeSchema.optional(),
     partnerShare: percentage.optional(),
     complexShare: percentage.optional(),
     waridShare: percentage.optional(),

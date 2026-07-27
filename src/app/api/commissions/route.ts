@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
-import { parseBody, percentage } from "@/lib/validation";
+import { parseBody, percentage, serviceTypeSchema } from "@/lib/validation";
 
 const createCommissionSchema = z
   .object({
     contractId: z.string().trim().min(1, { message: "العقد ونوع الخدمة مطلوبان" }),
-    serviceType: z.string().trim().min(1, { message: "العقد ونوع الخدمة مطلوبان" }),
+    serviceType: serviceTypeSchema,
     partnerShare: percentage,
     waridShare: percentage,
     complexShare: percentage.default(0),

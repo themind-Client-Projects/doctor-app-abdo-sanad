@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { OrderStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
-import { nonEmpty, paginationSchema, parseBody, parseQuery } from "@/lib/validation";
+import { nonEmpty, paginationSchema, parseBody, parseQuery, serviceTypeSchema } from "@/lib/validation";
 
 const orderStatus = z.enum(
   [
@@ -55,8 +55,7 @@ const statusFilter = z
 const listQuerySchema = paginationSchema.extend({
   status: z.preprocess(emptyToUndefined, statusFilter.optional()),
   priority: z.preprocess(emptyToUndefined, orderPriority.optional()),
-  // serviceType is a free-text column, so it needs no enum validation.
-  serviceType: z.preprocess(emptyToUndefined, nonEmpty.optional()),
+  serviceType: z.preprocess(emptyToUndefined, serviceTypeSchema.optional()),
 });
 
 const patientDetail = z
@@ -73,7 +72,7 @@ const createOrderSchema = z
     patientId: patientDetail,
     patientName: patientDetail,
     patientPhone: patientDetail,
-    serviceType: patientDetail,
+    serviceType: serviceTypeSchema,
     priority: orderPriority.default("NORMAL"),
     source: orderSource.default("DIRECT"),
     governorateId: nonEmpty.optional(),

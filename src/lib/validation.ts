@@ -81,3 +81,35 @@ export const dateish = z.coerce.date();
 
 /** Arbitrary JSON payload for Prisma `Json` columns. */
 export const jsonValue: z.ZodType<unknown> = z.unknown();
+
+/**
+ * The single service vocabulary, mirroring the `ServiceType` enum in
+ * prisma/schema.prisma.
+ *
+ * Order, CommissionRule, ServiceConfig and PriceConfig previously each used
+ * their own incompatible strings, so pricing and commission lookups matched
+ * zero rows. Import this everywhere rather than re-declaring the list.
+ */
+export const serviceTypeSchema = z.enum([
+  "IN_PERSON_CONSULT",
+  "ONLINE_CONSULT",
+  "HOME_VISIT",
+  "HOME_BLOOD_DRAW",
+  "HOME_LAB_TEST",
+  "LAB_TEST",
+  "RADIOLOGY",
+  "PHARMACY_DISPENSE",
+  "MEDICINE_DELIVERY",
+  "NURSING",
+  "PHYSIOTHERAPY",
+  "SURGERY",
+  "BLOOD_BANK",
+  "TAXI",
+]);
+
+/** Serialise a Prisma Decimal (or number/null) to a JSON number. */
+export function decimalToNumber(value: unknown): number {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === "number") return value;
+  return Number(value.toString());
+}

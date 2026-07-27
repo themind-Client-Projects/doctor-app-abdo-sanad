@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole, OrderStatus, Priority, OrderSource, PaymentMethod, PaymentStatus } from "@prisma/client";
+import { PrismaClient, UserRole, OrderStatus, Priority, OrderSource, PaymentMethod, PaymentStatus, ServiceType, AppointmentType, Prisma } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import pg from "pg";
 
@@ -12,6 +12,17 @@ const prisma = new PrismaClient({ adapter });
 // ─────────────────────────────────────────────────────────────
 
 async function main() {
+  // This seed creates a SUPER_ADMIN and prints the account roster. Nothing
+  // previously stopped it from being pointed at production.
+  if (process.env.NODE_ENV === "production" && process.env.ALLOW_PROD_SEED !== "true") {
+    console.error(
+      "Refusing to seed with NODE_ENV=production.\n" +
+        "This creates a SUPER_ADMIN and demo patient data.\n" +
+        "Set ALLOW_PROD_SEED=true only if you are certain."
+    );
+    process.exit(1);
+  }
+
   console.log("🌱 بدء تعبئة البيانات التجريبية...\n");
 
   // ═══════════════════════════════════════════════════════════
@@ -141,10 +152,10 @@ async function main() {
       partnerId: p.doctor1.id,
       startDate: new Date("2025-01-01"),
       endDate: new Date("2026-12-31"),
-      services: JSON.stringify(["حضوري", "أونلاين", "زيارة منزلية"]),
-      governorates: JSON.stringify(["بغداد", "البصرة", "أربيل"]),
-      workHours: JSON.stringify({ start: "09:00", end: "21:00" }),
-      minPrices: JSON.stringify({ "حضوري": 15000, "أونلاين": 10000 }),
+      services: ["IN_PERSON_CONSULT", "ONLINE_CONSULT", "HOME_VISIT"],
+      governorates: ["بغداد", "البصرة", "أربيل"],
+      workHours: { start: "09:00", end: "21:00" },
+      minPrices: { IN_PERSON_CONSULT: 15000, ONLINE_CONSULT: 10000 },
       terms: "يلتزم الطبيب بمعايير وزارة الصحة العراقية",
       isActive: true,
     },
@@ -157,10 +168,10 @@ async function main() {
       partnerId: p.lab.id,
       startDate: new Date("2025-03-01"),
       endDate: new Date("2027-02-28"),
-      services: JSON.stringify(["تحاليل مختبرية", "سحب دم منزلي"]),
-      governorates: JSON.stringify(["بغداد"]),
-      workHours: JSON.stringify({ start: "08:00", end: "22:00" }),
-      minPrices: JSON.stringify({ "CBC": 5000 }),
+      services: ["LAB_TEST", "HOME_BLOOD_DRAW"],
+      governorates: ["بغداد"],
+      workHours: { start: "08:00", end: "22:00" },
+      minPrices: { LAB_TEST: 5000 },
       terms: "يلتزم المختبر بالاعتماد الدولي ISO 15189",
       isActive: true,
     },
@@ -173,10 +184,10 @@ async function main() {
       partnerId: p.pharmacy.id,
       startDate: new Date("2025-06-01"),
       endDate: new Date("2026-05-31"),
-      services: JSON.stringify(["صرف وصفات", "توصيل أدوية"]),
-      governorates: JSON.stringify(["بغداد"]),
-      workHours: JSON.stringify({ start: "08:00", end: "00:00" }),
-      minPrices: JSON.stringify({ "توصيل": 3000 }),
+      services: ["PHARMACY_DISPENSE", "MEDICINE_DELIVERY"],
+      governorates: ["بغداد"],
+      workHours: { start: "08:00", end: "00:00" },
+      minPrices: { MEDICINE_DELIVERY: 3000 },
       terms: "يلتزم بأسعار نقابة الصيادلة العراقية",
       isActive: true,
     },
@@ -184,23 +195,23 @@ async function main() {
 
   // قواعد النسب — 4 سيناريوهات (req L215-228)
   // استشارة حضورية: طبيب 70%, مجمع 20%, وريد 10%
-  await upsertCommission(contractDr1.id, "استشارة حضورية", 70, 20, 10, 0, 0);
+  await upsertCommission(contractDr1.id, "IN_PERSON_CONSULT", 70, 20, 10, 0, 0);
   // استشارة أونلاين: طبيب 80%, وريد 20%
-  await upsertCommission(contractDr1.id, "استشارة أونلاين", 80, 0, 20, 0, 0);
+  await upsertCommission(contractDr1.id, "ONLINE_CONSULT", 80, 0, 20, 0, 0);
   // تحليل منزلي: مختبر 60%, ممرض 15%, سائق 10%, وريد 15%
-  await upsertCommission(contractLab.id, "تحليل منزلي", 60, 0, 15, 15, 10);
+  await upsertCommission(contractLab.id, "HOME_LAB_TEST", 60, 0, 15, 15, 10);
   // دواء مع توصيل: صيدلية 82%, سائق 8%, وريد 10%
-  await upsertCommission(contractPharmacy.id, "دواء مع توصيل", 82, 0, 10, 0, 8);
+  await upsertCommission(contractPharmacy.id, "MEDICINE_DELIVERY", 82, 0, 10, 0, 8);
   console.log("✅ 3 عقود + 4 قواعد نسب");
 
   // ═══════════════════════════════════════════════════════════
   // 8. إعدادات الخدمات
   // ═══════════════════════════════════════════════════════════
-  const svcConfigs: [string, string, number][] = [
-    [p.doctor1.id, "حضوري", 15], [p.doctor1.id, "أونلاين", 10], [p.doctor1.id, "زيارة منزلية", 3],
-    [p.doctor2.id, "حضوري", 12], [p.doctor2.id, "أونلاين", 8],
-    [p.lab.id, "سحب دم", 30], [p.lab.id, "تحاليل منزلية", 10],
-    [p.pharmacy.id, "توصيل", 50],
+  const svcConfigs: [string, ServiceType, number][] = [
+    [p.doctor1.id, "IN_PERSON_CONSULT", 15], [p.doctor1.id, "ONLINE_CONSULT", 10], [p.doctor1.id, "HOME_VISIT", 3],
+    [p.doctor2.id, "IN_PERSON_CONSULT", 12], [p.doctor2.id, "ONLINE_CONSULT", 8],
+    [p.lab.id, "HOME_BLOOD_DRAW", 30], [p.lab.id, "HOME_LAB_TEST", 10],
+    [p.pharmacy.id, "MEDICINE_DELIVERY", 50],
   ];
   for (const [partnerId, serviceType, dailyCapacity] of svcConfigs) {
     await prisma.serviceConfig.upsert({
@@ -233,12 +244,12 @@ async function main() {
   // ═══════════════════════════════════════════════════════════
   // 10. الأسعار
   // ═══════════════════════════════════════════════════════════
-  const prices: [string, string, number, number, number][] = [
-    ["price-consult", "استشارة حضورية", 25000, 20000, 18000],
-    ["price-online", "استشارة أونلاين", 15000, 12000, 10000],
-    ["price-homevisit", "زيارة منزلية", 50000, 40000, 35000],
-    ["price-cbc", "فحص CBC", 10000, 8000, 7000],
-    ["price-xray", "أشعة سينية", 30000, 25000, 22000],
+  const prices: [string, ServiceType, number, number, number][] = [
+    ["price-consult", "IN_PERSON_CONSULT", 25000, 20000, 18000],
+    ["price-online", "ONLINE_CONSULT", 15000, 12000, 10000],
+    ["price-homevisit", "HOME_VISIT", 50000, 40000, 35000],
+    ["price-cbc", "LAB_TEST", 10000, 8000, 7000],
+    ["price-xray", "RADIOLOGY", 30000, 25000, 22000],
   ];
   for (const [id, serviceType, basePrice, sanadPrice, complexPrice] of prices) {
     await prisma.priceConfig.upsert({
@@ -259,17 +270,17 @@ async function main() {
     // 1: أحمد — زيارة منزلية جديدة
     await upsertOrder("ORD-2025-001", u.patient1.id, "أحمد كاظم", "07801000001", "HOME_VISIT", "NEW", "NORMAL", "DIRECT", govs["بغداد"].id, "المنصور", "حي المنصور — زقاق 3، دار 15"),
     // 2: فاطمة — سحب دم (مقبول، تم تعيين ممرض وسائق)
-    await upsertOrder("ORD-2025-002", u.patient2.id, "فاطمة العلي", "07801000002", "BLOOD_DRAW", "ASSIGNED", "URGENT", "SANAD", govs["بغداد"].id, "الكرادة", "الكرادة داخل — شارع 52", { assignedNurseId: p.nurse1.id, assignedDriverId: p.driver1.id }),
+    await upsertOrder("ORD-2025-002", u.patient2.id, "فاطمة العلي", "07801000002", "HOME_BLOOD_DRAW", "ASSIGNED", "URGENT", "SANAD", govs["بغداد"].id, "الكرادة", "الكرادة داخل — شارع 52", { assignedNurseId: p.nurse1.id, assignedDriverId: p.driver1.id }),
     // 3: عمر — استشارة أونلاين (قيد التنفيذ)
-    await upsertOrder("ORD-2025-003", u.patient3.id, "عمر الربيعي", "07801000003", "ONLINE", "IN_PROGRESS", "NORMAL", "COMPLEX", govs["بغداد"].id, "الجادرية", "حي الجادرية"),
+    await upsertOrder("ORD-2025-003", u.patient3.id, "عمر الربيعي", "07801000003", "ONLINE_CONSULT", "IN_PROGRESS", "NORMAL", "COMPLEX", govs["بغداد"].id, "الجادرية", "حي الجادرية"),
     // 4: زهراء — توصيل دواء (في الطريق)
-    await upsertOrder("ORD-2025-004", u.patient4.id, "زهراء حسين", "07801000004", "DELIVERY", "IN_TRANSIT", "NORMAL", "DIRECT", govs["بغداد"].id, "الأعظمية", "قرب جامع أبي حنيفة", { assignedDriverId: p.driver2.id, assignedPharmacyId: p.pharmacy.id }),
+    await upsertOrder("ORD-2025-004", u.patient4.id, "زهراء حسين", "07801000004", "MEDICINE_DELIVERY", "IN_TRANSIT", "NORMAL", "DIRECT", govs["بغداد"].id, "الأعظمية", "قرب جامع أبي حنيفة", { assignedDriverId: p.driver2.id, assignedPharmacyId: p.pharmacy.id }),
     // 5: محمد — أشعة (تم تعيين مركز)
-    await upsertOrder("ORD-2025-005", u.patient5.id, "محمد الخفاجي", "07801000005", "X_RAY", "ASSIGNED", "URGENT", "SANAD", govs["بغداد"].id, "الحارثية", "شارع الكندي", { assignedRadiologyId: p.radiology.id }),
+    await upsertOrder("ORD-2025-005", u.patient5.id, "محمد الخفاجي", "07801000005", "RADIOLOGY", "ASSIGNED", "URGENT", "SANAD", govs["بغداد"].id, "الحارثية", "شارع الكندي", { assignedRadiologyId: p.radiology.id }),
     // 6: أحمد — تحليل منزلي (مكتمل)
-    await upsertOrder("ORD-2025-006", u.patient1.id, "أحمد كاظم", "07801000001", "HOME_TEST", "COMPLETED", "NORMAL", "DIRECT", govs["بغداد"].id, "المنصور", "حي المنصور — زقاق 3، دار 15", { assignedNurseId: p.nurse2.id, assignedDriverId: p.driver1.id, assignedLabId: p.lab.id }),
+    await upsertOrder("ORD-2025-006", u.patient1.id, "أحمد كاظم", "07801000001", "HOME_LAB_TEST", "COMPLETED", "NORMAL", "DIRECT", govs["بغداد"].id, "المنصور", "حي المنصور — زقاق 3، دار 15", { assignedNurseId: p.nurse2.id, assignedDriverId: p.driver1.id, assignedLabId: p.lab.id }),
     // 7: فاطمة — حضوري (حرج متأخر)
-    await upsertOrder("ORD-2025-007", u.patient2.id, "فاطمة العلي", "07801000002", "IN_PERSON", "DELAYED", "CRITICAL", "COMPLEX", govs["بغداد"].id, "الكرادة", "شارع 52"),
+    await upsertOrder("ORD-2025-007", u.patient2.id, "فاطمة العلي", "07801000002", "IN_PERSON_CONSULT", "DELAYED", "CRITICAL", "COMPLEX", govs["بغداد"].id, "الكرادة", "شارع 52"),
     // 8: عمر — زيارة منزلية جديدة
     await upsertOrder("ORD-2025-008", u.patient3.id, "عمر الربيعي", "07801000003", "HOME_VISIT", "NEW", "NORMAL", "SANAD", govs["بغداد"].id, "زيونة", "محلة 710"),
   ];
@@ -278,7 +289,7 @@ async function main() {
   // ═══════════════════════════════════════════════════════════
   // 12. المواعيد — اليوم لد. علي (doctorId → DoctorProfile)
   // ═══════════════════════════════════════════════════════════
-  const aptData: [typeof u.patient1, string, "IN_PERSON" | "ONLINE", string][] = [
+  const aptData: [(typeof patients)[number], string, AppointmentType, string][] = [
     [patients[0], "09:00", "IN_PERSON", "completed"],
     [patients[1], "10:30", "IN_PERSON", "completed"],
     [patients[2], "12:00", "ONLINE", "in_progress"],
@@ -312,7 +323,7 @@ async function main() {
   // ═══════════════════════════════════════════════════════════
   // 14. الوصفات — doctorId→DoctorProfile, patientId→User
   // ═══════════════════════════════════════════════════════════
-  const rxData: [string, string, string, string, unknown[]][] = [
+  const rxData: [string, string, string, string, Prisma.InputJsonValue][] = [
     [dp1.id, u.patient4.id, orders[3].id, "ready", [{ name: "أموكسيسيلين 500mg", qty: 21 }, { name: "باراسيتامول 500mg", qty: 30 }]],
     [dp1.id, u.patient1.id, orders[5].id, "delivered", [{ name: "ميتفورمين 850mg", qty: 60 }, { name: "أتورفاستاتين 20mg", qty: 30 }]],
     [dp2.id, u.patient1.id, orders[0].id, "new", [{ name: "أوميبرازول 20mg", qty: 28 }]],
@@ -320,7 +331,7 @@ async function main() {
   ];
   for (const [doctorId, patientId, orderId, status, medications] of rxData) {
     await prisma.prescription.create({
-      data: { doctorId, patientId, pharmacyId: p.pharmacy.id, orderId, status, medications: JSON.stringify(medications) },
+      data: { doctorId, patientId, pharmacyId: p.pharmacy.id, orderId, status, medications },
     });
   }
   console.log("✅ 4 وصفات");
@@ -449,7 +460,7 @@ async function upsertPartner(
 
 async function upsertOrder(
   orderNumber: string, patientId: string, patientName: string, patientPhone: string,
-  serviceType: string, status: OrderStatus, priority: Priority, source: OrderSource,
+  serviceType: ServiceType, status: OrderStatus, priority: Priority, source: OrderSource,
   governorateId: string, area: string, address: string,
   assignments: { assignedNurseId?: string; assignedDriverId?: string; assignedLabId?: string; assignedPharmacyId?: string; assignedRadiologyId?: string } = {}
 ) {
@@ -468,7 +479,7 @@ async function upsertOrder(
 }
 
 async function upsertCommission(
-  contractId: string, serviceType: string,
+  contractId: string, serviceType: ServiceType,
   partnerShare: number, complexShare: number, waridShare: number,
   nurseShare: number, driverShare: number
 ) {
