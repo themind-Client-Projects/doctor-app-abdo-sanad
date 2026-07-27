@@ -199,7 +199,7 @@ export function HomecareReservationForm({ centerName, type = 'nursing', onSucces
               const isSelected = currentServices.includes(service.id);
               
               return (
-                <label key={service.id} className={`flex items-center justify-between p-3.5 rounded-xl border cursor-pointer transition-all active:scale-[0.98] ${isSelected ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-gray-300'}`}>
+                <label key={service.id} className={`flex items-center justify-between p-3.5 rounded-xl border cursor-pointer transition-colors active:scale-[0.98] ${isSelected ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-gray-300'}`}>
                   <div className="flex items-center gap-3">
                     <div className={`w-5 h-5 rounded flex items-center justify-center border transition-colors ${isSelected ? 'bg-primary border-primary' : 'border-gray-300'}`}>
                       {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
@@ -229,7 +229,7 @@ export function HomecareReservationForm({ centerName, type = 'nursing', onSucces
         <button
           type="submit"
           disabled={isSubmitting}
-          className="w-full bg-primary hover:bg-primary/90 text-white font-bold py-4 rounded-2xl shadow-lg shadow-primary/30 transition-all active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed mt-4"
+          className="w-full bg-primary hover:bg-primary/90 text-white font-bold py-4 rounded-2xl shadow-lg shadow-primary/30 transition-colors active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed mt-4"
         >
           {isSubmitting ? 'جاري إرسال الطلب...' : 'تأكيد الحجز'}
         </button>

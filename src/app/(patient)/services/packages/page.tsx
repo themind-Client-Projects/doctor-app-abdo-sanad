@@ -33,7 +33,7 @@ export default function SanadPackagesPage() {
 
         <button 
           onClick={() => router.back()}
-          className="w-8 h-8 flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded-full active:scale-95 transition-all"
+          className="w-8 h-8 flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded-full active:scale-95 transition-colors"
         >
           <X className="w-6 h-6" />
         </button>
@@ -53,7 +53,7 @@ export default function SanadPackagesPage() {
             <InfoBadge icon={<Hospital className="w-3.5 h-3.5 text-blue-500" />} text="13+ المستشفيات والعيادات" />
           </div>
 
-          <button className="w-full bg-primary hover:bg-primary/90 text-white font-bold py-3.5 rounded-xl shadow-md transition-all active:scale-[0.98]">
+          <button className="w-full bg-primary hover:bg-primary/90 text-white font-bold py-3.5 rounded-xl shadow-md transition-colors active:scale-[0.98]">
             اكتشف باقات سند
           </button>
         </section>

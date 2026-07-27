@@ -110,7 +110,7 @@ export default function DoctorListingPage({ params }: { params: Promise<{ id: st
       <div className="px-4 mt-5 flex gap-2">
         <button
           onClick={() => handleFilterChange('all')}
-          className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${
+          className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-1.5 ${
             activeFilter === 'all'
               ? 'bg-primary text-white shadow-md shadow-primary/20'
               : 'bg-white border border-gray-200 text-gray-600 hover:border-primary/30'
@@ -120,7 +120,7 @@ export default function DoctorListingPage({ params }: { params: Promise<{ id: st
         </button>
         <button
           onClick={() => handleFilterChange('available')}
-          className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${
+          className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-1.5 ${
             activeFilter === 'available'
               ? 'bg-primary text-white shadow-md shadow-primary/20'
               : 'bg-white border border-gray-200 text-gray-600 hover:border-primary/30'
@@ -131,7 +131,7 @@ export default function DoctorListingPage({ params }: { params: Promise<{ id: st
         </button>
         <button
           onClick={() => handleFilterChange('nearest')}
-          className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${
+          className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-1.5 ${
             activeFilter === 'nearest'
               ? 'bg-primary text-white shadow-md shadow-primary/20'
               : 'bg-white border border-gray-200 text-gray-600 hover:border-primary/30'
@@ -257,7 +257,7 @@ export default function DoctorListingPage({ params }: { params: Promise<{ id: st
                             key={time}
                             disabled={!available}
                             onClick={() => setSelectedTime(time)}
-                            className={`py-2.5 sm:py-3 px-1.5 sm:px-2 rounded-xl text-sm sm:text-base font-bold border transition-all ${
+                            className={`py-2.5 sm:py-3 px-1.5 sm:px-2 rounded-xl text-sm sm:text-base font-bold border transition-colors ${
                               !available
                                 ? 'bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed line-through'
                                 : selectedTime === time

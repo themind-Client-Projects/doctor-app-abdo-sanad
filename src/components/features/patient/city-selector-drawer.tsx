@@ -44,7 +44,7 @@ export function CitySelectorDrawer() {
               </div>
               <input
                 type="text"
-                className="w-full bg-gray-50 text-gray-900 rounded-2xl py-3.5 ps-11 pe-4 border border-gray-100 outline-none focus:ring-2 focus:ring-primary/50 shadow-inner text-sm transition-all"
+                className="w-full bg-gray-50 text-gray-900 rounded-2xl py-3.5 ps-11 pe-4 border border-gray-100 outline-none focus:ring-2 focus:ring-primary/50 shadow-inner text-sm transition-colors"
                 placeholder="ابحث عن مدينة..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -58,7 +58,7 @@ export function CitySelectorDrawer() {
                 <button
                   key={city}
                   onClick={() => setCity(city)}
-                  className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all active:scale-95 ${
+                  className={`w-full flex items-center justify-between p-4 rounded-2xl transition-colors active:scale-95 ${
                     selectedCity === city
                       ? 'bg-primary/10 border-2 border-primary/20 text-primary shadow-sm'
                       : 'bg-white border border-gray-100 text-gray-700 hover:border-primary/30 hover:shadow-sm'

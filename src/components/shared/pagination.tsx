@@ -20,7 +20,7 @@ export function Pagination({ totalItems, itemsPerPage, className = '' }: Paginat
       <button
         onClick={() => setPage(page - 1)}
         disabled={page <= 1}
-        className="w-10 h-10 rounded-xl bg-white border border-gray-100 flex items-center justify-center shadow-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 active:scale-95 transition-all"
+        className="w-10 h-10 rounded-xl bg-white border border-gray-100 flex items-center justify-center shadow-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 active:scale-95 transition-colors"
         aria-label="الصفحة السابقة"
       >
         <ChevronRight className="w-5 h-5 text-gray-600" />
@@ -35,7 +35,7 @@ export function Pagination({ totalItems, itemsPerPage, className = '' }: Paginat
       <button
         onClick={() => setPage(page + 1)}
         disabled={page >= totalPages}
-        className="w-10 h-10 rounded-xl bg-white border border-gray-100 flex items-center justify-center shadow-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 active:scale-95 transition-all"
+        className="w-10 h-10 rounded-xl bg-white border border-gray-100 flex items-center justify-center shadow-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 active:scale-95 transition-colors"
         aria-label="الصفحة التالية"
       >
         <ChevronLeft className="w-5 h-5 text-gray-600" />

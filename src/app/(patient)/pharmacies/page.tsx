@@ -40,7 +40,7 @@ export default function PharmaciesPage() {
                 </p>
                 <button 
                   onClick={() => router.push('/doctors')}
-                  className="bg-white/80 hover:bg-white text-orange-600 border border-orange-200/60 px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all active:scale-95 flex items-center gap-2 w-max backdrop-blur-md"
+                  className="bg-white/80 hover:bg-white text-orange-600 border border-orange-200/60 px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-colors active:scale-95 flex items-center gap-2 w-max backdrop-blur-md"
                 >
                   استشر طبيباً الآن
                   <ArrowRight className="w-4 h-4 rotate-180" />
@@ -62,9 +62,9 @@ export default function PharmaciesPage() {
           
           <div className="space-y-4">
             {pharmacies.map((pharmacy) => (
-              <div key={pharmacy.id} className="bg-white rounded-[2rem] p-4 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.03)] border border-gray-100 hover:border-emerald-200/60 hover:shadow-xl hover:shadow-emerald-900/5 transition-all duration-300 group cursor-pointer">
+              <div key={pharmacy.id} className="bg-white rounded-[2rem] p-4 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.03)] border border-gray-100 hover:border-emerald-200/60 hover:shadow-xl hover:shadow-emerald-900/5 transition-colors duration-300 group cursor-pointer">
                 <div className="flex items-start gap-4 mb-4">
-                  <div className="w-20 h-20 bg-gray-50 rounded-[1.25rem] flex items-center justify-center text-emerald-600 flex-shrink-0 border border-gray-100 group-hover:bg-emerald-50 group-hover:scale-105 transition-all duration-300">
+                  <div className="w-20 h-20 bg-gray-50 rounded-[1.25rem] flex items-center justify-center text-emerald-600 flex-shrink-0 border border-gray-100 group-hover:bg-emerald-50 group-hover:scale-105 transition-colors duration-300">
                     {pharmacy.icon}
                   </div>
                   
@@ -90,7 +90,7 @@ export default function PharmaciesPage() {
                 </div>
                 
                 <div className="flex gap-2 mt-4 pt-4 border-t border-gray-50">
-                  <button className="flex-1 bg-gray-900 hover:bg-gray-800 text-white py-3 rounded-xl text-sm font-bold transition-all shadow-sm active:scale-95">
+                  <button className="flex-1 bg-gray-900 hover:bg-gray-800 text-white py-3 rounded-xl text-sm font-bold transition-colors shadow-sm active:scale-95">
                     طلب دواء وتصفح الأسعار
                   </button>
                   <button className="w-12 flex items-center justify-center bg-gray-50 hover:bg-gray-100 text-gray-600 rounded-xl border border-gray-100 transition-colors active:scale-95">

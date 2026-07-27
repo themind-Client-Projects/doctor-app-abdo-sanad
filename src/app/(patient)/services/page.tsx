@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Stethoscope, Bed, PercentSquare, MapPin, ChevronDown, Activity } from 'lucide-react';
+import { ChevronLeft, Stethoscope, Bed, PercentSquare } from 'lucide-react';
 import { useLocationStore } from '@/stores/patient/location.store';
 import { CitySelectorDrawer } from '@/components/features/patient/city-selector-drawer';
 import { PromoBanner } from '@/components/shared/promo-banner';
@@ -78,7 +78,7 @@ export default function ServicesPage() {
           <button 
             key={service.path}
             onClick={() => handleNavigation(service.path)}
-            className="w-full bg-white rounded-2xl p-4 border border-gray-100 flex items-center gap-4 group hover:border-primary/20 hover:shadow-sm transition-all active:scale-[0.98] text-right"
+            className="w-full bg-white rounded-2xl p-4 border border-gray-100 flex items-center gap-4 group hover:border-primary/20 hover:shadow-sm transition-colors active:scale-[0.98] text-right"
           >
             {/* Icon - Right side (RTL) */}
             <div className={`w-12 h-12 ${service.iconBg} rounded-xl flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform`}>

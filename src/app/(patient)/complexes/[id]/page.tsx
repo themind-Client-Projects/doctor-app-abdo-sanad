@@ -5,13 +5,21 @@ import Image from 'next/image';
 
 import { DoctorBookingDrawer } from '@/components/shared/doctor-booking-drawer';
 import type { Doctor } from '@/types/patient';
+import { useDoctors } from '@/hooks/use-doctors';
+import { useBookingDrawer } from '@/hooks/use-booking-drawer';
 import { SearchInput } from '@/components/shared/search-input';
 import { Search, Filter, Star, MapPin, User } from 'lucide-react';
 import Link from 'next/link';
 import { SPECIALIZATIONS } from '@/lib/constants/specializations';
-import { DEMO_DOCTORS, DEMO_PHARMACIES } from '@/lib/constants/demo-data';
+import { DEMO_PHARMACIES } from '@/lib/constants/demo-data';
 
-const COMPLEXES_DATA: Record<string, any> = {
+interface ComplexData {
+  name: string;
+  image: string;
+  location: string;
+}
+
+const COMPLEXES_DATA: Record<string, ComplexData> = {
   '1': { name: 'مجمع النور الطبي', image: '/complexes/real_complex_1.png', location: 'بغداد - المنصور' },
   '2': { name: 'عيادات السلام', image: '/complexes/real_complex_2.png', location: 'بغداد - الكرادة' },
   '3': { name: 'مركز ابن سينا', image: '/complexes/real_complex_3.png', location: 'أربيل - عنكاوا' },
@@ -27,13 +35,8 @@ export default function ComplexPage({ params }: { params: Promise<{ id: string }
   const { id } = use(params);
   const complex = COMPLEXES_DATA[id] || COMPLEXES_DATA['1'];
   
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
-
-  // Flatten all doctors for the carousel
-  const allDoctors = useMemo(() => {
-    return Object.values(DEMO_DOCTORS).flat();
-  }, []);
+  const { allDoctors } = useDoctors();
+  const { drawerOpen, setDrawerOpen, selectedDoctor, openBooking } = useBookingDrawer();
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20 font-sans">
@@ -109,10 +112,7 @@ export default function ComplexPage({ params }: { params: Promise<{ id: string }
                   </div>
                 </div>
                 <button 
-                  onClick={() => {
-                    setSelectedDoctor(doctor as Doctor);
-                    setDrawerOpen(true);
-                  }}
+                  onClick={() => openBooking(doctor as Doctor)}
                   className="w-full py-2 bg-primary/10 text-primary rounded-xl text-xs font-bold active:scale-95 transition-transform hover:bg-primary/20">
                   حجز موعد
                 </button>

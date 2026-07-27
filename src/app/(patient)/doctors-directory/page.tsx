@@ -12,6 +12,7 @@ import { DEMO_DOCTORS } from '@/lib/constants/demo-data';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from '@/components/ui/drawer';
 import { FlexibleHeader } from '@/components/shared/flexible-header';
 import type { Doctor } from '@/types/patient';
+import { useDoctors } from '@/hooks/use-doctors';
 
 const AREAS = [
   { id: 'all', name: 'كل المناطق' },
@@ -39,10 +40,7 @@ function DoctorsDirectoryContent() {
   const [copiedDoctorId, setCopiedDoctorId] = useState<string | null>(null);
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
 
-  // Flatten all doctors
-  const allDoctors = useMemo(() => {
-    return Object.values(DEMO_DOCTORS).flat();
-  }, []);
+  const { allDoctors } = useDoctors();
 
   // Filter doctors list
   const filteredDoctors = useMemo(() => {
@@ -144,7 +142,7 @@ function DoctorsDirectoryContent() {
           </div>
           <button 
             onClick={() => setShowFilterDrawer(true)}
-            className={`w-12 h-[52px] rounded-2xl shadow-sm flex items-center justify-center flex-shrink-0 active:scale-95 transition-all relative ${
+            className={`w-12 h-[52px] rounded-2xl shadow-sm flex items-center justify-center flex-shrink-0 active:scale-95 transition-colors relative ${
               activeFiltersCount > 0 ? 'bg-amber-400 text-gray-900 font-extrabold' : 'bg-white text-primary'
             }`}
           >
@@ -169,7 +167,7 @@ function DoctorsDirectoryContent() {
             {/* "All" Specialty Card */}
             <button
               onClick={() => setActiveSpecialty('all')}
-              className={`min-w-[110px] p-4 rounded-3xl flex flex-col items-center justify-center gap-2 border transition-all snap-center ${
+              className={`min-w-[110px] p-4 rounded-3xl flex flex-col items-center justify-center gap-2 border transition-colors snap-center ${
                 activeSpecialty === 'all'
                   ? 'bg-primary border-primary text-white shadow-md shadow-primary/20 scale-[1.03]'
                   : 'bg-white border-gray-100 text-gray-700 hover:border-primary/20 shadow-sm'
@@ -196,7 +194,7 @@ function DoctorsDirectoryContent() {
                 <button
                   key={spec.id}
                   onClick={() => setActiveSpecialty(spec.id)}
-                  className={`min-w-[110px] p-4 rounded-3xl flex flex-col items-center justify-center gap-2 border transition-all snap-center ${
+                  className={`min-w-[110px] p-4 rounded-3xl flex flex-col items-center justify-center gap-2 border transition-colors snap-center ${
                     isSelected
                       ? 'bg-primary border-primary text-white shadow-md shadow-primary/20 scale-[1.03]'
                       : 'bg-white border-gray-100 text-gray-700 hover:border-primary/20 shadow-sm'
@@ -249,7 +247,7 @@ function DoctorsDirectoryContent() {
               <div
                 key={doctor.id}
                 onClick={() => handleOpenDetails(doctor)}
-                className="bg-white rounded-[2rem] p-5 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] border border-gray-100 hover:border-primary/20 hover:shadow-lg transition-all duration-300 cursor-pointer flex flex-col gap-4 relative overflow-hidden"
+                className="bg-white rounded-[2rem] p-5 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] border border-gray-100 hover:border-primary/20 hover:shadow-lg transition-colors duration-300 cursor-pointer flex flex-col gap-4 relative overflow-hidden"
               >
                 {/* Visual Premium Ribbon */}
                 <div className="absolute top-0 right-0 w-2 h-full bg-gradient-to-b from-primary/30 to-transparent" />
@@ -313,7 +311,7 @@ function DoctorsDirectoryContent() {
                   <div className="flex gap-2 flex-1 justify-end">
                     <button
                       onClick={(e) => handleOpenCall(doctor, e)}
-                      className="px-3 py-2.5 rounded-xl border border-gray-200 text-gray-600 hover:border-primary/30 hover:text-primary transition-all flex items-center justify-center bg-gray-50/50 active:scale-95 shrink-0"
+                      className="px-3 py-2.5 rounded-xl border border-gray-200 text-gray-600 hover:border-primary/30 hover:text-primary transition-colors flex items-center justify-center bg-gray-50/50 active:scale-95 shrink-0"
                       title="اتصال بالعيادة"
                     >
                       <Phone className="w-4 h-4" />
@@ -429,7 +427,7 @@ function DoctorsDirectoryContent() {
                 <div className="flex gap-3">
                   <button
                     onClick={(e) => handleOpenCall(selectedDoctor, e)}
-                    className="flex-1 py-4 bg-primary text-white rounded-xl font-bold text-sm shadow-md shadow-primary/20 hover:bg-primary/95 active:scale-95 transition-all flex items-center justify-center gap-2"
+                    className="flex-1 py-4 bg-primary text-white rounded-xl font-bold text-sm shadow-md shadow-primary/20 hover:bg-primary/95 active:scale-95 transition-colors flex items-center justify-center gap-2"
                   >
                     <Phone className="w-4 h-4" />
                     اتصال بالعيادة
@@ -484,7 +482,7 @@ function DoctorsDirectoryContent() {
                 
                 <button
                   onClick={() => setCallDialogOpen(false)}
-                  className="w-full py-3.5 border border-gray-200 bg-white rounded-xl text-gray-500 font-bold text-sm hover:bg-gray-50 active:scale-95 transition-all text-center mt-2 block"
+                  className="w-full py-3.5 border border-gray-200 bg-white rounded-xl text-gray-500 font-bold text-sm hover:bg-gray-50 active:scale-95 transition-colors text-center mt-2 block"
                 >
                   إغلاق النافذة
                 </button>
@@ -514,7 +512,7 @@ function DoctorsDirectoryContent() {
                     <button
                       key={area.id}
                       onClick={() => setSelectedArea(area.id)}
-                      className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all ${
+                      className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-colors ${
                         selectedArea === area.id
                           ? 'bg-primary/10 text-primary border-primary font-black shadow-sm'
                           : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
@@ -537,8 +535,8 @@ function DoctorsDirectoryContent() {
                   ].map((g) => (
                     <button
                       key={g.id}
-                      onClick={() => setSelectedGender(g.id as any)}
-                      className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition-all text-center ${
+                      onClick={() => setSelectedGender(g.id as 'all' | 'male' | 'female')}
+                      className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition-colors text-center ${
                         selectedGender === g.id
                           ? 'bg-primary/10 text-primary border-primary font-black shadow-sm'
                           : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
@@ -562,7 +560,7 @@ function DoctorsDirectoryContent() {
                     <button
                       key={e.id}
                       onClick={() => setSelectedExperience(e.id)}
-                      className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition-all text-center ${
+                      className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition-colors text-center ${
                         selectedExperience === e.id
                           ? 'bg-primary/10 text-primary border-primary font-black shadow-sm'
                           : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'

@@ -20,6 +20,7 @@ export const useLocationStore = create<LocationState>()(
     }),
     {
       name: 'patient-location-storage',
+      partialize: (state) => ({ selectedCity: state.selectedCity }),
     }
   )
 );

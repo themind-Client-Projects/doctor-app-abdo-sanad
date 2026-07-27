@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Product } from '@/lib/constants/demo-data';
+import type { Product } from '@/types/patient';
 
 export interface CartItem extends Product {
   quantity: number;

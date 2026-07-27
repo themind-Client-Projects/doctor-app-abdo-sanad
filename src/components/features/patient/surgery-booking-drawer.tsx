@@ -78,7 +78,7 @@ export function SurgeryBookingDrawer({ open, onOpenChange }: SurgeryBookingDrawe
       <div className="flex justify-between items-center px-4 mb-6 relative">
         <div className="absolute top-1/2 left-8 right-8 h-0.5 bg-gray-200 -z-10 -translate-y-1/2"></div>
         <div 
-          className="absolute top-1/2 right-8 h-0.5 bg-primary -z-10 -translate-y-1/2 transition-all duration-300"
+          className="absolute top-1/2 right-8 h-0.5 bg-primary -z-10 -translate-y-1/2 transition-colors duration-300"
           style={{ width: `${((step - 1) / 3) * 100}%` }}
         ></div>
         
@@ -102,7 +102,7 @@ export function SurgeryBookingDrawer({ open, onOpenChange }: SurgeryBookingDrawe
         {/* Header */}
         <div className="bg-white rounded-t-[2.5rem] px-5 pt-6 pb-4 flex items-center border-b border-gray-100 shrink-0 sticky top-0 z-10 shadow-sm">
           {step > 1 && step < 5 ? (
-            <button onClick={handleBack} className="w-8 h-8 flex items-center justify-center bg-gray-50 rounded-full text-gray-600 hover:bg-gray-100 active:scale-95 transition-all">
+            <button onClick={handleBack} className="w-8 h-8 flex items-center justify-center bg-gray-50 rounded-full text-gray-600 hover:bg-gray-100 active:scale-95 transition-colors">
               <ChevronRight className="w-5 h-5" />
             </button>
           ) : (
@@ -130,7 +130,7 @@ export function SurgeryBookingDrawer({ open, onOpenChange }: SurgeryBookingDrawe
                 <button
                   key={surgery.id}
                   onClick={() => setSelectedSurgery(surgery.id)}
-                  className={`w-full flex items-center gap-4 p-4 rounded-[2rem] border transition-all active:scale-[0.98] ${
+                  className={`w-full flex items-center gap-4 p-4 rounded-[2rem] border transition-colors active:scale-[0.98] ${
                     selectedSurgery === surgery.id 
                       ? 'bg-primary/5 border-primary/30 shadow-sm' 
                       : 'bg-white border-gray-100 hover:border-primary/20 shadow-sm'
@@ -163,7 +163,7 @@ export function SurgeryBookingDrawer({ open, onOpenChange }: SurgeryBookingDrawe
                 <button
                   key={hospital.id}
                   onClick={() => setSelectedHospital(hospital.id)}
-                  className={`w-full text-right p-4 rounded-[2rem] border transition-all active:scale-[0.98] ${
+                  className={`w-full text-right p-4 rounded-[2rem] border transition-colors active:scale-[0.98] ${
                     selectedHospital === hospital.id 
                       ? 'bg-primary/5 border-primary/30 shadow-sm' 
                       : 'bg-white border-gray-100 hover:border-primary/20 shadow-sm'
@@ -260,7 +260,7 @@ export function SurgeryBookingDrawer({ open, onOpenChange }: SurgeryBookingDrawe
                   <button
                     key={date.id}
                     onClick={() => setSelectedDate(date.id)}
-                    className={`w-full flex justify-between items-center p-4 rounded-[2rem] border transition-all active:scale-[0.98] ${
+                    className={`w-full flex justify-between items-center p-4 rounded-[2rem] border transition-colors active:scale-[0.98] ${
                       selectedDate === date.id 
                         ? 'bg-primary/5 border-primary/30 shadow-sm' 
                         : 'bg-white border-gray-100 hover:border-primary/20 shadow-sm'
@@ -338,7 +338,7 @@ export function SurgeryBookingDrawer({ open, onOpenChange }: SurgeryBookingDrawe
             <Button 
               disabled={!selectedSurgery}
               onClick={handleNext}
-              className="w-full rounded-2xl py-6 text-base font-bold bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/25 disabled:opacity-50 disabled:shadow-none transition-all active:scale-[0.98]"
+              className="w-full rounded-2xl py-6 text-base font-bold bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/25 disabled:opacity-50 disabled:shadow-none transition-colors active:scale-[0.98]"
             >
               متابعة اختيار المستشفى
             </Button>
@@ -347,7 +347,7 @@ export function SurgeryBookingDrawer({ open, onOpenChange }: SurgeryBookingDrawe
             <Button 
               disabled={!selectedHospital}
               onClick={handleNext}
-              className="w-full rounded-2xl py-6 text-base font-bold bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/25 disabled:opacity-50 disabled:shadow-none transition-all active:scale-[0.98]"
+              className="w-full rounded-2xl py-6 text-base font-bold bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/25 disabled:opacity-50 disabled:shadow-none transition-colors active:scale-[0.98]"
             >
               متابعة قراءة التحضيرات
             </Button>
@@ -356,7 +356,7 @@ export function SurgeryBookingDrawer({ open, onOpenChange }: SurgeryBookingDrawe
             <Button 
               disabled={!agreedToPrep}
               onClick={handleNext}
-              className="w-full rounded-2xl py-6 text-base font-bold bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/25 disabled:opacity-50 disabled:shadow-none transition-all active:scale-[0.98]"
+              className="w-full rounded-2xl py-6 text-base font-bold bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/25 disabled:opacity-50 disabled:shadow-none transition-colors active:scale-[0.98]"
             >
               متابعة تحديد الموعد
             </Button>
@@ -365,7 +365,7 @@ export function SurgeryBookingDrawer({ open, onOpenChange }: SurgeryBookingDrawe
             <Button 
               disabled={!selectedDate}
               onClick={handleNext}
-              className="w-full rounded-2xl py-6 text-base font-bold bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/25 disabled:opacity-50 disabled:shadow-none transition-all active:scale-[0.98]"
+              className="w-full rounded-2xl py-6 text-base font-bold bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/25 disabled:opacity-50 disabled:shadow-none transition-colors active:scale-[0.98]"
             >
               تأكيد حجز العملية
             </Button>
@@ -373,7 +373,7 @@ export function SurgeryBookingDrawer({ open, onOpenChange }: SurgeryBookingDrawe
           {step === 5 && (
             <Button 
               onClick={handleClose}
-              className="w-full rounded-2xl py-6 text-base font-bold bg-gray-900 hover:bg-gray-800 text-white shadow-lg transition-all active:scale-[0.98]"
+              className="w-full rounded-2xl py-6 text-base font-bold bg-gray-900 hover:bg-gray-800 text-white shadow-lg transition-colors active:scale-[0.98]"
             >
               العودة للصفحة الرئيسية
             </Button>

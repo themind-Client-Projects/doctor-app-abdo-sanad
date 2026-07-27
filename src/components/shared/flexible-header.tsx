@@ -120,7 +120,7 @@ export function FlexibleHeader({
             </div>
             <input
               type="text"
-              className="w-full bg-gray-50 border border-gray-100 text-gray-900 rounded-2xl py-3 ps-11 pe-4 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-medium"
+              className="w-full bg-gray-50 border border-gray-100 text-gray-900 rounded-2xl py-3 ps-11 pe-4 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors text-sm font-medium"
               placeholder={searchPlaceholder}
             />
           </div>

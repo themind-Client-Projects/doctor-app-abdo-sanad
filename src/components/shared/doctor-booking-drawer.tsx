@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { Calendar as CalendarClock, Clock, Check, MapPin, Stethoscope, Wallet, ArrowRight, ShieldCheck, CreditCard } from 'lucide-react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter, DrawerClose } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
@@ -30,15 +30,39 @@ export function DoctorBookingDrawer({ doctor, open, onOpenChange }: DoctorBookin
   // Mock wallet balance for demo
   const walletBalance = "150,000";
 
-
   const timeSectionRef = useRef<HTMLDivElement>(null);
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const today = new Date();
 
-  const upcomingDates = Array.from({ length: 7 }).map((_, i) => {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
-    return d;
-  });
+  // Reset state when drawer closes
+  useEffect(() => {
+    if (!open) {
+      const t = setTimeout(() => {
+        setStep('select_time');
+        setSelectedDate(undefined);
+        setSelectedTime(null);
+        setUseWallet(true);
+      }, 300);
+      timersRef.current.push(t);
+    }
+  }, [open]);
+
+  // Cleanup all timers on unmount
+  useEffect(() => {
+    return () => {
+      timersRef.current.forEach(clearTimeout);
+      timersRef.current = [];
+    };
+  }, []);
+
+  const upcomingDates = useMemo(() => {
+    return Array.from({ length: 7 }).map((_, i) => {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      return d;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const isDateAvailable = (date: Date) => {
     return DEMO_AVAILABLE_DATES.some(d =>
@@ -48,18 +72,14 @@ export function DoctorBookingDrawer({ doctor, open, onOpenChange }: DoctorBookin
     );
   };
 
-  const confirmBooking = () => {
+  const confirmBooking = useCallback(() => {
     setStep('success');
-    setTimeout(() => {
+    const t1 = setTimeout(() => {
       onOpenChange(false);
-      // Reset state after drawer closes
-      setTimeout(() => {
-        setStep('select_time');
-        setSelectedDate(undefined);
-        setSelectedTime(null);
-      }, 500);
     }, 2000);
-  };
+    timersRef.current.push(t1);
+  }, [onOpenChange]);
+
 
   const handleContinueToPayment = () => {
     if (selectedDate && selectedTime) {
@@ -136,7 +156,7 @@ export function DoctorBookingDrawer({ doctor, open, onOpenChange }: DoctorBookin
                     {/* Wallet Option */}
                     <button
                       onClick={() => setUseWallet(true)}
-                      className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${useWallet
+                      className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-colors ${useWallet
                           ? 'border-primary bg-primary/5 shadow-md shadow-primary/10'
                           : 'border-gray-100 bg-white hover:border-primary/30'
                         }`}
@@ -194,7 +214,7 @@ export function DoctorBookingDrawer({ doctor, open, onOpenChange }: DoctorBookin
                               }, 150);
                             }
                           }}
-                          className={`min-w-[110px] p-3 rounded-xl border-2 flex flex-col items-center gap-2 transition-all snap-center ${
+                          className={`min-w-[110px] p-3 rounded-xl border-2 flex flex-col items-center gap-2 transition-colors snap-center ${
                             isAvailable ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'
                           } ${
                             isSelected 
@@ -236,7 +256,7 @@ export function DoctorBookingDrawer({ doctor, open, onOpenChange }: DoctorBookin
                           key={time}
                           disabled={!available}
                           onClick={() => setSelectedTime(time)}
-                          className={`py-2.5 px-1.5 rounded-xl text-sm font-bold border transition-all ${!available
+                          className={`py-2.5 px-1.5 rounded-xl text-sm font-bold border transition-colors ${!available
                               ? 'bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed line-through'
                               : selectedTime === time
                                 ? 'bg-primary text-white border-primary shadow-md shadow-primary/20 scale-[1.02]'
@@ -289,7 +309,7 @@ export function DoctorBookingDrawer({ doctor, open, onOpenChange }: DoctorBookin
               <DrawerFooter className="p-0 flex flex-col gap-2">
                 {step === 'select_time' ? (
                   <Button
-                    className="w-full rounded-xl py-5 font-bold text-base shadow-lg shadow-primary/20 transition-all hover:shadow-primary/30 active:scale-[0.98]"
+                    className="w-full rounded-xl py-5 font-bold text-base shadow-lg shadow-primary/20 transition-colors hover:shadow-primary/30 active:scale-[0.98]"
                     disabled={!selectedDate || !selectedTime}
                     onClick={handleContinueToPayment}
                   >
@@ -297,7 +317,7 @@ export function DoctorBookingDrawer({ doctor, open, onOpenChange }: DoctorBookin
                   </Button>
                 ) : (
                   <Button
-                    className="w-full rounded-xl py-5 font-bold text-base shadow-lg shadow-primary/20 transition-all hover:shadow-primary/30 active:scale-[0.98]"
+                    className="w-full rounded-xl py-5 font-bold text-base shadow-lg shadow-primary/20 transition-colors hover:shadow-primary/30 active:scale-[0.98]"
                     onClick={confirmBooking}
                   >
                     تأكيد الدفع من المحفظة

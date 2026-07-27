@@ -120,7 +120,7 @@ export default function OffersPage() {
             </div>
             <input
               type="text"
-              className="w-full bg-gray-50 border border-gray-100 text-gray-900 rounded-2xl py-3.5 ps-11 pe-4 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-medium"
+              className="w-full bg-gray-50 border border-gray-100 text-gray-900 rounded-2xl py-3.5 ps-11 pe-4 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors text-sm font-medium"
               placeholder="ابحث عن العروض، العيادات..."
             />
           </div>
@@ -138,7 +138,7 @@ export default function OffersPage() {
             <button
               key={cat}
               onClick={() => setActiveCategory(cat)}
-              className={`shrink-0 px-5 py-2.5 rounded-full text-sm font-bold transition-all ${
+              className={`shrink-0 px-5 py-2.5 rounded-full text-sm font-bold transition-colors ${
                 activeCategory === cat 
                   ? 'bg-primary text-white shadow-md shadow-primary/20' 
                   : 'bg-white text-gray-600 border border-gray-200 hover:border-primary/50'

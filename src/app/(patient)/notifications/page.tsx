@@ -72,7 +72,7 @@ export default function NotificationsPage() {
           NOTIFICATIONS.map((notif) => (
             <div 
               key={notif.id} 
-              className={`p-4 rounded-[1.5rem] border flex gap-4 transition-all active:scale-95 cursor-pointer ${
+              className={`p-4 rounded-[1.5rem] border flex gap-4 transition-colors active:scale-95 cursor-pointer ${
                 notif.unread ? 'bg-white border-primary/20 shadow-sm' : 'bg-gray-50/50 border-gray-100 opacity-80'
               }`}
             >

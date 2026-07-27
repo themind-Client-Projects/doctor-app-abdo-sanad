@@ -49,7 +49,7 @@ export default function LabsPage() {
             
             <div className="bg-gradient-to-br from-purple-900 to-indigo-900 rounded-[2rem] p-5 shadow-xl shadow-purple-900/10 relative overflow-hidden group">
               {/* Premium Glow */}
-              <div className="absolute top-0 left-0 w-32 h-32 bg-purple-400/20 rounded-full blur-3xl -translate-y-1/2 -translate-x-1/2 group-hover:bg-purple-400/30 transition-all duration-700"></div>
+              <div className="absolute top-0 left-0 w-32 h-32 bg-purple-400/20 rounded-full blur-3xl -translate-y-1/2 -translate-x-1/2 group-hover:bg-purple-400/30 transition-colors duration-700"></div>
               
               {activeAppointments.map(appt => (
                 <div key={appt.id} className="relative z-10 flex flex-col gap-4">
@@ -92,7 +92,7 @@ export default function LabsPage() {
           <div className="flex overflow-x-auto gap-4 pb-4 snap-x hide-scrollbar px-1">
             {categories.map((cat) => (
               <button key={cat.id} className="snap-start flex flex-col items-center gap-3 group min-w-[85px]">
-                <div className={`w-[72px] h-[72px] rounded-[1.5rem] bg-gradient-to-br ${cat.color} flex items-center justify-center text-white shadow-lg ${cat.shadow} transform group-hover:-translate-y-1 group-active:translate-y-0 group-active:scale-95 transition-all duration-300 relative overflow-hidden`}>
+                <div className={`w-[72px] h-[72px] rounded-[1.5rem] bg-gradient-to-br ${cat.color} flex items-center justify-center text-white shadow-lg ${cat.shadow} transform group-hover:-translate-y-1 group-active:translate-y-0 group-active:scale-95 transition-colors duration-300 relative overflow-hidden`}>
                   <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                   <div className="relative z-10 drop-shadow-md">
                     {cat.icon}
@@ -119,7 +119,7 @@ export default function LabsPage() {
                 </p>
                 <button 
                   onClick={() => router.push('/doctors')}
-                  className="bg-white/80 hover:bg-white text-orange-600 border border-orange-200/60 px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all active:scale-95 flex items-center gap-2 w-max backdrop-blur-md"
+                  className="bg-white/80 hover:bg-white text-orange-600 border border-orange-200/60 px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-colors active:scale-95 flex items-center gap-2 w-max backdrop-blur-md"
                 >
                   احجز طبيباً الآن
                   <ArrowRight className="w-4 h-4 rotate-180" />
@@ -141,10 +141,10 @@ export default function LabsPage() {
           
           <div className="space-y-4">
             {labs.map((lab) => (
-              <div key={lab.id} className="bg-white rounded-[2rem] p-4 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.03)] border border-gray-100 hover:border-purple-200/60 hover:shadow-xl hover:shadow-purple-900/5 transition-all duration-300 group cursor-pointer">
+              <div key={lab.id} className="bg-white rounded-[2rem] p-4 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.03)] border border-gray-100 hover:border-purple-200/60 hover:shadow-xl hover:shadow-purple-900/5 transition-colors duration-300 group cursor-pointer">
                 <div className="flex items-start gap-4 mb-4">
                   <div className="relative">
-                    <div className="w-20 h-20 bg-gray-50 rounded-[1.25rem] flex items-center justify-center text-purple-600 flex-shrink-0 border border-gray-100 group-hover:bg-purple-50 group-hover:scale-105 transition-all duration-300">
+                    <div className="w-20 h-20 bg-gray-50 rounded-[1.25rem] flex items-center justify-center text-purple-600 flex-shrink-0 border border-gray-100 group-hover:bg-purple-50 group-hover:scale-105 transition-colors duration-300">
                       {lab.icon}
                     </div>
                     <div className={`absolute -bottom-2 -right-2 text-[10px] font-bold px-2.5 py-1 rounded-xl border-2 border-white shadow-sm flex items-center gap-1 ${lab.isOpen ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
@@ -178,7 +178,7 @@ export default function LabsPage() {
                 </div>
                 
                 <div className="flex gap-2 mt-4 pt-4 border-t border-gray-50">
-                  <button className="flex-1 bg-gray-900 hover:bg-gray-800 text-white py-3 rounded-xl text-sm font-bold transition-all shadow-sm active:scale-95">
+                  <button className="flex-1 bg-gray-900 hover:bg-gray-800 text-white py-3 rounded-xl text-sm font-bold transition-colors shadow-sm active:scale-95">
                     قائمة الفحوصات
                   </button>
                   <button className="w-12 flex items-center justify-center bg-gray-50 hover:bg-gray-100 text-gray-600 rounded-xl border border-gray-100 transition-colors active:scale-95">

@@ -4,7 +4,7 @@ import { ShoppingBag, X, Plus, Minus, Trash2 } from 'lucide-react';
 import Image from 'next/image';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter, DrawerClose } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
-import { useCartStore } from '@/store/cart-store';
+import { useCartStore } from '@/stores/ecommerce/cart.store';
 import { useState } from 'react';
 
 interface CartDrawerProps {
@@ -131,7 +131,7 @@ export function CartDrawer({ open, onOpenChange }: CartDrawerProps) {
               <Button
                 onClick={handleCheckout}
                 disabled={isCheckingOut || items.length === 0}
-                className="w-full rounded-2xl py-6 font-bold text-lg bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/20 active:scale-95 transition-all"
+                className="w-full rounded-2xl py-6 font-bold text-lg bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/20 active:scale-95 transition-colors"
               >
                 {isCheckingOut ? 'جاري التحويل للدفع...' : 'متابعة الدفع (Wayl)'}
               </Button>

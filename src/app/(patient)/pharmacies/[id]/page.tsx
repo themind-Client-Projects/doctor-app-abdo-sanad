@@ -7,7 +7,7 @@ import { Search, MapPin, Clock, Star, ShoppingBag, Info, AlertCircle } from 'luc
 import { DEMO_PHARMACIES, DEMO_PRODUCTS } from '@/lib/constants/demo-data';
 import { ProductCard } from '@/components/shared/ecommerce/product-card';
 import { CartDrawer } from '@/components/shared/ecommerce/cart-drawer';
-import { useCartStore } from '@/store/cart-store';
+import { useCartStore } from '@/stores/ecommerce/cart.store';
 import { useFilters } from '@/hooks/use-filters';
 import { SearchInput } from '@/components/shared/search-input';
 import { CategoryFilters } from '@/components/shared/category-filters';
@@ -128,7 +128,7 @@ function PharmacyContent({ pharmacyId }: { pharmacyId: number }) {
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-[90%] max-w-sm">
           <button 
             onClick={() => setCartOpen(true)}
-            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl py-3.5 px-5 flex items-center justify-between shadow-lg shadow-emerald-600/30 transition-all active:scale-95 group"
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl py-3.5 px-5 flex items-center justify-between shadow-lg shadow-emerald-600/30 transition-colors active:scale-95 group"
           >
             <div className="flex items-center gap-3">
               <div className="relative">

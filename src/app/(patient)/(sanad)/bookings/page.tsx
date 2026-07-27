@@ -217,7 +217,7 @@ export default function BookingsPage() {
         <div className="flex gap-1 bg-gray-100 p-1.5 rounded-2xl">
           <button
             onClick={() => setActiveTab('upcoming')}
-            className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${
+            className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-colors ${
               activeTab === 'upcoming'
                 ? 'bg-white text-primary shadow-sm'
                 : 'text-gray-500 hover:text-gray-700'
@@ -227,7 +227,7 @@ export default function BookingsPage() {
           </button>
           <button
             onClick={() => setActiveTab('past')}
-            className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${
+            className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-colors ${
               activeTab === 'past'
                 ? 'bg-white text-primary shadow-sm'
                 : 'text-gray-500 hover:text-gray-700'
@@ -255,7 +255,7 @@ export default function BookingsPage() {
             return (
               <div
                 key={booking.id}
-                className={`bg-white rounded-3xl p-5 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] border border-gray-100 transition-all ${
+                className={`bg-white rounded-3xl p-5 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] border border-gray-100 transition-colors ${
                   !isUpcoming ? 'opacity-80' : ''
                 }`}
               >
@@ -412,7 +412,7 @@ export default function BookingsPage() {
                         key={time}
                         disabled={!available}
                         onClick={() => setSelectedTime(time)}
-                        className={`py-2.5 sm:py-3 px-1.5 sm:px-2 rounded-xl text-sm sm:text-base font-bold border transition-all ${
+                        className={`py-2.5 sm:py-3 px-1.5 sm:px-2 rounded-xl text-sm sm:text-base font-bold border transition-colors ${
                           !available
                             ? 'bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed line-through'
                             : selectedTime === time

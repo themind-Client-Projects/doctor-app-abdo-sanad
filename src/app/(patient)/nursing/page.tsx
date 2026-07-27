@@ -8,13 +8,23 @@ import { FlexibleHeader } from '@/components/shared/flexible-header';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { HomecareReservationForm } from '@/components/forms/homecare-reservation-form';
 
+interface NursingCenterLocal {
+  id: number;
+  name: string;
+  location: string;
+  phone: string;
+  rating: number;
+  reviews: number;
+  icon: React.ReactNode;
+}
+
 export default function NursingPage() {
   const router = useRouter();
   
-  const [selectedCenter, setSelectedCenter] = useState<any>(null);
+  const [selectedCenter, setSelectedCenter] = useState<NursingCenterLocal | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const openReservation = (center: any) => {
+  const openReservation = (center: NursingCenterLocal) => {
     setSelectedCenter(center);
     setDrawerOpen(true);
   };
@@ -50,7 +60,7 @@ export default function NursingPage() {
                 </p>
                 <button 
                   onClick={() => router.push('/doctors')}
-                  className="bg-white/80 hover:bg-white text-orange-600 border border-orange-200/60 px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all active:scale-95 flex items-center gap-2 w-max backdrop-blur-md"
+                  className="bg-white/80 hover:bg-white text-orange-600 border border-orange-200/60 px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-colors active:scale-95 flex items-center gap-2 w-max backdrop-blur-md"
                 >
                   استشر طبيباً الآن
                   <ArrowRight className="w-4 h-4 rotate-180" />
@@ -71,9 +81,9 @@ export default function NursingPage() {
           
           <div className="space-y-4">
             {centers.map((center) => (
-              <div key={center.id} className="bg-white rounded-[2rem] p-4 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.03)] border border-gray-100 hover:border-rose-200/60 hover:shadow-xl hover:shadow-rose-900/5 transition-all duration-300 group cursor-pointer">
+              <div key={center.id} className="bg-white rounded-[2rem] p-4 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.03)] border border-gray-100 hover:border-rose-200/60 hover:shadow-xl hover:shadow-rose-900/5 transition-colors duration-300 group cursor-pointer">
                 <div className="flex items-start gap-4 mb-4">
-                  <div className="w-20 h-20 bg-gray-50 rounded-[1.25rem] flex items-center justify-center text-rose-600 flex-shrink-0 border border-gray-100 group-hover:bg-rose-50 group-hover:scale-105 transition-all duration-300">
+                  <div className="w-20 h-20 bg-gray-50 rounded-[1.25rem] flex items-center justify-center text-rose-600 flex-shrink-0 border border-gray-100 group-hover:bg-rose-50 group-hover:scale-105 transition-colors duration-300">
                     {center.icon}
                   </div>
                   
@@ -101,7 +111,7 @@ export default function NursingPage() {
                 <div className="flex gap-2 mt-4 pt-4 border-t border-gray-50">
                   <button 
                     onClick={() => openReservation(center)}
-                    className="flex-1 bg-rose-600 hover:bg-rose-700 text-white py-3 rounded-xl text-sm font-bold shadow-md shadow-rose-600/20 active:scale-95 transition-all"
+                    className="flex-1 bg-rose-600 hover:bg-rose-700 text-white py-3 rounded-xl text-sm font-bold shadow-md shadow-rose-600/20 active:scale-95 transition-colors"
                   >
                     احجز خدمة الآن
                   </button>

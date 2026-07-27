@@ -81,7 +81,7 @@ export default function DoctorProfilePage({ params }: { params: Promise<{ id: st
       <div className="bg-white flex border-b border-gray-200 px-5">
         <button 
           onClick={() => setActiveTab('services')}
-          className={`flex-1 py-4 text-center font-bold text-[15px] transition-all relative ${
+          className={`flex-1 py-4 text-center font-bold text-[15px] transition-colors relative ${
             activeTab === 'services' ? 'text-[#10b981] border-b-[3px] border-[#10b981]' : 'text-gray-500'
           }`}
         >
@@ -89,7 +89,7 @@ export default function DoctorProfilePage({ params }: { params: Promise<{ id: st
         </button>
         <button 
           onClick={() => setActiveTab('safety')}
-          className={`flex-1 py-4 text-center font-bold text-[15px] transition-all ${
+          className={`flex-1 py-4 text-center font-bold text-[15px] transition-colors ${
             activeTab === 'safety' ? 'text-[#10b981] border-b-[3px] border-[#10b981]' : 'text-gray-500'
           }`}
         >
@@ -114,7 +114,7 @@ export default function DoctorProfilePage({ params }: { params: Promise<{ id: st
                   >
                     <span className="font-bold text-gray-800 text-[15px] text-right flex-1 ml-4 leading-relaxed group-hover:text-[#10b981] transition-colors">{service.name}</span>
                     <button 
-                      className={`w-12 h-12 rounded-[1.25rem] flex items-center justify-center transition-all flex-shrink-0 ${
+                      className={`w-12 h-12 rounded-[1.25rem] flex items-center justify-center transition-colors flex-shrink-0 ${
                         isSelected 
                           ? 'bg-[#10b981] text-white shadow-md shadow-[#10b981]/20 scale-105' 
                           : 'bg-[#eaf6ef] text-[#10b981] hover:bg-[#10b981]/20'

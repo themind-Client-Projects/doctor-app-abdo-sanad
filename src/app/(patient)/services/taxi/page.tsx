@@ -125,7 +125,7 @@ export default function TaxiServicePage() {
                   <select
                     value={vehicleType}
                     onChange={(e) => setVehicleType(e.target.value as 'taxi' | 'bus')}
-                    className="w-full bg-gray-50 text-gray-900 rounded-2xl py-3.5 pr-12 pl-10 border border-gray-100 focus:border-primary/50 outline-none focus:ring-2 focus:ring-primary/20 transition-all appearance-none font-bold"
+                    className="w-full bg-gray-50 text-gray-900 rounded-2xl py-3.5 pr-12 pl-10 border border-gray-100 focus:border-primary/50 outline-none focus:ring-2 focus:ring-primary/20 transition-colors appearance-none font-bold"
                   >
                     <option value="taxi">تكسي</option>
                     <option value="bus">باص</option>
@@ -144,7 +144,7 @@ export default function TaxiServicePage() {
                     <select
                       value={passengerCount}
                       onChange={(e) => setPassengerCount(e.target.value as '4' | '7' | 'more')}
-                      className="w-full bg-gray-50 text-gray-900 rounded-2xl py-3.5 pr-4 pl-10 border border-gray-100 focus:border-primary/50 outline-none focus:ring-2 focus:ring-primary/20 transition-all appearance-none font-bold"
+                      className="w-full bg-gray-50 text-gray-900 rounded-2xl py-3.5 pr-4 pl-10 border border-gray-100 focus:border-primary/50 outline-none focus:ring-2 focus:ring-primary/20 transition-colors appearance-none font-bold"
                     >
                       <option value="4">4 ركاب</option>
                       <option value="7">7 ركاب</option>
@@ -164,7 +164,7 @@ export default function TaxiServicePage() {
                   <select
                     value={subscription}
                     onChange={(e) => setSubscription(e.target.value as 'none' | 'weekly' | 'monthly')}
-                    className="w-full bg-gray-50 text-gray-900 rounded-2xl py-3.5 pr-4 pl-10 border border-gray-100 focus:border-primary/50 outline-none focus:ring-2 focus:ring-primary/20 transition-all appearance-none font-bold"
+                    className="w-full bg-gray-50 text-gray-900 rounded-2xl py-3.5 pr-4 pl-10 border border-gray-100 focus:border-primary/50 outline-none focus:ring-2 focus:ring-primary/20 transition-colors appearance-none font-bold"
                   >
                     <option value="none">رحلة عادية</option>
                     <option value="weekly">أسبوعي</option>
@@ -184,7 +184,7 @@ export default function TaxiServicePage() {
                     <select
                       value={tripType}
                       onChange={(e) => setTripType(e.target.value as 'one-way' | 'return' | 'round-trip')}
-                      className="w-full bg-gray-50 text-gray-900 rounded-2xl py-3.5 pr-4 pl-10 border border-gray-100 focus:border-primary/50 outline-none focus:ring-2 focus:ring-primary/20 transition-all appearance-none font-bold"
+                      className="w-full bg-gray-50 text-gray-900 rounded-2xl py-3.5 pr-4 pl-10 border border-gray-100 focus:border-primary/50 outline-none focus:ring-2 focus:ring-primary/20 transition-colors appearance-none font-bold"
                     >
                       <option value="one-way">ذهاب فقط</option>
                       <option value="round-trip">ذهاب وعودة</option>
@@ -209,7 +209,7 @@ export default function TaxiServicePage() {
                       type="text"
                       value={pickupLocation}
                       onChange={(e) => setPickupLocation(e.target.value)}
-                      className="w-full bg-gray-50 text-gray-900 rounded-2xl py-3.5 pr-10 pl-4 border border-gray-100 focus:border-primary/50 outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                      className="w-full bg-gray-50 text-gray-900 rounded-2xl py-3.5 pr-10 pl-4 border border-gray-100 focus:border-primary/50 outline-none focus:ring-2 focus:ring-primary/20 transition-colors"
                       placeholder="أدخل موقعك الحالي أو اسم المنطقة"
                     />
                   </div>
@@ -225,7 +225,7 @@ export default function TaxiServicePage() {
                       type="text"
                       value={landmark}
                       onChange={(e) => setLandmark(e.target.value)}
-                      className="w-full bg-gray-50 text-gray-900 rounded-2xl py-3.5 pr-10 pl-4 border border-gray-100 focus:border-primary/50 outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                      className="w-full bg-gray-50 text-gray-900 rounded-2xl py-3.5 pr-10 pl-4 border border-gray-100 focus:border-primary/50 outline-none focus:ring-2 focus:ring-primary/20 transition-colors"
                       placeholder="مثال: بالقرب من صيدلية الشفاء"
                     />
                   </div>
@@ -241,7 +241,7 @@ export default function TaxiServicePage() {
                       type="text"
                       value={destination}
                       onChange={(e) => setDestination(e.target.value)}
-                      className="w-full bg-gray-50 text-gray-900 rounded-2xl py-3.5 pr-10 pl-4 border border-gray-100 focus:border-primary/50 outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                      className="w-full bg-gray-50 text-gray-900 rounded-2xl py-3.5 pr-10 pl-4 border border-gray-100 focus:border-primary/50 outline-none focus:ring-2 focus:ring-primary/20 transition-colors"
                       placeholder="أدخل نقطة الوصول"
                     />
                   </div>
@@ -263,7 +263,7 @@ export default function TaxiServicePage() {
 
             <div className="space-y-4">
               {TAXI_PACKAGES.map((pkg) => (
-                <div key={pkg.id} className={`bg-gradient-to-b ${pkg.theme} rounded-3xl p-5 shadow-sm border relative transition-all`}>
+                <div key={pkg.id} className={`bg-gradient-to-b ${pkg.theme} rounded-3xl p-5 shadow-sm border relative transition-colors`}>
                   {pkg.popular && (
                     <div className="absolute top-0 left-5 -translate-y-1/2 bg-emerald-500 text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-sm">
                       الأكثر طلباً
@@ -295,7 +295,7 @@ export default function TaxiServicePage() {
                     <span className="font-extrabold text-gray-900 text-2xl">{pkg.price} <span className="text-xs text-gray-400 font-normal">د.ع</span></span>
                     <button
                       onClick={() => handleSelectPackage(pkg)}
-                      className={`text-sm font-bold px-8 py-3 rounded-xl transition-all shadow-md active:scale-95 ${pkg.popular ? 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-emerald-500/20' : 'bg-primary text-white hover:bg-primary/90 shadow-primary/20'
+                      className={`text-sm font-bold px-8 py-3 rounded-xl transition-colors shadow-md active:scale-95 ${pkg.popular ? 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-emerald-500/20' : 'bg-primary text-white hover:bg-primary/90 shadow-primary/20'
                         }`}
                     >
                       طلب الآن

@@ -13,7 +13,7 @@ interface DoctorCardProps {
 
 export function DoctorCard({ doctor, onBook, buttonText = 'احجز موعد', buttonIcon: ButtonIcon = CalendarClock, priceLabel = 'سعر الكشفية' }: DoctorCardProps) {
   return (
-    <div className="bg-white rounded-[2rem] p-5 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] border border-gray-100 hover:border-primary/20 hover:shadow-lg transition-all duration-300 flex flex-col group">
+    <div className="bg-white rounded-[2rem] p-5 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] border border-gray-100 hover:border-primary/20 hover:shadow-lg transition-colors duration-300 flex flex-col group">
       <Link href={`/doctors/profile/${doctor.id}`} className="block flex-1 cursor-pointer">
         <div className="flex items-start gap-4 mb-4">
           <div className="relative flex-shrink-0">
@@ -75,7 +75,7 @@ export function DoctorCard({ doctor, onBook, buttonText = 'احجز موعد', b
             onBook(doctor);
           }}
           disabled={!doctor.isAvailable}
-          className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${
+          className={`flex-1 py-3 rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-1.5 ${
             doctor.isAvailable
               ? 'bg-primary/10 text-primary hover:bg-primary hover:text-white active:scale-95'
               : 'bg-gray-100 text-gray-400 cursor-not-allowed'

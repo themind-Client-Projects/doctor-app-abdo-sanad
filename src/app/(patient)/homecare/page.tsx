@@ -39,14 +39,14 @@ export default function HomecarePage() {
             <div className="flex bg-gray-50 rounded-2xl p-1.5 mb-6 border border-gray-100 shadow-inner">
               <button 
                 onClick={() => setActiveTab('nursing')}
-                className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${activeTab === 'nursing' ? 'bg-white text-primary shadow-sm ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`flex-1 py-3 text-sm font-bold rounded-xl transition-colors flex items-center justify-center gap-2 ${activeTab === 'nursing' ? 'bg-white text-primary shadow-sm ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`}
               >
                 <HeartHandshake className={`w-4 h-4 ${activeTab === 'nursing' ? 'text-primary' : 'text-gray-400'}`} />
                 خدمة تمريضية
               </button>
               <button 
                 onClick={() => setActiveTab('doctor')}
-                className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${activeTab === 'doctor' ? 'bg-white text-primary shadow-sm ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`flex-1 py-3 text-sm font-bold rounded-xl transition-colors flex items-center justify-center gap-2 ${activeTab === 'doctor' ? 'bg-white text-primary shadow-sm ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`}
               >
                 <Stethoscope className={`w-4 h-4 ${activeTab === 'doctor' ? 'text-primary' : 'text-gray-400'}`} />
                 زيارة طبيب

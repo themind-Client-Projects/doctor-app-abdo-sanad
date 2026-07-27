@@ -69,7 +69,7 @@ export function BottomNavbar() {
             >
               <div
                 className={cn(
-                  'p-1.5 rounded-xl transition-all duration-300',
+                  'p-1.5 rounded-xl transition-colors duration-300',
                   isActive
                     ? 'bg-primary/10 text-primary scale-110'
                     : 'text-gray-400 hover:text-gray-600'

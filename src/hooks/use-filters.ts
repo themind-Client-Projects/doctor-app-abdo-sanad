@@ -31,12 +31,27 @@ export function useFilters() {
     [searchParams, pathname, router]
   );
 
+  const setSearchQuery = useCallback(
+    (val: string) => updateUrl('q', val),
+    [updateUrl]
+  );
+
+  const setCategory = useCallback(
+    (val: string) => updateUrl('category', val),
+    [updateUrl]
+  );
+
+  const setPage = useCallback(
+    (val: number) => updateUrl('page', val.toString()),
+    [updateUrl]
+  );
+
   return {
     searchQuery,
-    setSearchQuery: (val: string) => updateUrl('q', val),
+    setSearchQuery,
     category,
-    setCategory: (val: string) => updateUrl('category', val),
+    setCategory,
     page,
-    setPage: (val: number) => updateUrl('page', val.toString()),
+    setPage,
   };
 }

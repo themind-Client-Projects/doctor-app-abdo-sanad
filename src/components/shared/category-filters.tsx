@@ -21,7 +21,7 @@ export function CategoryFilters({ categories, allLabel = 'الكل', className =
     <div className={`flex gap-3 overflow-x-auto hide-scrollbar snap-x px-4 pb-2 ${className}`}>
       <button
         onClick={() => setCategory('all')}
-        className={`whitespace-nowrap px-6 py-2.5 rounded-[1.5rem] text-sm font-bold transition-all active:scale-95 snap-center ${
+        className={`whitespace-nowrap px-6 py-2.5 rounded-[1.5rem] text-sm font-bold transition-colors active:scale-95 snap-center ${
           activeCategory === 'all'
             ? 'bg-primary text-white shadow-md shadow-primary/20'
             : 'bg-white border border-gray-200 text-gray-600 hover:border-primary/30'
@@ -34,7 +34,7 @@ export function CategoryFilters({ categories, allLabel = 'الكل', className =
         <button
           key={cat.id}
           onClick={() => setCategory(cat.id)}
-          className={`whitespace-nowrap px-5 py-2.5 rounded-[1.5rem] text-sm font-bold transition-all flex items-center gap-2 active:scale-95 snap-center ${
+          className={`whitespace-nowrap px-5 py-2.5 rounded-[1.5rem] text-sm font-bold transition-colors flex items-center gap-2 active:scale-95 snap-center ${
             activeCategory === cat.id
               ? 'bg-primary text-white shadow-md shadow-primary/20'
               : 'bg-white border border-gray-200 text-gray-600 hover:border-primary/30'

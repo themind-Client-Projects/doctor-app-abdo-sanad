@@ -1,38 +1,51 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Download, X } from 'lucide-react';
 
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+
 export function InstallPrompt() {
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showPrompt, setShowPrompt] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => {
     // Listen for the beforeinstallprompt event
-    const handler = (e: any) => {
+    const handler = (e: Event) => {
       e.preventDefault();
-      setDeferredPrompt(e);
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
       setShowPrompt(true);
       // Slight delay to allow smooth sliding animation
-      setTimeout(() => setIsVisible(true), 100);
+      const t = setTimeout(() => setIsVisible(true), 100);
+      timersRef.current.push(t);
     };
 
     window.addEventListener('beforeinstallprompt', handler);
 
     // For testing/demo purposes: show prompt after 3 seconds if not in standalone mode
     // (Only if the browser doesn't support beforeinstallprompt natively, like iOS)
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as { MSStream?: unknown }).MSStream;
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
     
     if (isIOS && !isStandalone) {
-      setTimeout(() => {
+      const t1 = setTimeout(() => {
         setShowPrompt(true);
-        setTimeout(() => setIsVisible(true), 100);
+        const t2 = setTimeout(() => setIsVisible(true), 100);
+        timersRef.current.push(t2);
       }, 3000);
+      timersRef.current.push(t1);
     }
 
-    return () => window.removeEventListener('beforeinstallprompt', handler);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handler);
+      timersRef.current.forEach(clearTimeout);
+      timersRef.current = [];
+    };
   }, []);
 
   const handleInstallClick = async () => {
@@ -46,23 +59,25 @@ export function InstallPrompt() {
     deferredPrompt.prompt();
 
     // Wait for the user to respond to the prompt
-    const { outcome } = await deferredPrompt.userChoice;
+    await deferredPrompt.userChoice;
     
     setDeferredPrompt(null);
     setIsVisible(false);
-    setTimeout(() => setShowPrompt(false), 500);
+    const t = setTimeout(() => setShowPrompt(false), 500);
+    timersRef.current.push(t);
   };
 
   const handleClose = () => {
     setIsVisible(false);
-    setTimeout(() => setShowPrompt(false), 500);
+    const t = setTimeout(() => setShowPrompt(false), 500);
+    timersRef.current.push(t);
   };
 
   if (!showPrompt) return null;
 
   return (
     <div 
-      className={`fixed bottom-24 left-4 right-4 z-50 transition-all duration-500 ease-out transform ${
+      className={`fixed bottom-24 left-4 right-4 z-50 transition-[transform,opacity] duration-500 ease-out transform ${
         isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'
       }`}
     >

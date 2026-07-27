@@ -37,7 +37,7 @@ export default function PhysiotherapyPage() {
                 <p className="text-sm text-orange-800/80 leading-relaxed mb-4 font-medium">
                   للحصول على جلسات العلاج الطبيعي المخفضة، تحتاج إلى تحويل من طبيب المفاصل أو الأعصاب عبر التطبيق.
                 </p>
-                <button className="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-md shadow-orange-500/20 transition-all active:scale-95 flex items-center gap-2" onClick={() => router.push('/doctors')}>
+                <button className="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-md shadow-orange-500/20 transition-colors active:scale-95 flex items-center gap-2" onClick={() => router.push('/doctors')}>
                   استشر طبيباً الآن
                   <ChevronLeft className="w-4 h-4" />
                 </button>
@@ -82,7 +82,7 @@ export default function PhysiotherapyPage() {
           </div>
           <div className="space-y-4">
             {clinics.map((clinic) => (
-              <div key={clinic.id} className="bg-white rounded-3xl p-4 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] border border-gray-100 hover:border-amber-200 hover:shadow-lg transition-all duration-300 group cursor-pointer">
+              <div key={clinic.id} className="bg-white rounded-3xl p-4 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] border border-gray-100 hover:border-amber-200 hover:shadow-lg transition-colors duration-300 group cursor-pointer">
                 <div className="flex items-start gap-4 mb-4">
                   <div className="w-20 h-20 bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl flex items-center justify-center text-amber-600 flex-shrink-0 border border-amber-100/50 group-hover:scale-105 transition-transform">
                     {clinic.icon}

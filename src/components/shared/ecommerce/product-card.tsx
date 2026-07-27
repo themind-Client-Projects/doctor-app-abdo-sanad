@@ -2,8 +2,8 @@
 
 import Image from 'next/image';
 import { Plus, Minus, ShoppingCart } from 'lucide-react';
-import { useCartStore } from '@/store/cart-store';
-import { Product } from '@/lib/constants/demo-data';
+import { useCartStore } from '@/stores/ecommerce/cart.store';
+import type { Product } from '@/types/patient';
 
 interface ProductCardProps {
   product: Product;
@@ -58,7 +58,7 @@ export function ProductCard({ product }: ProductCardProps) {
             <button 
               disabled={!product.inStock}
               onClick={() => addToCart(product)}
-              className="w-8 h-8 rounded-xl bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-primary hover:text-white hover:shadow-md hover:shadow-primary/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-8 h-8 rounded-xl bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-primary hover:text-white hover:shadow-md hover:shadow-primary/20 transition-colors active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ShoppingCart className="w-4 h-4" />
             </button>

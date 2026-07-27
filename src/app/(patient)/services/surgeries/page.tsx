@@ -45,7 +45,7 @@ export default function SurgeriesPage() {
           </div>
           <input
             type="text"
-            className="w-full bg-white text-gray-900 rounded-2xl py-3.5 ps-11 pe-4 border border-gray-200 outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm text-sm font-medium placeholder:text-gray-400 transition-all"
+            className="w-full bg-white text-gray-900 rounded-2xl py-3.5 ps-11 pe-4 border border-gray-200 outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm text-sm font-medium placeholder:text-gray-400 transition-colors"
             placeholder="ابحث عن عملية جراحية..."
           />
         </div>
@@ -57,7 +57,7 @@ export default function SurgeriesPage() {
         {/* Top Promo Banner with Real Image */}
         <div 
           onClick={() => setIsBookingOpen(true)}
-          className="relative rounded-[2rem] overflow-hidden shadow-sm cursor-pointer active:scale-[0.98] transition-all h-[170px] flex flex-col justify-center px-6 group border border-gray-100"
+          className="relative rounded-[2rem] overflow-hidden shadow-sm cursor-pointer active:scale-[0.98] transition-colors h-[170px] flex flex-col justify-center px-6 group border border-gray-100"
         >
           <Image 
             src="/surgery-promo.png" 
@@ -106,7 +106,7 @@ export default function SurgeriesPage() {
         <div className="mt-8">
           <Button 
             onClick={() => setIsBookingOpen(true)} 
-            className="w-full bg-primary hover:bg-primary/90 text-white rounded-2xl py-7 text-lg font-extrabold shadow-lg shadow-primary/25 active:scale-[0.98] transition-all"
+            className="w-full bg-primary hover:bg-primary/90 text-white rounded-2xl py-7 text-lg font-extrabold shadow-lg shadow-primary/25 active:scale-[0.98] transition-colors"
           >
             ابدأ حجز عمليتك الآن
           </Button>

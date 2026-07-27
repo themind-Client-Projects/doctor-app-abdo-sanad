@@ -105,3 +105,15 @@ export interface Specialization {
   icon: LucideIcon;
   color: string;
 }
+
+// ─── E-Commerce Types ───────────────────────────────────────────────────
+
+export interface Product {
+  id: string;
+  name: string;
+  category: string;
+  price: number;
+  image: string;
+  inStock: boolean;
+  pharmacyId: number;
+}

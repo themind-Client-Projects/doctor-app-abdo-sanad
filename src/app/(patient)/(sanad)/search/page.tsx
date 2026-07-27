@@ -153,7 +153,7 @@ export default function SearchPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearchSubmit()}
-              className="w-full bg-white text-gray-900 rounded-2xl py-3.5 ps-11 pe-10 outline-none border border-gray-200 focus:border-primary focus:ring-1 focus:ring-primary shadow-sm text-sm font-medium placeholder:text-gray-400 transition-all"
+              className="w-full bg-white text-gray-900 rounded-2xl py-3.5 ps-11 pe-10 outline-none border border-gray-200 focus:border-primary focus:ring-1 focus:ring-primary shadow-sm text-sm font-medium placeholder:text-gray-400 transition-colors"
               placeholder="ابحث عن طبيب، تخصص، مختبر..."
             />
             {query && (
@@ -177,7 +177,7 @@ export default function SearchPage() {
               <button
                 key={tab.id}
                 onClick={() => setActiveCategory(tab.id)}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all flex-shrink-0 ${
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-colors flex-shrink-0 ${
                   activeCategory === tab.id
                     ? 'bg-primary text-white shadow-md shadow-primary/20'
                     : 'bg-white border border-gray-200 text-gray-600 hover:border-primary/30'
@@ -206,7 +206,7 @@ export default function SearchPage() {
                 <Link
                   key={result.id}
                   href={result.href}
-                  className="bg-white rounded-2xl p-4 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] border border-gray-100 hover:border-primary/30 hover:shadow-md transition-all flex items-center gap-3 group"
+                  className="bg-white rounded-2xl p-4 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] border border-gray-100 hover:border-primary/30 hover:shadow-md transition-colors flex items-center gap-3 group"
                 >
                   <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${getCategoryColor(result.category)} group-hover:scale-105 transition-transform`}>
                     {getCategoryIcon(result.category)}
@@ -297,7 +297,7 @@ export default function SearchPage() {
                   <Link
                     key={cat.name}
                     href={cat.href}
-                    className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center gap-3 cursor-pointer hover:border-primary/30 hover:shadow-md transition-all active:scale-95 group"
+                    className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center gap-3 cursor-pointer hover:border-primary/30 hover:shadow-md transition-colors active:scale-95 group"
                   >
                     <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${cat.color} group-hover:scale-105 transition-transform`}>
                       {cat.icon}

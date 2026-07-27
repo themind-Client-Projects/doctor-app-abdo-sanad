@@ -1,4 +1,4 @@
-import type { Doctor, TimeSlot, SearchResult, Booking } from '@/types/patient';
+import type { Doctor, TimeSlot, SearchResult, Product } from '@/types/patient';
 
 // ─── Doctors Per Specialization ─────────────────────────────────────────
 
@@ -150,52 +150,7 @@ export const DEFAULT_RECENT_SEARCHES = [
 
 // ─── Bookings Demo Data ─────────────────────────────────────────────────
 
-export const NOTIFICATIONS = [
-  {
-    id: 1,
-    title: 'موعد مؤكد مع د. سامي العبيدي',
-    message: 'لا تنسَ موعدك الطبي اليوم الساعة 4:30 مساءً. يرجى الحضور قبل الموعد بـ 15 دقيقة.',
-    time: 'منذ ساعتين',
-    type: 'appointment',
-    isRead: false,
-  },
-  {
-    id: 2,
-    title: 'نتائج التحاليل جاهزة',
-    message: 'تم إصدار نتائج تحاليلك من مختبرات النور. يمكنك الاطلاع عليها الآن.',
-    time: 'منذ 5 ساعات',
-    type: 'lab',
-    isRead: false,
-  },
-  {
-    id: 3,
-    title: 'عرض جديد: خصم 20% على العناية المنزلية',
-    message: 'استفد من خصم حصري على خدمات العناية التمريضية المنزلية المعتمدة هذا الأسبوع.',
-    time: 'أمس',
-    type: 'offer',
-    isRead: true,
-  },
-  {
-    id: 4,
-    title: 'تحديث المحفظة',
-    message: 'تم إضافة 50,000 دينار عراقي إلى محفظة سند الخاصة بك كنقاط كاش باك.',
-    time: 'منذ 3 أيام',
-    type: 'wallet',
-    isRead: true,
-  },
-];
-
 // ─── E-Commerce Data (Pharmacies & Products) ────────────────────────────
-
-export interface Product {
-  id: string;
-  name: string;
-  category: string;
-  price: number;
-  image: string;
-  inStock: boolean;
-  pharmacyId: number;
-}
 
 export const DEMO_PHARMACIES = [
   { id: 1, name: 'صيدلية النور المركزية', status: 'مفتوح الآن', time: '٢٤ ساعة', image: '/complexes/real_complex_1.png' },
@@ -210,75 +165,4 @@ export const DEMO_PRODUCTS: Product[] = [
   { id: 'p4', name: 'أوميغا 3 زيت السمك', category: 'مكملات غذائية', price: 18000, image: 'https://images.unsplash.com/photo-1550572017-edd951b55104?w=500&auto=format&fit=crop&q=60', inStock: false, pharmacyId: 1 },
   { id: 'p5', name: 'كريم مرطب سيرافي', category: 'عناية بالبشرة', price: 35000, image: 'https://images.unsplash.com/photo-1608248597279-f99d160bfcbc?w=500&auto=format&fit=crop&q=60', inStock: true, pharmacyId: 1 },
   { id: 'p6', name: 'قطرات مرطبة للعين', category: 'عناية شخصية', price: 8500, image: 'https://images.unsplash.com/photo-1607613009820-a29f7bb81c04?w=500&auto=format&fit=crop&q=60', inStock: true, pharmacyId: 1 },
-];
-
-export const DEMO_UPCOMING_BOOKINGS: Booking[] = [
-  {
-    id: 1,
-    doctorName: 'د. سمير محمود',
-    specialty: 'أخصائي أمراض القلب',
-    date: 'غداً، 13 مايو 2026',
-    time: '10:30 صباحاً',
-    location: 'بغداد - المنصور',
-    clinic: 'مستشفى السلام - العيادة الاستشارية',
-    type: 'doctor',
-    status: 'confirmed',
-    price: '35,000 د.ع',
-    bookingRef: 'BK-2026-001',
-  },
-  {
-    id: 2,
-    doctorName: 'مختبرات الشفاء التخصصية',
-    specialty: 'باقة الفحص الشامل (VIP)',
-    date: 'الخميس، 15 مايو 2026',
-    time: '09:00 صباحاً',
-    location: 'بغداد - الكرادة',
-    clinic: 'المختبر الرئيسي - الطابق الثاني',
-    type: 'lab',
-    status: 'pending',
-    price: '85,000 د.ع',
-    bookingRef: 'BK-2026-002',
-  },
-  {
-    id: 3,
-    doctorName: 'د. نور الهدى',
-    specialty: 'أخصائية العلاج الطبيعي',
-    date: 'السبت، 17 مايو 2026',
-    time: '02:00 مساءً',
-    location: 'بغداد - زيونة',
-    clinic: 'مركز الحياة للعلاج الطبيعي',
-    type: 'physio',
-    status: 'confirmed',
-    price: '25,000 د.ع',
-    bookingRef: 'BK-2026-003',
-  },
-];
-
-export const DEMO_PAST_BOOKINGS: Booking[] = [
-  {
-    id: 10,
-    doctorName: 'د. سمير محمود',
-    specialty: 'أخصائي أمراض القلب',
-    date: '10 مايو 2026',
-    time: '09:00 صباحاً',
-    location: 'بغداد - المنصور',
-    clinic: 'مستشفى السلام',
-    type: 'doctor',
-    status: 'completed',
-    price: '35,000 د.ع',
-    bookingRef: 'BK-2026-000',
-  },
-  {
-    id: 11,
-    doctorName: 'مختبر النور للتحاليل',
-    specialty: 'فحص CBC + سكر صائم',
-    date: '5 مايو 2026',
-    time: '08:30 صباحاً',
-    location: 'بغداد - الكرادة',
-    clinic: 'الفرع الرئيسي',
-    type: 'lab',
-    status: 'completed',
-    price: '20,000 د.ع',
-    bookingRef: 'BK-2026-099',
-  },
 ];

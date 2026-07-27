@@ -76,7 +76,7 @@ export default function BloodBankPage() {
             <div className="space-y-4">
               <button 
                 onClick={() => setRole('need')}
-                className="w-full bg-white border-2 border-red-100 rounded-3xl p-6 flex flex-col items-center text-center gap-3 transition-all active:scale-95 hover:border-red-500 hover:shadow-lg hover:shadow-red-500/10"
+                className="w-full bg-white border-2 border-red-100 rounded-3xl p-6 flex flex-col items-center text-center gap-3 transition-colors active:scale-95 hover:border-red-500 hover:shadow-lg hover:shadow-red-500/10"
               >
                 <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center">
                   <Search className="w-8 h-8 text-red-600" />
@@ -89,7 +89,7 @@ export default function BloodBankPage() {
 
               <button 
                 onClick={() => setRole('donate')}
-                className="w-full bg-red-600 text-white rounded-3xl p-6 flex flex-col items-center text-center gap-3 transition-all active:scale-95 shadow-lg shadow-red-600/20 hover:bg-red-700"
+                className="w-full bg-red-600 text-white rounded-3xl p-6 flex flex-col items-center text-center gap-3 transition-colors active:scale-95 shadow-lg shadow-red-600/20 hover:bg-red-700"
               >
                 <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center">
                   <Droplet className="w-8 h-8 text-white fill-white/20" />
