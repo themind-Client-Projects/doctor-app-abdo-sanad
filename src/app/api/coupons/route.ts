@@ -1,8 +1,13 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
-import { dateish, parseBody } from "@/lib/validation";
+import { keysetArgs, ok, okList, toPage } from "@/lib/api-response";
+import { dateish, parseBody, parseQuery } from "@/lib/validation";
+
+const listQuerySchema = z.object({
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
 
 const discountType = z.enum(["PERCENTAGE", "FIXED"], { message: "نوع الخصم غير صالح" });
 
@@ -24,14 +29,27 @@ const createCouponSchema = z
   })
   .strict();
 
-export const GET = withAuth({ roles: ROLES.ADMIN }, async () => {
-  const data = await prisma.coupon.findMany({ orderBy: { createdAt: "desc" } });
-  return NextResponse.json({ data });
+// GET /api/coupons — was unbounded: coupons are never deleted, only expired, so
+// this list only ever grows.
+export const GET = withAuth({ roles: ROLES.ADMIN }, async (req) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
+  const { cursor, limit } = parseQuery(req.nextUrl.searchParams, listQuerySchema);
+  const keyset = keysetArgs(cursor, limit);
+
+  const rows = await prisma.coupon.findMany({
+    where: keyset.where ?? {},
+    orderBy: keyset.orderBy,
+    take: keyset.take,
+  });
+
+  const { items, page } = toPage(rows, limit);
+  return okList(items, page, { requestId });
 });
 
 // POST /api/coupons — the body used to be spread into create, so `usedCount`
 // could be reset to 0 to make a spent coupon reusable.
 export const POST = withAuth({ roles: ROLES.ADMIN }, async (req) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const input = await parseBody(req, createCouponSchema);
 
   const data = await prisma.coupon.create({
@@ -46,5 +64,5 @@ export const POST = withAuth({ roles: ROLES.ADMIN }, async (req) => {
     },
   });
 
-  return NextResponse.json({ data }, { status: 201 });
+  return ok(data, { status: 201, requestId });
 });

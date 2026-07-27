@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { ok } from "@/lib/api-response";
 import { amount, parseBody, serviceTypeSchema } from "@/lib/validation";
 
 const createPricingSchema = z
@@ -15,14 +15,21 @@ const createPricingSchema = z
   })
   .strict();
 
-export const GET = withAuth({ roles: ROLES.ADMIN }, async () => {
+// GET /api/pricing — NOT cursor-paginated: `PriceConfig` has no `createdAt`
+// column, so there is no stable keyset to page over. It is genuinely bounded —
+// `serviceType` is @unique, so the table holds at most one row per member of the
+// ServiceType enum (14 today) and cannot grow past that.
+export const GET = withAuth({ roles: ROLES.ADMIN }, async (req) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
+
   const data = await prisma.priceConfig.findMany();
-  return NextResponse.json({ data });
+  return ok(data, { requestId });
 });
 
 // POST /api/pricing — the body used to be spread into create, so prices were
 // written with no type checking at all.
 export const POST = withAuth({ roles: ROLES.ADMIN }, async (req) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const input = await parseBody(req, createPricingSchema);
 
   const data = await prisma.priceConfig.create({
@@ -37,5 +44,5 @@ export const POST = withAuth({ roles: ROLES.ADMIN }, async (req) => {
     },
   });
 
-  return NextResponse.json({ data }, { status: 201 });
+  return ok(data, { status: 201, requestId });
 });

@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { keysetArgs, ok, okList, toPage } from "@/lib/api-response";
 import { nonEmpty, paginationSchema, parseBody, parseQuery } from "@/lib/validation";
 
 const partnerType = z.enum(
@@ -13,9 +14,13 @@ const partnerStatus = z.enum(["ACTIVE", "SUSPENDED", "PENDING", "PAUSED"], {
   message: "حالة غير صالحة",
 });
 
+// `cursor`/`limit` select keyset paging; `page`/`pageSize` stay for the existing
+// dashboard screens. Not `.strict()` — an unknown query key is still ignored.
 const listQuerySchema = paginationSchema.extend({
   type: partnerType.optional(),
   status: partnerStatus.optional(),
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
 });
 
 // `rating` and `totalTasks` are derived server-side and are deliberately absent,
@@ -40,24 +45,45 @@ const createPartnerSchema = z
 export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
   // Clamped by `paginationSchema`: pageSize was unbounded and a non-numeric
   // ?page produced skip: NaN.
-  const { page, pageSize, type, status } = parseQuery(
+  const requestId = req.headers.get("x-request-id") ?? undefined;
+  const { page, pageSize, type, status, cursor, limit } = parseQuery(
     req.nextUrl.searchParams,
     listQuerySchema
   );
 
-  const where = {
+  const where: Prisma.PartnerWhereInput = {
     ...(type ? { type } : {}),
     ...(status ? { status } : {}),
   };
 
+  const include = {
+    governorate: { select: { name: true } },
+    complex: { select: { name: true } },
+    contract: { select: { id: true, isActive: true, endDate: true } },
+  } as const;
+
+  // Keyset paging — preferred. Offset paging over `createdAt desc` duplicates
+  // and skips rows as new partners are onboarded between requests.
+  if (cursor !== undefined || limit !== undefined) {
+    const take = limit ?? 20;
+    const keyset = keysetArgs(cursor, take);
+    const cursorWhere = "where" in keyset ? keyset.where : undefined;
+
+    const rows = await prisma.partner.findMany({
+      ...keyset,
+      where: cursorWhere ? { AND: [where, cursorWhere] } : where,
+      include,
+    });
+
+    const { items, page: pageMeta } = toPage(rows, take);
+    return okList(items, pageMeta, { requestId });
+  }
+
+  // Legacy offset mode — response shape unchanged for existing callers.
   const [partners, total] = await Promise.all([
     prisma.partner.findMany({
       where,
-      include: {
-        governorate: { select: { name: true } },
-        complex: { select: { name: true } },
-        contract: { select: { id: true, isActive: true, endDate: true } },
-      },
+      include,
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -65,13 +91,11 @@ export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
     prisma.partner.count({ where }),
   ]);
 
-  return NextResponse.json({
-    data: partners,
-    total,
-    page,
-    pageSize,
-    totalPages: Math.ceil(total / pageSize),
-  });
+  return okList(
+    partners,
+    { nextCursor: null, hasMore: page * pageSize < total, limit: pageSize },
+    { requestId, legacy: { total, page, pageSize } }
+  );
 });
 
 // POST /api/partners — Create partner.
@@ -79,6 +103,7 @@ export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
 // `rating`, `totalTasks` or `status: "ACTIVE"` on a partner that had not been
 // vetted. Only the fields below are writable.
 export const POST = withAuth({ roles: ROLES.ADMIN }, async (req) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const input = await parseBody(req, createPartnerSchema);
 
   const partner = await prisma.partner.create({
@@ -99,5 +124,5 @@ export const POST = withAuth({ roles: ROLES.ADMIN }, async (req) => {
     include: { wallet: true },
   });
 
-  return NextResponse.json({ data: partner }, { status: 201 });
+  return ok(partner, { status: 201, requestId });
 });

@@ -1,8 +1,13 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
-import { nonEmpty, parseBody } from "@/lib/validation";
+import { keysetArgs, ok, okList, toPage } from "@/lib/api-response";
+import { nonEmpty, parseBody, parseQuery } from "@/lib/validation";
+
+const listQuerySchema = z.object({
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
 
 /** The `BloodType` enum from prisma/schema.prisma. */
 const bloodType = z.enum(
@@ -41,16 +46,28 @@ const createBloodBankRequestSchema = z
   .strict();
 
 // GET /api/blood-bank — Blood bank requests (req L433-443)
-export const GET = withAuth({ roles: ROLES.OPERATIONS }, async () => {
-  const data = await prisma.bloodBankRequest.findMany({
+//
+// Was unbounded: requests are kept after they are fulfilled, so this returned
+// the entire history of the blood bank on every load.
+export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
+  const { cursor, limit } = parseQuery(req.nextUrl.searchParams, listQuerySchema);
+  const keyset = keysetArgs(cursor, limit);
+
+  const rows = await prisma.bloodBankRequest.findMany({
+    where: keyset.where ?? {},
     include: { governorate: true },
-    orderBy: { createdAt: "desc" },
+    orderBy: keyset.orderBy,
+    take: keyset.take,
   });
-  return NextResponse.json({ data });
+
+  const { items, page } = toPage(rows, limit);
+  return okList(items, page, { requestId });
 });
 
 // POST /api/blood-bank — Create a request.
 export const POST = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const input = await parseBody(req, createBloodBankRequestSchema);
 
   const data = await prisma.bloodBankRequest.create({
@@ -67,5 +84,5 @@ export const POST = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
     },
   });
 
-  return NextResponse.json({ data }, { status: 201 });
+  return ok(data, { status: 201, requestId });
 });

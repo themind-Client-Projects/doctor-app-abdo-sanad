@@ -1,9 +1,14 @@
-import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
-import { jsonValue, parseBody } from "@/lib/validation";
+import { keysetArgs, ok, okList, toPage } from "@/lib/api-response";
+import { jsonValue, parseBody, parseQuery } from "@/lib/validation";
+
+const listQuerySchema = z.object({
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
 
 const discountType = z.enum(["PERCENTAGE", "FIXED"], { message: "نوع الخصم غير صالح" });
 
@@ -33,13 +38,26 @@ const createCampaignSchema = z
   })
   .strict();
 
-export const GET = withAuth({ roles: ROLES.ADMIN }, async () => {
-  const data = await prisma.campaign.findMany({ orderBy: { createdAt: "desc" } });
-  return NextResponse.json({ data });
+// GET /api/campaigns — was unbounded: campaigns are kept after they end, so the
+// list grows with every marketing push.
+export const GET = withAuth({ roles: ROLES.ADMIN }, async (req) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
+  const { cursor, limit } = parseQuery(req.nextUrl.searchParams, listQuerySchema);
+  const keyset = keysetArgs(cursor, limit);
+
+  const rows = await prisma.campaign.findMany({
+    where: keyset.where ?? {},
+    orderBy: keyset.orderBy,
+    take: keyset.take,
+  });
+
+  const { items, page } = toPage(rows, limit);
+  return okList(items, page, { requestId });
 });
 
 // POST /api/campaigns — the body used to be spread straight into create.
 export const POST = withAuth({ roles: ROLES.ADMIN }, async (req) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const input = await parseBody(req, createCampaignSchema);
 
   const data = await prisma.campaign.create({
@@ -56,5 +74,5 @@ export const POST = withAuth({ roles: ROLES.ADMIN }, async (req) => {
     },
   });
 
-  return NextResponse.json({ data }, { status: 201 });
+  return ok(data, { status: 201, requestId });
 });

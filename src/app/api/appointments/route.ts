@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { ErrorCode, fail, keysetArgs, ok, okList, toPage } from "@/lib/api-response";
 import { nonEmpty, paginationSchema, parseBody, parseQuery } from "@/lib/validation";
 
 // Appointment.status is a free-text `String` column; `type` is a real enum
@@ -17,10 +17,14 @@ const appointmentType = z.enum(["IN_PERSON", "ONLINE", "HOME_VISIT", "SURGERY"],
 /** `?status=` with no value means "no filter", as it did before. */
 const emptyToUndefined = (value: unknown) => (value === "" ? undefined : value);
 
+// `cursor`/`limit` select keyset paging; `page`/`pageSize` stay for the existing
+// dashboard screens. Not `.strict()` — an unknown query key is still ignored.
 const listQuerySchema = paginationSchema.extend({
   doctorId: z.preprocess(emptyToUndefined, nonEmpty.optional()),
   patientId: z.preprocess(emptyToUndefined, nonEmpty.optional()),
   status: z.preprocess(emptyToUndefined, appointmentStatus.optional()),
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
 });
 
 // `price` is intentionally absent: this used to be
@@ -46,7 +50,8 @@ const createAppointmentSchema = z
 export const GET = withAuth(
   { roles: [...ROLES.CLINICAL, "PATIENT"] },
   async (req, _ctx, identity) => {
-    const { page, pageSize, doctorId, patientId, status } = parseQuery(
+    const requestId = req.headers.get("x-request-id") ?? undefined;
+    const { page, pageSize, doctorId, patientId, status, cursor, limit } = parseQuery(
       req.nextUrl.searchParams,
       listQuerySchema
     );
@@ -59,10 +64,31 @@ export const GET = withAuth(
     // A patient sees only their own appointments, whatever ?patientId= says.
     if (identity.role === "PATIENT") where.patientId = identity.userId;
 
+    const include = { doctor: { select: { userId: true } } } as const;
+
+    // Keyset paging — preferred. The cursor is over `(createdAt, id)`, so this
+    // path orders by insertion rather than by `date`: an appointment can be
+    // rescheduled between pages, which makes a date-ordered cursor unstable.
+    if (cursor !== undefined || limit !== undefined) {
+      const take = limit ?? 20;
+      const keyset = keysetArgs(cursor, take);
+      const cursorWhere = "where" in keyset ? keyset.where : undefined;
+
+      const rows = await prisma.appointment.findMany({
+        ...keyset,
+        where: cursorWhere ? { AND: [where, cursorWhere] } : where,
+        include,
+      });
+
+      const { items, page: pageMeta } = toPage(rows, take);
+      return okList(items, pageMeta, { requestId });
+    }
+
+    // Legacy offset mode — response shape and `date desc` ordering unchanged.
     const [appointments, total] = await Promise.all([
       prisma.appointment.findMany({
         where,
-        include: { doctor: { select: { userId: true } } },
+        include,
         orderBy: { date: "desc" },
         skip: (page - 1) * pageSize,
         take: pageSize,
@@ -70,13 +96,11 @@ export const GET = withAuth(
       prisma.appointment.count({ where }),
     ]);
 
-    return NextResponse.json({
-      data: appointments,
-      total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
-    });
+    return okList(
+      appointments,
+      { nextCursor: null, hasMore: page * pageSize < total, limit: pageSize },
+      { requestId, legacy: { total, page, pageSize } }
+    );
   }
 );
 
@@ -84,13 +108,14 @@ export const GET = withAuth(
 export const POST = withAuth(
   { roles: [...ROLES.CLINICAL, "PATIENT"] },
   async (req, _ctx, identity) => {
+    const requestId = req.headers.get("x-request-id") ?? undefined;
     const input = await parseBody(req, createAppointmentSchema);
 
     // A patient may only book for themselves; staff book on a patient's behalf.
     const resolvedPatientId =
       identity.role === "PATIENT" ? identity.userId : (input.patientId ?? null);
     if (!resolvedPatientId) {
-      return NextResponse.json({ error: "المريض مطلوب" }, { status: 400 });
+      return fail(ErrorCode.VALIDATION_FAILED, 400, "المريض مطلوب", { requestId });
     }
 
     const appointment = await prisma.appointment.create({
@@ -108,6 +133,6 @@ export const POST = withAuth(
       },
     });
 
-    return NextResponse.json({ data: appointment }, { status: 201 });
+    return ok(appointment, { status: 201, requestId });
   }
 );

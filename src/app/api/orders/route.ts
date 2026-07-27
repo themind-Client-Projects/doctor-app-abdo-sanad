@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import type { OrderStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { keysetArgs, ok, okList, toPage } from "@/lib/api-response";
 import { nonEmpty, paginationSchema, parseBody, parseQuery, serviceTypeSchema } from "@/lib/validation";
 
 const orderStatus = z.enum(
@@ -52,10 +52,14 @@ const statusFilter = z
   )
   .transform((values) => values as OrderStatus[]);
 
+// `cursor`/`limit` select keyset paging; `page`/`pageSize` stay for the existing
+// dashboard screens. Not `.strict()` — an unknown query key is still ignored.
 const listQuerySchema = paginationSchema.extend({
   status: z.preprocess(emptyToUndefined, statusFilter.optional()),
   priority: z.preprocess(emptyToUndefined, orderPriority.optional()),
   serviceType: z.preprocess(emptyToUndefined, serviceTypeSchema.optional()),
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
 });
 
 const patientDetail = z
@@ -87,7 +91,8 @@ const createOrderSchema = z
 export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
   // Clamped by `paginationSchema`: an unbounded pageSize dumped the whole table,
   // and a non-numeric ?page produced skip: NaN and a 500.
-  const { page, pageSize, status, priority, serviceType } = parseQuery(
+  const requestId = req.headers.get("x-request-id") ?? undefined;
+  const { page, pageSize, status, priority, serviceType, cursor, limit } = parseQuery(
     req.nextUrl.searchParams,
     listQuerySchema
   );
@@ -97,13 +102,33 @@ export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
   if (priority) where.priority = priority;
   if (serviceType) where.serviceType = serviceType;
 
+  const include = {
+    governorate: { select: { name: true } },
+    timeline: { orderBy: { step: "asc" } },
+  } as const;
+
+  // Keyset paging — preferred. Offset paging over `createdAt desc` duplicates
+  // and skips rows as new orders arrive between requests.
+  if (cursor !== undefined || limit !== undefined) {
+    const take = limit ?? 20;
+    const keyset = keysetArgs(cursor, take);
+    const cursorWhere = "where" in keyset ? keyset.where : undefined;
+
+    const rows = await prisma.order.findMany({
+      ...keyset,
+      where: cursorWhere ? { AND: [where, cursorWhere] } : where,
+      include,
+    });
+
+    const { items, page: pageMeta } = toPage(rows, take);
+    return okList(items, pageMeta, { requestId });
+  }
+
+  // Legacy offset mode — response shape unchanged for existing callers.
   const [orders, total] = await Promise.all([
     prisma.order.findMany({
       where,
-      include: {
-        governorate: { select: { name: true } },
-        timeline: { orderBy: { step: "asc" } },
-      },
+      include,
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -111,17 +136,16 @@ export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
     prisma.order.count({ where }),
   ]);
 
-  return NextResponse.json({
-    data: orders,
-    total,
-    page,
-    pageSize,
-    totalPages: Math.ceil(total / pageSize),
-  });
+  return okList(
+    orders,
+    { nextCursor: null, hasMore: page * pageSize < total, limit: pageSize },
+    { requestId, legacy: { total, page, pageSize } }
+  );
 });
 
 // POST /api/orders — Create a new order.
 export const POST = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const input = await parseBody(req, createOrderSchema);
 
   const order = await prisma.order.create({
@@ -148,5 +172,5 @@ export const POST = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
     include: { timeline: true },
   });
 
-  return NextResponse.json({ data: order }, { status: 201 });
+  return ok(order, { status: 201, requestId });
 });

@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { ok } from "@/lib/api-response";
 import { parseBody, percentage, serviceTypeSchema } from "@/lib/validation";
 
 const createCommissionSchema = z
@@ -17,11 +17,19 @@ const createCommissionSchema = z
   .strict();
 
 // GET /api/commissions — List commission rules (req L210-230 ⭐)
-export const GET = withAuth({ roles: ROLES.ADMIN }, async () => {
+//
+// NOT cursor-paginated: `CommissionRule` has no `createdAt` column, so there is
+// no stable keyset to page over. It is bounded in practice by
+// @@unique([contractId, serviceType]) — at most one rule per service per
+// contract — but it still grows with the number of contracts. Paging it needs a
+// `createdAt` on the model first.
+export const GET = withAuth({ roles: ROLES.ADMIN }, async (req) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
+
   const data = await prisma.commissionRule.findMany({
     include: { contract: { select: { partnerId: true } } },
   });
-  return NextResponse.json({ data });
+  return ok(data, { requestId });
 });
 
 // POST /api/commissions — Create commission rule.
@@ -29,6 +37,7 @@ export const GET = withAuth({ roles: ROLES.ADMIN }, async () => {
 // revenue split (the most critical config in the product) could be written with
 // missing or nonsense values.
 export const POST = withAuth({ roles: ROLES.ADMIN }, async (req) => {
+  const requestId = req.headers.get("x-request-id") ?? undefined;
   const input = await parseBody(req, createCommissionSchema);
 
   const data = await prisma.commissionRule.create({
@@ -44,5 +53,5 @@ export const POST = withAuth({ roles: ROLES.ADMIN }, async (req) => {
     },
   });
 
-  return NextResponse.json({ data }, { status: 201 });
+  return ok(data, { status: 201, requestId });
 });

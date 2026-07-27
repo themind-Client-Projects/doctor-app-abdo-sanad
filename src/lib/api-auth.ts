@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import type { UserRole } from "@prisma/client";
 import { auth } from "./auth";
+import { ErrorCode, fail } from "./api-response";
 import { ValidationError } from "./validation";
 
 /**
@@ -109,49 +111,69 @@ export function withAuth<Ctx = unknown>(
   handler: (req: NextRequest, ctx: Ctx, identity: Identity) => Promise<Response>
 ) {
   return async (req: NextRequest, ctx: Ctx): Promise<Response> => {
+    // One id per request, echoed on the response and included in every log
+    // line, so "a user says it broke" becomes a single greppable key.
+    const requestId = req.headers.get("x-request-id") ?? randomUUID();
+
     let identity: Identity;
     try {
       identity = await requireAuth(req, opts);
     } catch (error) {
-      return toErrorResponse(req, error);
+      return withRequestId(toErrorResponse(req, error, requestId), requestId);
     }
 
     try {
-      return await handler(req, ctx, identity);
+      const res = await handler(req, ctx, identity);
+      return withRequestId(res, requestId);
     } catch (error) {
-      return toErrorResponse(req, error);
+      return withRequestId(toErrorResponse(req, error, requestId), requestId);
     }
   };
 }
 
-function toErrorResponse(req: NextRequest, error: unknown): NextResponse {
+function withRequestId(res: Response, requestId: string): Response {
+  res.headers.set("x-request-id", requestId);
+  return res;
+}
+
+function toErrorResponse(req: NextRequest, error: unknown, requestId: string): NextResponse {
   if (error instanceof AuthError) {
-    return NextResponse.json({ error: error.message }, { status: error.status });
+    return fail(
+      error.status === 401 ? ErrorCode.UNAUTHENTICATED : ErrorCode.FORBIDDEN,
+      error.status,
+      error.message,
+      { requestId }
+    );
   }
 
   // Validation failures are the caller's fault, not the server's. These used to
   // surface as 500s, so a client could not tell a bad request from an outage.
   if (error instanceof ValidationError) {
-    return NextResponse.json(
-      { error: "بيانات غير صالحة", details: error.issues },
-      { status: 400 }
+    const malformed = error.issues.some((i) => i.code === "malformed_json");
+    return fail(
+      malformed ? ErrorCode.MALFORMED_JSON : ErrorCode.VALIDATION_FAILED,
+      400,
+      "بيانات غير صالحة",
+      { details: error.issues, requestId }
     );
   }
 
-  // Prisma errors that are really client errors.
+  // Prisma errors that are really client errors. Without this, GET /orders/{bad}
+  // returned 404 while PATCH on the same id returned 500, so a mobile client
+  // retrying on 5xx would retry a request that can never succeed.
   const code = (error as { code?: string } | null)?.code;
   if (code === "P2025") {
-    return NextResponse.json({ error: "غير موجود" }, { status: 404 });
+    return fail(ErrorCode.NOT_FOUND, 404, "غير موجود", { requestId });
   }
   if (code === "P2002") {
-    return NextResponse.json({ error: "السجل موجود مسبقاً" }, { status: 409 });
+    return fail(ErrorCode.DUPLICATE_RESOURCE, 409, "السجل موجود مسبقاً", { requestId });
   }
   if (code === "P2003") {
-    return NextResponse.json({ error: "مرجع غير صالح" }, { status: 409 });
+    return fail(ErrorCode.INVALID_REFERENCE, 409, "مرجع غير صالح", { requestId });
   }
 
-  console.error(`[api] ${req.method} ${req.nextUrl.pathname}`, error);
-  return NextResponse.json({ error: "فشل" }, { status: 500 });
+  console.error(`[api] ${req.method} ${req.nextUrl.pathname} requestId=${requestId}`, error);
+  return fail(ErrorCode.INTERNAL_ERROR, 500, "فشل", { requestId });
 }
 
 /**
