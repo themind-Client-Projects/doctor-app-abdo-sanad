@@ -62,7 +62,8 @@ export class OrderError extends Error {
       | "STEP_ALREADY_DONE"
       | "OUT_OF_ORDER"
       | "NO_PROVIDER"
-      | "NOT_PRICED",
+      | "NOT_PRICED"
+      | "ALREADY_SETTLED",
     message: string
   ) {
     super(message);
@@ -152,6 +153,7 @@ export async function priceOrder(params: {
     where: { id: params.orderId },
     select: {
       id: true,
+      status: true,
       serviceType: true,
       source: true,
       patientId: true,
@@ -160,9 +162,23 @@ export async function priceOrder(params: {
       assignedRadiologyId: true,
       assignedNurseId: true,
       assignedDriverId: true,
+      orderSettlement: { select: { id: true, status: true } },
     },
   });
   if (!order) throw new OrderError("NOT_FOUND", "الطلب غير موجود");
+
+  // Re-pricing a settled order left OrderSettlement.totalAmount and
+  // Order.totalAmount permanently disagreeing — the ledger that moved the
+  // money and the figure the finance screen reads, with nothing flagging it.
+  if (order.orderSettlement && order.orderSettlement.status !== "REVERSED") {
+    throw new OrderError("ALREADY_SETTLED", "لا يمكن تسعير طلب تمت تسويته");
+  }
+  if (!REPRICEABLE_STATUSES.has(order.status)) {
+    throw new OrderError(
+      "INVALID_TRANSITION",
+      "لا يمكن تسعير الطلب بعد بدء التنفيذ"
+    );
+  }
 
   const providerId =
     order.assignedLabId ??
@@ -170,6 +186,13 @@ export async function priceOrder(params: {
     order.assignedRadiologyId ??
     order.assignedNurseId ??
     order.assignedDriverId;
+
+  // The contract floor is looked up from the provider, so pricing before
+  // assignment silently skipped it — a coupon could then cut below what the
+  // partner's contract guarantees, and assignment afterwards never re-checked.
+  if (!providerId) {
+    throw new OrderError("NO_PROVIDER", "يجب تعيين مقدم الخدمة قبل التسعير");
+  }
 
   const quote = await quoteService({
     serviceType: order.serviceType,
@@ -179,28 +202,61 @@ export async function priceOrder(params: {
     userId: order.patientId,
   });
 
-  const updated = await prisma.order.update({
-    where: { id: order.id },
-    data: {
-      subtotal: quote.subtotal,
-      discountTotal: quote.discountTotal,
-      totalAmount: quote.totalAmount,
-      currency: quote.currency,
-    },
-  });
+  // One transaction: the order's price and the coupon's consumption must not
+  // be able to disagree. Previously the update committed first, so a failure
+  // in between left the discount applied and the coupon unconsumed — reusable
+  // indefinitely.
+  const updated = await prisma.$transaction(async (tx) => {
+    // Re-pricing with a different coupon used to orphan the first redemption:
+    // it stayed recorded against this order at an amount no longer applied,
+    // burning the patient's one-per-user allowance for nothing.
+    const stale = await tx.couponRedemption.findMany({ where: { orderId: order.id } });
+    for (const r of stale) {
+      await tx.couponRedemption.delete({ where: { id: r.id } });
+      await tx.coupon.update({
+        where: { id: r.couponId },
+        data: { usedCount: { decrement: 1 } },
+      });
+    }
 
-  // Only consume the coupon once the price is committed to the order.
-  if (quote.appliedCoupon && order.patientId) {
-    await redeemCoupon({
-      couponId: quote.appliedCoupon.id,
-      userId: order.patientId,
-      orderId: order.id,
-      amount: quote.discountTotal,
+    const row = await tx.order.update({
+      where: { id: order.id },
+      data: {
+        subtotal: quote.subtotal,
+        discountTotal: quote.discountTotal,
+        totalAmount: quote.totalAmount,
+        currency: quote.currency,
+      },
     });
-  }
+
+    if (quote.appliedCoupon && order.patientId) {
+      await redeemCoupon(
+        {
+          couponId: quote.appliedCoupon.id,
+          userId: order.patientId,
+          orderId: order.id,
+          // The coupon's OWN contribution, not the total discount — otherwise
+          // a standing service discount inflated every coupon-ROI figure.
+          amount: quote.couponDiscount,
+          maxUses: quote.appliedCoupon.maxUses,
+        },
+        tx
+      );
+    }
+
+    return row;
+  });
 
   return { order: updated, quote };
 }
+
+/** Pricing is only meaningful before execution starts. */
+const REPRICEABLE_STATUSES = new Set<OrderStatus>([
+  "NEW",
+  "ACCEPTED",
+  "ASSIGNED",
+  "DELAYED",
+]);
 
 /**
  * Complete an order and settle it.

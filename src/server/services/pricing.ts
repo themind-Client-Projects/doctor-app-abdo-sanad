@@ -41,7 +41,9 @@ export type Quote = {
   /** What the patient pays, and what the commission engine splits. */
   totalAmount: Decimal;
   currency: string;
-  appliedCoupon: { id: string; code: string } | null;
+  appliedCoupon: { id: string; code: string; maxUses: number } | null;
+  /** The coupon's own contribution, distinct from the total discount. */
+  couponDiscount: Decimal;
   /** Set when the contract floor raised the price above the discounted one. */
   minimumApplied: boolean;
 };
@@ -92,6 +94,7 @@ export async function quoteService(params: {
 
   // 3. coupon
   let appliedCoupon: Quote["appliedCoupon"] = null;
+  let couponContribution = new D(0);
   if (couponCode) {
     const coupon = await validateCoupon(couponCode, userId ?? null);
     const couponDiscount =
@@ -100,7 +103,8 @@ export async function quoteService(params: {
         : coupon.discountValue;
 
     discount = discount.plus(couponDiscount);
-    appliedCoupon = { id: coupon.id, code: coupon.code };
+    couponContribution = couponDiscount;
+    appliedCoupon = { id: coupon.id, code: coupon.code, maxUses: coupon.maxUses };
   }
 
   // A discount can never exceed the price.
@@ -113,7 +117,11 @@ export async function quoteService(params: {
   if (partnerId) {
     const floor = await contractMinimum(partnerId, serviceType);
     if (floor && total.lessThan(floor)) {
-      total = floor;
+      // Clamp to `base`: the floor raises a DISCOUNTED price back up, it must
+      // never push the patient above the listed price. Unclamped, a floor
+      // greater than base charged more than the advertised price and stored a
+      // negative discountTotal.
+      total = D.min(floor, base);
       discount = base.minus(total);
       minimumApplied = true;
     }
@@ -126,6 +134,7 @@ export async function quoteService(params: {
     totalAmount: total,
     currency: "IQD",
     appliedCoupon,
+    couponDiscount: couponContribution,
     minimumApplied,
   };
 }
@@ -147,8 +156,16 @@ async function contractMinimum(
   const raw = prices?.[serviceType];
   if (raw === undefined || raw === null) return null;
 
-  const value = new D(String(raw));
-  return value.isFinite() && value.greaterThan(0) ? value : null;
+  // minPrices is a free-form Json column with no validation on write, so a
+  // value like "n/a" is possible. `new Decimal()` THROWS on unparseable input
+  // rather than yielding NaN, which made every /price call for that partner a
+  // 500 — the isFinite() check below could never run.
+  try {
+    const value = new D(String(raw));
+    return value.isFinite() && value.greaterThan(0) ? value : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -190,13 +207,19 @@ export async function validateCoupon(code: string, userId: string | null) {
  * database error rather than a race, and `usedCount` is finally incremented —
  * it was previously never touched, so `maxUses` could not be enforced.
  */
-export async function redeemCoupon(params: {
-  couponId: string;
-  userId: string;
-  orderId?: string | null;
-  amount: Decimal;
-}) {
-  return prisma.$transaction(async (tx) => {
+export async function redeemCoupon(
+  params: {
+    couponId: string;
+    userId: string;
+    orderId?: string | null;
+    amount: Decimal;
+    /** Needed to re-check the cap atomically. 0 means unlimited. */
+    maxUses: number;
+  },
+  /** Runs inside a caller's transaction when supplied, so pricing stays atomic. */
+  client: Prisma.TransactionClient | typeof prisma = prisma
+) {
+  const run = async (tx: Prisma.TransactionClient) => {
     const redemption = await tx.couponRedemption.create({
       data: {
         couponId: params.couponId,
@@ -206,11 +229,22 @@ export async function redeemCoupon(params: {
       },
     });
 
-    await tx.coupon.update({
-      where: { id: params.couponId },
+    // Enforce maxUses INSIDE the transaction. validateCoupon's check happens
+    // earlier and per-user, so N different patients priced concurrently all
+    // passed it and all redeemed a coupon budgeted for one.
+    const claimed = await tx.coupon.updateMany({
+      where: {
+        id: params.couponId,
+        OR: [{ maxUses: 0 }, { usedCount: { lt: params.maxUses } }],
+      },
       data: { usedCount: { increment: 1 } },
     });
+    if (claimed.count === 0) {
+      throw new PricingError("COUPON_EXHAUSTED", "تم استنفاد هذا الكوبون");
+    }
 
     return redemption;
-  });
+  };
+
+  return "$transaction" in client ? client.$transaction(run) : run(client as Prisma.TransactionClient);
 }

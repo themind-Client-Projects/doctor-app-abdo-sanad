@@ -14,7 +14,15 @@ const createCommissionSchema = z
     nurseShare: percentage.default(0),
     driverShare: percentage.default(0),
   })
-  .strict();
+  .strict()
+  // Enforced at SAVE time, not only at settlement. A rule totalling 120% used
+  // to save cleanly and then fail for every order of that partner — surfacing
+  // only as a string inside a 200 OK, so revenue silently stopped moving.
+  .refine(
+    (v) =>
+      v.partnerShare + v.waridShare + v.complexShare + v.nurseShare + v.driverShare === 100,
+    { message: "مجموع النسب يجب أن يساوي 100%", path: ["partnerShare"] }
+  );
 
 // GET /api/commissions — List commission rules (req L210-230 ⭐)
 //

@@ -35,7 +35,9 @@ export class CommissionError extends Error {
       | "ORDER_NOT_COMPLETED"
       | "NO_AMOUNT"
       | "ALREADY_SETTLED"
-      | "NOT_SETTLED",
+      | "NOT_SETTLED"
+      | "PARTY_UNASSIGNED"
+      | "PROVIDER_ALSO_PARTY",
     message: string
   ) {
     super(message);
@@ -76,7 +78,16 @@ export function computeSplit(total: Decimal, shares: ShareInput[]): ComputedShar
   const remainder = total.minus(allocated);
 
   if (!remainder.isZero()) {
-    const platform = computed.find((s) => s.party === "WARID") ?? computed[0];
+    const platform = computed.find((s) => s.party === "WARID");
+    // Refuse to guess. Falling back to `computed[0]` silently handed the
+    // rounding remainder to the partner, which is a (tiny) systematic overpay
+    // and an easy thing to never notice.
+    if (!platform) {
+      throw new CommissionError(
+        "SHARES_INVALID",
+        "لا يمكن توزيع الكسور بدون حصة للمنصة"
+      );
+    }
     platform.amount = platform.amount.plus(remainder);
   }
 
@@ -131,14 +142,32 @@ function ruleToShares(
     { party: "WARID", partnerId: null, percentage: rule.waridShare },
   ];
 
+  // A rule may prescribe a share for a party that is not on this order — a
+  // nurse cut on an order with no nurse assigned. Paying it is impossible
+  // (there is no wallet), and recording it as distributed while crediting
+  // nobody silently loses that percentage: the ledger claims 100% was paid out
+  // while the wallets received less. Refuse instead, so the mismatch surfaces
+  // as an operator-visible error rather than a slow leak.
+  const unassigned: string[] = [];
+
   if (rule.complexShare.greaterThan(0)) {
+    if (!complexPartnerId) unassigned.push("المجمع");
     shares.push({ party: "COMPLEX", partnerId: complexPartnerId, percentage: rule.complexShare });
   }
   if (rule.nurseShare.greaterThan(0)) {
+    if (!order.assignedNurseId) unassigned.push("الممرض");
     shares.push({ party: "NURSE", partnerId: order.assignedNurseId, percentage: rule.nurseShare });
   }
   if (rule.driverShare.greaterThan(0)) {
+    if (!order.assignedDriverId) unassigned.push("السائق");
     shares.push({ party: "DRIVER", partnerId: order.assignedDriverId, percentage: rule.driverShare });
+  }
+
+  if (unassigned.length > 0) {
+    throw new CommissionError(
+      "PARTY_UNASSIGNED",
+      `العقد يخصص نسبة لأطراف غير معيّنة على الطلب: ${unassigned.join("، ")}`
+    );
   }
 
   return shares;
@@ -165,12 +194,15 @@ export async function settleOrder(orderId: string, settledById?: string) {
       assignedLabId: true,
       assignedPharmacyId: true,
       assignedRadiologyId: true,
-      orderSettlement: { select: { id: true } },
+      orderSettlement: { select: { id: true, status: true } },
     },
   });
 
   if (!order) throw new CommissionError("NO_AMOUNT", "الطلب غير موجود");
-  if (order.orderSettlement) {
+  // Only a LIVE settlement blocks. A reversed one must be re-settlable —
+  // a dispute resolved in the partner's favour previously left the order
+  // permanently unpayable, because orderId is unique and status was ignored.
+  if (order.orderSettlement && order.orderSettlement.status !== "REVERSED") {
     throw new CommissionError("ALREADY_SETTLED", "تمت تسوية هذا الطلب مسبقاً");
   }
   if (order.status !== "COMPLETED") {
@@ -207,7 +239,25 @@ export async function settleOrder(orderId: string, settledById?: string) {
     ruleToShares(rule, order, providerId, provider?.complexId ?? null)
   );
 
+  const previousSettlementId = order.orderSettlement?.id ?? null;
+
   return prisma.$transaction(async (tx) => {
+    // Re-read inside the transaction: the reads above are three separate
+    // round-trips under READ COMMITTED, so the amount could have changed.
+    const fresh = await tx.order.findUniqueOrThrow({
+      where: { id: order.id },
+      select: { status: true, totalAmount: true },
+    });
+    if (fresh.status !== "COMPLETED" || !fresh.totalAmount?.equals(order.totalAmount!)) {
+      throw new CommissionError("NO_AMOUNT", "تغيّر الطلب أثناء التسوية، أعد المحاولة");
+    }
+
+    // A prior reversed settlement is replaced, not duplicated (orderId unique).
+    if (previousSettlementId) {
+      await tx.settlementShare.deleteMany({ where: { settlementId: previousSettlementId } });
+      await tx.orderSettlement.delete({ where: { id: previousSettlementId } });
+    }
+
     const settlement = await tx.orderSettlement.create({
       data: {
         orderId: order.id,
@@ -295,22 +345,50 @@ export async function settleOrder(orderId: string, settledById?: string) {
  * never an edit, so the audit trail stays intact.
  */
 export async function reverseSettlement(orderId: string, reversedById?: string) {
-  const settlement = await prisma.orderSettlement.findUnique({
+  const existing = await prisma.orderSettlement.findUnique({
     where: { orderId },
-    include: { shares: true },
+    select: { id: true, status: true },
   });
 
-  if (!settlement) throw new CommissionError("NOT_SETTLED", "لا توجد تسوية لهذا الطلب");
-  if (settlement.status === "REVERSED") {
+  if (!existing) throw new CommissionError("NOT_SETTLED", "لا توجد تسوية لهذا الطلب");
+  if (existing.status === "REVERSED") {
     throw new CommissionError("NOT_SETTLED", "تم عكس هذه التسوية مسبقاً");
   }
 
   return prisma.$transaction(async (tx) => {
+    // Claim the reversal FIRST, conditionally on it still being SETTLED.
+    //
+    // The check above reads outside the transaction, and unlike settleOrder
+    // there is no unique constraint to backstop it. Two concurrent reversals
+    // both passed it and both ran `decrement`, which compiles to
+    // `balance = balance - amount` — so a double-click debited the partner
+    // twice and could drive the balance negative. `updateMany` + a count check
+    // makes the loser a no-op.
+    const claimed = await tx.orderSettlement.updateMany({
+      where: { id: existing.id, status: "SETTLED" },
+      data: { status: "REVERSED", reversedAt: new Date() },
+    });
+    if (claimed.count === 0) {
+      throw new CommissionError("NOT_SETTLED", "تم عكس هذه التسوية مسبقاً");
+    }
+
+    const settlement = await tx.orderSettlement.findUniqueOrThrow({
+      where: { id: existing.id },
+      include: { shares: true },
+    });
+
     for (const share of settlement.shares) {
       if (!share.partnerId) continue;
 
       const wallet = await tx.wallet.findUnique({ where: { partnerId: share.partnerId } });
-      if (!wallet) continue;
+      // A missing wallet must not be skipped silently: the money was paid and
+      // the ledger is about to claim it was clawed back.
+      if (!wallet) {
+        throw new CommissionError(
+          "NOT_SETTLED",
+          `لا توجد محفظة للشريك ${share.partnerId} — تعذّر عكس التسوية`
+        );
+      }
 
       await tx.transaction.create({
         data: {
@@ -343,9 +421,9 @@ export async function reverseSettlement(orderId: string, reversedById?: string) 
       });
     }
 
-    return tx.orderSettlement.update({
+    // Status was already flipped when the reversal was claimed above.
+    return tx.orderSettlement.findUniqueOrThrow({
       where: { id: settlement.id },
-      data: { status: "REVERSED", reversedAt: new Date() },
       include: { shares: true },
     });
   });

@@ -40,9 +40,14 @@ export const GET = withAuth<Ctx>({ roles: ROLES.OPERATIONS }, async (req, { para
 
 // POST /api/orders/[id]/settle — split the revenue and credit every wallet.
 //
-// Admin-only: this moves money. Idempotent on orderId, so a retry returns 409
-// rather than paying every party twice.
-export const POST = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }, identity) => {
+// OPERATIONS, deliberately matching POST /complete. Settlement is an automatic
+// consequence of completing an order, and /complete already triggers it — so
+// gating this endpoint at ADMIN only looked stricter while ops moved the same
+// money through the side door. This is the manual retry for a settlement that
+// failed (e.g. an expired contract), not a separate privilege.
+//
+// Reversal below stays ADMIN: THAT is the discretionary, corrective act.
+export const POST = withAuth<Ctx>({ roles: ROLES.OPERATIONS }, async (req, { params }, identity) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
 
