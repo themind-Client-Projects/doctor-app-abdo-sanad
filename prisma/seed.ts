@@ -1,3 +1,10 @@
+import path from "node:path";
+import { config as loadEnv } from "dotenv";
+
+// Standalone execution (`tsx prisma/seed.ts`) gets no env injection.
+loadEnv({ path: path.join(process.cwd(), ".env.local") });
+loadEnv({ path: path.join(process.cwd(), ".env") });
+
 import { PrismaClient, UserRole, OrderStatus, Priority, OrderSource, PaymentMethod, PaymentStatus, ServiceType, AppointmentType, Prisma } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import pg from "pg";
@@ -250,6 +257,11 @@ async function main() {
     ["price-homevisit", "HOME_VISIT", 50000, 40000, 35000],
     ["price-cbc", "LAB_TEST", 10000, 8000, 7000],
     ["price-xray", "RADIOLOGY", 30000, 25000, 22000],
+    // Every service that has a CommissionRule must also have a price, or the
+    // order cannot be priced and therefore can never be settled.
+    ["price-home-lab", "HOME_LAB_TEST", 20000, 17000, 15000],
+    ["price-med-delivery", "MEDICINE_DELIVERY", 5000, 4000, 3500],
+    ["price-blood-draw", "HOME_BLOOD_DRAW", 12000, 10000, 9000],
   ];
   for (const [id, serviceType, basePrice, sanadPrice, complexPrice] of prices) {
     await prisma.priceConfig.upsert({
