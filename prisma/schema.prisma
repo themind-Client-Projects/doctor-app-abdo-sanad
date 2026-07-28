@@ -192,6 +192,37 @@ model OTPCode {
   @@index([expiresAt])
 }
 
+/// #3b — Refresh tokens for the mobile client.
+///
+/// NextAuth's session is a cookie-bound JWT: a native app cannot participate in
+/// the browser handshake, and a cookie JWT cannot be revoked. This model backs
+/// an opaque, rotating refresh token that CAN be revoked, per device.
+model RefreshToken {
+  id         String    @id @default(cuid())
+  /// SHA-256 of the opaque token. The raw value is never stored, so a database
+  /// leak does not hand over live sessions.
+  tokenHash  String    @unique
+  userId     String
+  /// Rotation lineage. Presenting an already-rotated token means the token was
+  /// stolen, so the whole family is revoked.
+  familyId   String
+  expiresAt  DateTime
+  /// Set when this token is exchanged. A consumed token must never work again.
+  consumedAt DateTime?
+  revokedAt  DateTime?
+  /// Device context, for a "sign out other devices" screen and for abuse triage.
+  userAgent  String?
+  ip         String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([familyId])
+  @@index([expiresAt])
+}
+
 // ═══════════════════════════════════════════════════════════════
 // CORE MODELS
 // ═══════════════════════════════════════════════════════════════
@@ -216,6 +247,7 @@ model User {
   governorate    Governorate?      @relation(fields: [governorateId], references: [id])
   accounts       Account[]
   sessions       Session[]
+  refreshTokens  RefreshToken[]
   partner        Partner?
   doctorProfile  DoctorProfile?
   employeeStatus EmployeeStatus?

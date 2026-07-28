@@ -13,9 +13,18 @@ import path from "node:path";
 
 const API_DIR = path.join(process.cwd(), "src", "app", "api");
 
-/** Routes that are legitimately public (they ARE the sign-in surface). */
+/**
+ * Routes that are legitimately public — each one IS part of the sign-in
+ * surface, so requiring a session would make sign-in impossible.
+ *
+ * Listed individually rather than by prefix: `api/auth/**` would have silently
+ * exempted any future route dropped into that folder.
+ */
 const PUBLIC_ROUTES = [
-  path.join("api", "auth"), // NextAuth handler + OTP send/verify
+  path.join("api", "auth", "[...nextauth]"), // NextAuth's own handler
+  path.join("api", "auth", "otp", "send"), // request an OTP (rate limited)
+  path.join("api", "auth", "token", "route"), // credentials -> bearer pair
+  path.join("api", "auth", "token", "refresh"), // rotate an expired pair
 ];
 
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] as const;

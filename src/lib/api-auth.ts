@@ -4,6 +4,7 @@ import type { UserRole } from "@prisma/client";
 import { auth } from "./auth";
 import { ErrorCode, fail } from "./api-response";
 import { ValidationError } from "./validation";
+import { verifyAccessToken } from "./tokens";
 
 /**
  * The authenticated caller, resolved once per request.
@@ -61,16 +62,53 @@ export const ROLES = {
 /**
  * Resolve and authorise the caller.
  *
- * Currently reads the NextAuth cookie session. Bearer-token support for the
- * mobile client plugs in here (Step 5 of IMPLEMENTATION_PLAN.md) — deliberately
- * not stubbed, so there is no code path that accepts an unverified token.
+ * Accepts EITHER an `Authorization: Bearer <access token>` (mobile) or the
+ * NextAuth cookie session (web). Bearer is checked first so a native client
+ * never depends on cookies.
  *
  * @throws {AuthError} 401 when unauthenticated, 403 when the role is not allowed.
  */
 export async function requireAuth(
-  _req: NextRequest,
+  req: NextRequest,
   opts?: { roles?: readonly UserRole[] }
 ): Promise<Identity> {
+  const identity = (await identityFromBearer(req)) ?? (await identityFromSession());
+
+  if (!identity) {
+    throw new AuthError(401, "يجب تسجيل الدخول");
+  }
+
+  if (opts?.roles && !opts.roles.includes(identity.role)) {
+    throw new AuthError(403, "ليس لديك صلاحية للوصول إلى هذا المورد");
+  }
+
+  return identity;
+}
+
+/**
+ * Mobile clients: `Authorization: Bearer <access token>`.
+ *
+ * Checked before the cookie session so a native app never depends on cookies.
+ * A malformed or expired token yields null rather than throwing, so the caller
+ * falls through to the cookie path and ultimately gets a clean 401.
+ */
+async function identityFromBearer(req: NextRequest): Promise<Identity | null> {
+  const header = req.headers.get("authorization");
+  if (!header?.toLowerCase().startsWith("bearer ")) return null;
+
+  const claims = await verifyAccessToken(header.slice(7).trim());
+  if (!claims) return null;
+
+  return {
+    userId: claims.sub,
+    role: claims.role,
+    partnerId: claims.partnerId,
+    doctorProfileId: claims.doctorProfileId,
+  };
+}
+
+/** Web clients: the NextAuth cookie session. */
+async function identityFromSession(): Promise<Identity | null> {
   const session = await auth();
   const user = session?.user;
 
@@ -78,22 +116,14 @@ export async function requireAuth(
   // both fields keeps a malformed session from producing an identity whose
   // userId is undefined — which would make later `x === identity.userId`
   // ownership checks pass against null columns.
-  if (!user?.id || !user.role) {
-    throw new AuthError(401, "يجب تسجيل الدخول");
-  }
+  if (!user?.id || !user.role) return null;
 
-  const identity: Identity = {
+  return {
     userId: user.id,
     role: user.role,
     partnerId: user.partnerId ?? null,
     doctorProfileId: user.doctorProfileId ?? null,
   };
-
-  if (opts?.roles && !opts.roles.includes(identity.role)) {
-    throw new AuthError(403, "ليس لديك صلاحية للوصول إلى هذا المورد");
-  }
-
-  return identity;
 }
 
 /**
