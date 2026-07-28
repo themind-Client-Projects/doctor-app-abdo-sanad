@@ -27,7 +27,19 @@ export const GET = withAuth({ roles: ROLES.ADMIN }, async (req) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
 
   const data = await prisma.commissionRule.findMany({
-    include: { contract: { select: { partnerId: true } } },
+    include: {
+      contract: {
+        select: {
+          partnerId: true,
+          isActive: true,
+          endDate: true,
+          // The admin screen needs a name to show; a partner id is not usable
+          // in a UI that claims to display contract-driven percentages.
+          partner: { select: { name: true, type: true } },
+        },
+      },
+    },
+    orderBy: [{ contractId: "asc" }, { serviceType: "asc" }],
   });
   return ok(data, { requestId });
 });

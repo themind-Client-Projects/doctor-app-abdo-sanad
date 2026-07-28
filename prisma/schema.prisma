@@ -133,6 +133,20 @@ enum NotificationChannel {
   WHATSAPP
 }
 
+/// Who receives a slice of an order's revenue.
+enum SettlementParty {
+  PARTNER // مقدم الخدمة
+  COMPLEX // المجمع
+  NURSE // الممرض
+  DRIVER // السائق
+  WARID // المنصة
+}
+
+enum SettlementStatus {
+  SETTLED
+  REVERSED
+}
+
 // ═══════════════════════════════════════════════════════════════
 // AUTH MODELS (Auth.js / NextAuth)
 // ═══════════════════════════════════════════════════════════════
@@ -509,6 +523,7 @@ model Order {
   radiologyRequests RadiologyRequest[]
   prescriptions     Prescription[]     @relation("OrderPrescriptions")
   feedbacks         PatientFeedback[]
+  orderSettlement   OrderSettlement?
 
   @@index([status, createdAt(sort: Desc)])
   @@index([createdAt(sort: Desc)])
@@ -926,4 +941,51 @@ model DoctorSchedule {
 
   // NOTE: no separate @@index([doctorId, dayOfWeek]) — identical to the unique below.
   @@unique([doctorId, dayOfWeek])
+}
+
+/// The commission split actually applied to one completed order.
+///
+/// Recorded as its own ledger rather than derived on read: CommissionRule is
+/// editable, so recomputing later would silently re-split historical orders at
+/// today's percentages.
+model OrderSettlement {
+  id               String           @id @default(cuid())
+  orderId          String           @unique
+  totalAmount      Decimal          @db.Decimal(18, 3)
+  currency         String           @default("IQD")
+  /// The rule applied, kept for audit even if the rule is later edited.
+  commissionRuleId String?
+  status           SettlementStatus @default(SETTLED)
+  settledAt        DateTime         @default(now())
+  reversedAt       DateTime?
+  settledById      String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  order  Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  shares SettlementShare[]
+
+  @@index([status, settledAt(sort: Desc)])
+  @@index([settledAt(sort: Desc)])
+}
+
+/// One party's slice of a settlement. Sums to exactly the order total.
+model SettlementShare {
+  id            String          @id @default(cuid())
+  settlementId  String
+  party         SettlementParty
+  /// Null for WARID — the platform is not a Partner and has no wallet row.
+  partnerId     String?
+  percentage    Decimal         @db.Decimal(9, 4)
+  amount        Decimal         @db.Decimal(18, 3)
+  /// The wallet credit this produced, when the party has a wallet.
+  transactionId String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  settlement OrderSettlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+
+  @@index([settlementId])
+  @@index([partnerId, createdAt(sort: Desc)])
+  @@index([party])
 }
