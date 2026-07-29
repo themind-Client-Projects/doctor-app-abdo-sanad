@@ -2,6 +2,7 @@
 
 import { Check, Circle } from "lucide-react";
 import type { TimelineStep } from "@/types/dashboard";
+import { formatDateTime } from "@/lib/format";
 
 interface TimelineProps {
   steps: TimelineStep[];
@@ -56,12 +57,7 @@ export function Timeline({ steps }: TimelineProps) {
               </span>
               {step?.completedAt && (
                 <span className="text-xs text-muted-foreground">
-                  {new Date(step.completedAt).toLocaleString("ar-IQ", {
-                    month: "short",
-                    day: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
+                  {formatDateTime(step.completedAt)}
                 </span>
               )}
             </div>

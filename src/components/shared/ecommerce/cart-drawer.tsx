@@ -6,6 +6,7 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter, DrawerC
 import { Button } from '@/components/ui/button';
 import { useCartStore } from '@/stores/ecommerce/cart.store';
 import { useState } from 'react';
+import { formatNumber } from "@/lib/format";
 
 interface CartDrawerProps {
   open: boolean;
@@ -98,7 +99,7 @@ export function CartDrawer({ open, onOpenChange }: CartDrawerProps) {
                     </div>
                     
                     <div className="flex justify-between items-center mt-2">
-                      <span className="font-extrabold text-primary">{item.price.toLocaleString('ar-IQ')} <span className="text-[10px] font-normal">د.ع</span></span>
+                      <span className="font-extrabold text-primary">{formatNumber(item.price)} <span className="text-[10px] font-normal">د.ع</span></span>
                       
                       <div className="flex items-center gap-3 bg-gray-50 rounded-lg p-1 border border-gray-100">
                         <button 
@@ -126,7 +127,7 @@ export function CartDrawer({ open, onOpenChange }: CartDrawerProps) {
             <DrawerFooter className="border-t border-gray-100 px-5 py-4 bg-white">
               <div className="flex justify-between items-center mb-4">
                 <span className="text-gray-500 font-bold">المجموع الإجمالي</span>
-                <span className="text-xl font-extrabold text-gray-900">{getTotalPrice().toLocaleString('ar-IQ')} <span className="text-sm font-normal text-gray-500">د.ع</span></span>
+                <span className="text-xl font-extrabold text-gray-900">{formatNumber(getTotalPrice())} <span className="text-sm font-normal text-gray-500">د.ع</span></span>
               </div>
               <Button
                 onClick={handleCheckout}

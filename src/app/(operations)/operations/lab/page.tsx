@@ -2,6 +2,7 @@
 
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { FlaskConical, ArrowLeft } from "lucide-react";
+import { formatDate } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
 // Section 10: المختبر (req L455-463) — 6 statuses pipeline
@@ -78,7 +79,7 @@ export default function LabPage() {
                     <td className="px-4 py-3 text-sm text-muted-foreground">{s.testType}</td>
                     <td className="px-4 py-3 text-sm text-muted-foreground">{s.labName}</td>
                     <td className="px-4 py-3"><span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold text-white ${step?.color || "bg-gray-500"}`}>{step?.label || s.status}</span></td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(s.createdAt).toLocaleDateString("ar-IQ")}</td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">{formatDate(s.createdAt)}</td>
                   </tr>
                 );
               })}

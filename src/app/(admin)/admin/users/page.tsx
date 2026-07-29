@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { UserCog, Plus, Search, Shield, Ban, CheckCircle2 } from "lucide-react";
+import { formatDate } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
 // Section 10: إدارة المستخدمين (req L265)
@@ -102,7 +103,7 @@ export default function UsersPage() {
                       {user.isActive ? <><CheckCircle2 size={12} />نشط</> : <><Ban size={12} />معطل</>}
                     </span>
                   </td>
-                  <td className="px-5 py-3.5 text-xs text-muted-foreground">{user.createdAt ? new Date(user.createdAt).toLocaleDateString("ar-IQ") : "—"}</td>
+                  <td className="px-5 py-3.5 text-xs text-muted-foreground">{user.createdAt ? formatDate(user.createdAt) : "—"}</td>
                   <td className="px-5 py-3.5">
                     <button className="text-xs font-medium text-primary hover:underline">تعديل</button>
                   </td>

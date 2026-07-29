@@ -16,6 +16,7 @@ import {
   Truck,
   ScanLine,
 } from "lucide-react";
+import { formatNumber } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
 // KPI Card Types
@@ -114,9 +115,9 @@ export function KPICards({ kpis, isLoading, currency = "د.ع" }: KPICardsProps)
   // Format number with Arabic locale
   const formatValue = (value: number, isCurrency?: boolean) => {
     if (isCurrency) {
-      return `${value.toLocaleString("ar-IQ", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ${currency}`;
+      return `${formatNumber(value)} ${currency}`;
     }
-    return value.toLocaleString("ar-IQ");
+    return formatNumber(value);
   };
 
   return (

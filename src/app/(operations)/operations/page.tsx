@@ -13,6 +13,7 @@ import {
   ScanLine,
 } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
+import { formatNumber } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
 // Section 2: مؤشرات اليوم (req L286-298) — 10 KPI cards
@@ -69,7 +70,7 @@ export default function OperationsPage() {
               )}
             </div>
             <div className="text-2xl font-bold text-foreground mb-0.5">
-              {isLoading ? <div className="h-7 w-12 rounded bg-muted animate-pulse" /> : kpi.value.toLocaleString("ar-IQ")}
+              {isLoading ? <div className="h-7 w-12 rounded bg-muted animate-pulse" /> : formatNumber(kpi.value)}
             </div>
             <span className="text-[10px] text-muted-foreground">{kpi.label}</span>
           </div>

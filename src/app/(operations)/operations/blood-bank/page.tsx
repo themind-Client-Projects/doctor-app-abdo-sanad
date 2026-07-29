@@ -3,6 +3,7 @@
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Droplets } from "lucide-react";
+import { formatDate } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
 // Section 8: إدارة بنك الدم (req L433-443) — 8 fields
@@ -55,7 +56,7 @@ export default function BloodBankPage() {
                   <td className="px-4 py-3 text-sm text-muted-foreground">{r.governorate}</td>
                   <td className="px-4 py-3"><StatusBadge status={r.status} size="sm" /></td>
                   <td className="px-4 py-3 text-sm text-foreground">{r.donorName || "—"}</td>
-                  <td className="px-4 py-3 text-sm text-muted-foreground">{r.drawDate ? new Date(r.drawDate).toLocaleDateString("ar-IQ") : "—"}</td>
+                  <td className="px-4 py-3 text-sm text-muted-foreground">{r.drawDate ? formatDate(r.drawDate) : "—"}</td>
                   <td className="px-4 py-3"><StatusBadge status={r.testStatus || "PENDING"} size="sm" /></td>
                   <td className="px-4 py-3"><StatusBadge status={r.deliveryStatus || "PENDING"} size="sm" /></td>
                 </tr>

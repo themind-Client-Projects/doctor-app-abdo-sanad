@@ -2,6 +2,7 @@
 
 import { Calendar, Clock } from "lucide-react";
 import type { CalendarItem } from "@/types/dashboard";
+import { LOCALE } from "@/lib/format";
 
 interface CalendarWidgetProps {
   appointments: CalendarItem[];
@@ -15,7 +16,7 @@ const typeLabels: Record<string, string> = {
 };
 
 export function CalendarWidget({ appointments }: CalendarWidgetProps) {
-  const today = new Date().toLocaleDateString("ar-IQ", {
+  const today = new Date().toLocaleDateString(LOCALE, {
     weekday: "long",
     year: "numeric",
     month: "long",

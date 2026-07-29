@@ -1,5 +1,7 @@
 "use client";
 
+import { formatNumber } from "@/lib/format";
+
 interface StatCardProps {
   label: string;
   value: string | number;
@@ -18,7 +20,7 @@ export function StatCard({ label, value, icon, trend, color }: StatCardProps) {
       )}
       <div className="flex-1 min-w-0">
         <span className="text-lg font-bold text-foreground block">
-          {typeof value === "number" ? value.toLocaleString("ar-IQ") : value}
+          {typeof value === "number" ? formatNumber(value) : value}
         </span>
         <span className="text-xs text-muted-foreground">{label}</span>
       </div>

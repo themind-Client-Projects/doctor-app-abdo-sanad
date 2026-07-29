@@ -4,6 +4,7 @@ import Image from 'next/image';
 import { Plus, Minus, ShoppingCart } from 'lucide-react';
 import { useCartStore } from '@/stores/ecommerce/cart.store';
 import type { Product } from '@/types/patient';
+import { formatNumber } from "@/lib/format";
 
 interface ProductCardProps {
   product: Product;
@@ -36,7 +37,7 @@ export function ProductCard({ product }: ProductCardProps) {
         <h3 className="font-extrabold text-sm text-gray-900 mb-2 line-clamp-2 leading-tight">{product.name}</h3>
         
         <div className="mt-auto flex items-center justify-between pt-2">
-          <span className="font-extrabold text-gray-900">{product.price.toLocaleString('ar-IQ')} <span className="text-[10px] text-gray-500 font-normal">د.ع</span></span>
+          <span className="font-extrabold text-gray-900">{formatNumber(product.price)} <span className="text-[10px] text-gray-500 font-normal">د.ع</span></span>
           
           {quantity > 0 ? (
             <div className="flex items-center gap-2 bg-primary/5 rounded-xl border border-primary/20 p-1">

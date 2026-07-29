@@ -5,6 +5,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import Link from "next/link";
 import { Plus, FileText, Search } from "lucide-react";
 import { useState } from "react";
+import { formatDate } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
 // Section 4: إدارة العقود (req L199-209) — 8 fields per contract
@@ -70,8 +71,8 @@ export default function ContractsPage() {
               {(contracts ?? []).map((c) => (
                 <tr key={c.id} className="hover:bg-muted/30 transition-colors">
                   <td className="px-5 py-3.5 text-sm font-medium text-foreground">{c.partner?.name || c.partnerId}</td>
-                  <td className="px-5 py-3.5 text-sm text-muted-foreground">{c.startDate ? new Date(c.startDate).toLocaleDateString("ar-IQ") : "—"}</td>
-                  <td className="px-5 py-3.5 text-sm text-muted-foreground">{c.endDate ? new Date(c.endDate).toLocaleDateString("ar-IQ") : "—"}</td>
+                  <td className="px-5 py-3.5 text-sm text-muted-foreground">{c.startDate ? formatDate(c.startDate) : "—"}</td>
+                  <td className="px-5 py-3.5 text-sm text-muted-foreground">{c.endDate ? formatDate(c.endDate) : "—"}</td>
                   <td className="px-5 py-3.5 text-sm font-medium text-foreground">{c.commissionRate}%</td>
                   <td className="px-5 py-3.5"><StatusBadge status={c.status || "ACTIVE"} size="sm" /></td>
                 </tr>

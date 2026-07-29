@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { formatNumber } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
 // Section 2: إدارة الشركاء (req L128-182) — 7 partner types
@@ -144,7 +145,7 @@ export default function PartnersPage() {
                       <span className="text-sm text-foreground">⭐ {partner.rating?.toFixed(1) || "—"}</span>
                     </td>
                     <td className="px-5 py-3.5">
-                      <span className="text-sm text-muted-foreground">{partner.totalTasks?.toLocaleString("ar-IQ") || "٠"}</span>
+                      <span className="text-sm text-muted-foreground">{formatNumber(partner.totalTasks) || "0"}</span>
                     </td>
                     <td className="px-5 py-3.5">
                       <Link

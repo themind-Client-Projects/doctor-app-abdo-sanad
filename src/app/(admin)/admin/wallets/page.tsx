@@ -3,6 +3,7 @@
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { Wallet, ArrowUpCircle, ArrowDownCircle, FileText, AlertTriangle, Search } from "lucide-react";
 import { useState } from "react";
+import { formatCurrency } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
 // Section 7: المحافظ المالية (req L239-246) — 6 data types
@@ -36,11 +37,11 @@ export default function WalletsPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-emerald-100/50 dark:from-emerald-950/40 dark:to-emerald-900/20 p-5">
           <div className="flex items-center gap-2 mb-2"><Wallet size={18} className="text-emerald-600 dark:text-emerald-400" /><span className="text-sm font-medium text-muted-foreground">إجمالي الأرصدة</span></div>
-          <span className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">{totalBalance.toLocaleString("ar-IQ")} د.ع</span>
+          <span className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">{formatCurrency(totalBalance)}</span>
         </div>
         <div className="rounded-xl border border-blue-200 dark:border-blue-800 bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/40 dark:to-blue-900/20 p-5">
           <div className="flex items-center gap-2 mb-2"><ArrowUpCircle size={18} className="text-blue-600 dark:text-blue-400" /><span className="text-sm font-medium text-muted-foreground">المستحقات</span></div>
-          <span className="text-2xl font-bold text-blue-700 dark:text-blue-300">{totalPending.toLocaleString("ar-IQ")} د.ع</span>
+          <span className="text-2xl font-bold text-blue-700 dark:text-blue-300">{formatCurrency(totalPending)}</span>
         </div>
         <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-gradient-to-br from-amber-50 to-amber-100/50 dark:from-amber-950/40 dark:to-amber-900/20 p-5">
           <div className="flex items-center gap-2 mb-2"><AlertTriangle size={18} className="text-amber-600 dark:text-amber-400" /><span className="text-sm font-medium text-muted-foreground">الديون المعلقة</span></div>
@@ -72,8 +73,8 @@ export default function WalletsPage() {
                 <tr key={w.id} className="hover:bg-muted/30 transition-colors">
                   <td className="px-5 py-3.5 text-sm font-medium text-foreground">{w.partner?.name}</td>
                   <td className="px-5 py-3.5 text-sm text-muted-foreground">{w.partner?.type}</td>
-                  <td className="px-5 py-3.5 text-sm font-medium text-emerald-700 dark:text-emerald-300">{w.balance?.toLocaleString("ar-IQ")} د.ع</td>
-                  <td className="px-5 py-3.5 text-sm text-blue-700 dark:text-blue-300">{w.pendingAmount?.toLocaleString("ar-IQ")} د.ع</td>
+                  <td className="px-5 py-3.5 text-sm font-medium text-emerald-700 dark:text-emerald-300">{formatCurrency(w.balance)}</td>
+                  <td className="px-5 py-3.5 text-sm text-blue-700 dark:text-blue-300">{formatCurrency(w.pendingAmount)}</td>
                   <td className="px-5 py-3.5">
                     <div className="flex gap-1">
                       <button className="text-xs px-2 py-1 rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors">تحويل</button>

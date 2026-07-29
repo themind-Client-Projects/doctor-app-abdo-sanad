@@ -3,6 +3,7 @@
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ScanLine, Calendar, Camera, FileText, Image, Send } from "lucide-react";
+import { formatDate } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
 // Section 11: الأشعة (req L465-472) — 5 items
@@ -73,7 +74,7 @@ export default function RadiologyPage() {
                   <td className="px-4 py-3 text-sm font-medium text-foreground">{r.patientName}</td>
                   <td className="px-4 py-3 text-sm text-muted-foreground">{r.requestType}</td>
                   <td className="px-4 py-3 text-sm text-muted-foreground">{r.centerName}</td>
-                  <td className="px-4 py-3 text-sm text-muted-foreground">{r.scheduledDate ? new Date(r.scheduledDate).toLocaleDateString("ar-IQ") : "—"}</td>
+                  <td className="px-4 py-3 text-sm text-muted-foreground">{r.scheduledDate ? formatDate(r.scheduledDate) : "—"}</td>
                   <td className="px-4 py-3"><StatusBadge status={r.status} size="sm" /></td>
                   <td className="px-4 py-3">{r.hasReport ? <span className="text-emerald-600 text-xs">✓ جاهز</span> : <span className="text-muted-foreground text-xs">—</span>}</td>
                   <td className="px-4 py-3">{r.hasImages ? <span className="text-emerald-600 text-xs">✓ مرفقة</span> : <span className="text-muted-foreground text-xs">—</span>}</td>

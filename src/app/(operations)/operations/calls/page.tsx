@@ -2,6 +2,7 @@
 
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { Phone, User, HeartPulse, FlaskConical, Pill, ScanLine, Clock, FileText, PhoneCall } from "lucide-react";
+import { formatDateTime } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
 // Section 7: إدارة الاتصالات (req L421-431) — 8 features
@@ -87,7 +88,7 @@ export default function CallsPage() {
                   <td className="px-4 py-3 text-sm text-muted-foreground" dir="ltr">{log.phone}</td>
                   <td className="px-4 py-3 text-sm text-muted-foreground">{log.duration || "—"}</td>
                   <td className="px-4 py-3 text-sm text-muted-foreground truncate max-w-xs">{log.notes || "—"}</td>
-                  <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(log.timestamp).toLocaleString("ar-IQ")}</td>
+                  <td className="px-4 py-3 text-xs text-muted-foreground">{formatDateTime(log.timestamp)}</td>
                 </tr>
               ))}
             </tbody>

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Check, X, Pause, ArrowLeftRight, Eye, Search, Filter } from "lucide-react";
+import { formatDateTime } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
 // Section 3: الطلبات الجديدة (req L300-322) — 12 fields + 5 buttons
@@ -100,7 +101,7 @@ export default function OrdersPage() {
                   </span>
                   <StatusBadge status={order.status} size="sm" />
                 </div>
-                <span className="text-xs text-muted-foreground">{new Date(order.createdAt).toLocaleString("ar-IQ")}</span>
+                <span className="text-xs text-muted-foreground">{formatDateTime(order.createdAt)}</span>
               </div>
 
               {/* 12 fields grid (L304-316 minus map) */}

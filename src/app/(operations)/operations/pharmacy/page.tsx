@@ -2,6 +2,7 @@
 
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { Pill, ArrowLeft } from "lucide-react";
+import { formatDate } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
 // Section 12: الصيدليات (req L474-477) — 5 statuses
@@ -79,7 +80,7 @@ export default function PharmacyPage() {
                     <td className="px-4 py-3 text-sm text-muted-foreground">{o.pharmacyName}</td>
                     <td className="px-4 py-3 text-sm text-muted-foreground">{o.items || "—"}</td>
                     <td className="px-4 py-3"><span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold text-white ${step?.color || "bg-gray-500"}`}>{step?.label || o.status}</span></td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(o.createdAt).toLocaleDateString("ar-IQ")}</td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">{formatDate(o.createdAt)}</td>
                   </tr>
                 );
               })}

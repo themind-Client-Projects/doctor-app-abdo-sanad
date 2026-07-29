@@ -8,6 +8,7 @@ loadEnv({ path: path.join(process.cwd(), ".env") });
 import { PrismaClient, UserRole, OrderStatus, Priority, OrderSource, PaymentMethod, PaymentStatus, ServiceType, AppointmentType, Prisma } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import pg from "pg";
+import { seedOperationalData } from "./seed-operations";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -308,10 +309,12 @@ async function main() {
     [patients[3], "14:00", "IN_PERSON", "confirmed"],
     [patients[4], "16:00", "ONLINE", "confirmed"],
   ];
-  for (const [patient, time, type, status] of aptData) {
+  for (const [aptIndex, [patient, time, type, status]] of aptData.entries()) {
     const date = new Date(today); const [h, m] = time.split(":").map(Number); date.setHours(h, m, 0, 0);
-    await prisma.appointment.create({
-      data: { doctorId: dp1.id, patientId: patient.id, date, time, type, status },
+    await prisma.appointment.upsert({
+      where: { id: `seed-apt-${aptIndex}` },
+      update: {},
+      create: { id: `seed-apt-${aptIndex}`, doctorId: dp1.id, patientId: patient.id, date, time, type, status },
     });
   }
   console.log("✅ 5 مواعيد");
@@ -328,7 +331,7 @@ async function main() {
     [orders[5].id, "TSH — الغدة الدرقية", "ready"],
   ];
   for (const [orderId, sampleType, status] of labData) {
-    await prisma.labSample.create({ data: { orderId, labId: p.lab.id, sampleType, status } });
+    await prisma.labSample.upsert({ where: { id: `seed-lab-${orderId}` }, update: {}, create: { id: `seed-lab-${orderId}`, orderId, labId: p.lab.id, sampleType, status } });
   }
   console.log("✅ 6 عينات مختبر");
 
@@ -342,8 +345,10 @@ async function main() {
     [dp1.id, u.patient2.id, orders[6].id, "preparing", [{ name: "أنسولين لانتوس", qty: 5 }, { name: "إبر أنسولين", qty: 100 }]],
   ];
   for (const [doctorId, patientId, orderId, status, medications] of rxData) {
-    await prisma.prescription.create({
-      data: { doctorId, patientId, pharmacyId: p.pharmacy.id, orderId, status, medications },
+    await prisma.prescription.upsert({
+      where: { id: `seed-rx-${orderId}` },
+      update: {},
+      create: { id: `seed-rx-${orderId}`, doctorId, patientId, pharmacyId: p.pharmacy.id, orderId, status, medications },
     });
   }
   console.log("✅ 4 وصفات");
@@ -351,9 +356,9 @@ async function main() {
   // ═══════════════════════════════════════════════════════════
   // 15. طلبات الأشعة
   // ═══════════════════════════════════════════════════════════
-  await prisma.radiologyRequest.create({ data: { orderId: orders[4].id, centerId: p.radiology.id, requestType: "أشعة سينية — صدر", status: "scheduled", appointmentDate: new Date(today.getTime() + 86400000) } });
-  await prisma.radiologyRequest.create({ data: { orderId: orders[6].id, centerId: p.radiology.id, requestType: "أشعة مقطعية — بطن", status: "imaged", appointmentDate: today } });
-  await prisma.radiologyRequest.create({ data: { orderId: orders[5].id, centerId: p.radiology.id, requestType: "سونار — بطن", status: "report_ready", appointmentDate: new Date(today.getTime() - 86400000) } });
+  await prisma.radiologyRequest.upsert({ where: { id: "seed-rad-4" }, update: {}, create: { id: "seed-rad-4", orderId: orders[4].id, centerId: p.radiology.id, requestType: "أشعة سينية — صدر", status: "scheduled", appointmentDate: new Date(today.getTime() + 86400000) } });
+  await prisma.radiologyRequest.upsert({ where: { id: "seed-rad-6" }, update: {}, create: { id: "seed-rad-6", orderId: orders[6].id, centerId: p.radiology.id, requestType: "أشعة مقطعية — بطن", status: "imaged", appointmentDate: today } });
+  await prisma.radiologyRequest.upsert({ where: { id: "seed-rad-5" }, update: {}, create: { id: "seed-rad-5", orderId: orders[5].id, centerId: p.radiology.id, requestType: "سونار — بطن", status: "report_ready", appointmentDate: new Date(today.getTime() - 86400000) } });
   console.log("✅ 3 طلبات أشعة");
 
   // ═══════════════════════════════════════════════════════════
@@ -365,10 +370,12 @@ async function main() {
     { doctorId: dp1.id, patientId: patients[0].id, hour: 9, status: "ended" },
     { doctorId: dp2.id, patientId: patients[1].id, hour: 11, status: "ended" },
   ];
-  for (const s of sanadTimes) {
+  for (const [i, s] of sanadTimes.entries()) {
     const aptTime = new Date(today); aptTime.setHours(s.hour, 0, 0, 0);
-    await prisma.sanadSession.create({
-      data: { doctorId: s.doctorId, patientId: s.patientId, appointmentTime: aptTime, status: s.status },
+    await prisma.sanadSession.upsert({
+      where: { id: `seed-sanad-${i}` },
+      update: {},
+      create: { id: `seed-sanad-${i}`, doctorId: s.doctorId, patientId: s.patientId, appointmentTime: aptTime, status: s.status },
     });
   }
   console.log("✅ 4 جلسات سند");
@@ -376,9 +383,9 @@ async function main() {
   // ═══════════════════════════════════════════════════════════
   // 17. بنك الدم — bloodType is BloodType enum, needs requestType
   // ═══════════════════════════════════════════════════════════
-  await prisma.bloodBankRequest.create({ data: { requestType: "طلب دم عاجل", bloodType: "A_POS", governorateId: govs["بغداد"].id, status: "new" } });
-  await prisma.bloodBankRequest.create({ data: { requestType: "تبرع بالدم", bloodType: "O_NEG", governorateId: govs["بغداد"].id, status: "matched", donorName: "سعد الجبوري", drawAppointment: new Date() } });
-  await prisma.bloodBankRequest.create({ data: { requestType: "طلب دم", bloodType: "B_POS", governorateId: govs["البصرة"].id, status: "completed", donorName: "كرار العبادي", drawAppointment: new Date(today.getTime() - 2 * 86400000) } });
+  await prisma.bloodBankRequest.upsert({ where: { id: "seed-bb-68" }, update: {}, create: { id: "seed-bb-68", requestType: "طلب دم عاجل", bloodType: "A_POS", governorateId: govs["بغداد"].id, status: "new" } });
+  await prisma.bloodBankRequest.upsert({ where: { id: "seed-bb-851" }, update: {}, create: { id: "seed-bb-851", requestType: "تبرع بالدم", bloodType: "O_NEG", governorateId: govs["بغداد"].id, status: "matched", donorName: "سعد الجبوري", drawAppointment: new Date() } });
+  await prisma.bloodBankRequest.upsert({ where: { id: "seed-bb-162" }, update: {}, create: { id: "seed-bb-162", requestType: "طلب دم", bloodType: "B_POS", governorateId: govs["البصرة"].id, status: "completed", donorName: "كرار العبادي", drawAppointment: new Date(today.getTime() - 2 * 86400000) } });
   console.log("✅ 3 طلبات بنك دم");
 
   // ═══════════════════════════════════════════════════════════
@@ -409,8 +416,8 @@ async function main() {
     { userId: u.admin.id, title: "تقرير يومي", body: "23 طلب مكتمل — إيرادات 1,250,000 د.ع", type: "report" },
     { userId: u.lab.id, title: "عينة جاهزة", body: "TSH لأحمد كاظم — تحتاج مراجعة", type: "lab" },
   ];
-  for (const n of notifications) {
-    await prisma.notification.create({ data: { ...n, channel: "IN_APP", isRead: false } });
+  for (const [nIndex, n] of notifications.entries()) {
+    await prisma.notification.upsert({ where: { id: `seed-notif-${nIndex}` }, update: {}, create: { id: `seed-notif-${nIndex}`, ...n, channel: "IN_APP", isRead: false } });
   }
 
   const activities = [
@@ -421,8 +428,8 @@ async function main() {
     { action: "إنهاء جلسة سند — د. علي مع أحمد كاظم", userId: u.doctor1.id },
     { action: "رفع تقرير سونار — أحمد كاظم", userId: u.radiology.id },
   ];
-  for (const a of activities) {
-    await prisma.activityLog.create({ data: a });
+  for (const [aIndex, a] of activities.entries()) {
+    await prisma.activityLog.upsert({ where: { id: `seed-act-${aIndex}` }, update: {}, create: { id: `seed-act-${aIndex}`, ...a } });
   }
   console.log("✅ 6 إشعارات + 6 سجلات نشاط");
 
@@ -476,6 +483,30 @@ async function main() {
     });
   }
   console.log(`✅ ${products.length} منتج صيدلية`);
+
+
+  // ═══════════════════════════════════════════════════════════
+  // 17. البيانات التشغيلية — طلبات وتسويات عبر 14 يوماً
+  //
+  // The dashboards aggregate over time: revenue trend, revenue by service,
+  // orders by status, top partners, platform profit, satisfaction. A handful
+  // of orders all created at the same instant, none priced and none settled,
+  // gives every one of those charts nothing to show.
+  // ═══════════════════════════════════════════════════════════
+  const ops = await seedOperationalData(prisma, {
+    partners: {
+      doctor1: p.doctor1.id, doctor2: p.doctor2.id, lab: p.lab.id,
+      pharmacy: p.pharmacy.id, nurse1: p.nurse1.id, nurse2: p.nurse2.id,
+      driver1: p.driver1.id, driver2: p.driver2.id,
+      radiology: p.radiology.id, complexOwner: p.complexOwner.id,
+    },
+    patientIds: [u.patient1.id, u.patient2.id, u.patient3.id, u.patient4.id, u.patient5.id],
+    governorateId: govs["بغداد"].id,
+    adminUserId: u.admin.id,
+  });
+  console.log(
+    `✅ ${ops.orders} طلب تشغيلي (${ops.completed} مكتمل) + ${ops.settlements} تسوية + ${ops.transactions} حركة مالية`
+  );
 
   console.log("\n🎉 اكتملت تعبئة البيانات بنجاح!");
   console.log("═══════════════════════════════════════════");

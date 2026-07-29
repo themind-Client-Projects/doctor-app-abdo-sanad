@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { AlertCircle, Calculator, Loader2, Percent } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { apiFetch, useMutation } from "@/hooks/use-mutation";
+import { formatNumber } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
 // Section 5: محرك النسب ⭐ (req L210-230) — "أهم جزء في وريد"
@@ -185,7 +186,7 @@ export default function CommissionsPage() {
         {preview ? (
           <div className="mt-5 rounded-xl border border-border bg-muted/30 p-4">
             <p className="mb-3 text-sm text-muted-foreground">
-              إجمالي {Number(preview.totalAmount).toLocaleString("ar-IQ")} د.ع
+              إجمالي {formatNumber(Number(preview.totalAmount))} د.ع
             </p>
             <ul className="space-y-2">
               {preview.shares.map((s) => (
@@ -196,7 +197,7 @@ export default function CommissionsPage() {
                     <span className="text-xs text-muted-foreground">({Number(s.percentage)}%)</span>
                   </span>
                   <span className="font-semibold text-foreground">
-                    {Number(s.amount).toLocaleString("ar-IQ")} د.ع
+                    {formatNumber(Number(s.amount))} د.ع
                   </span>
                 </li>
               ))}

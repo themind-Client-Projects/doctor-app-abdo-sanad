@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Search, Bell, Moon, Sun, User, Clock } from "lucide-react";
 import { useDarkMode } from "@/hooks/use-dark-mode";
 import { useNotifications } from "@/hooks/use-notifications";
+import { formatDateTime } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
 // Section 1: Operations Header (req L273-284) — 9 elements
@@ -33,7 +34,7 @@ export function OpsHeader({ employeeName, role, newOrders, delayedOrders }: OpsH
   const [currentTime, setCurrentTime] = useState("");
 
   useEffect(() => {
-    const tick = () => setCurrentTime(new Date().toLocaleString("ar-IQ", { weekday: "long", year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }));
+    const tick = () => setCurrentTime(formatDateTime(new Date()));
     tick();
     const id = setInterval(tick, 30000);
     return () => clearInterval(id);

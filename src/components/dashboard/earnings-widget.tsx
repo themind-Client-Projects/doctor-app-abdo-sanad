@@ -2,13 +2,14 @@
 
 import { Wallet, TrendingUp, Clock } from "lucide-react";
 import type { EarningsSummary } from "@/types/dashboard";
+import { formatNumber } from "@/lib/format";
 
 interface EarningsWidgetProps {
   earnings: EarningsSummary;
 }
 
 export function EarningsWidget({ earnings }: EarningsWidgetProps) {
-  const fmt = (v: number) => `${v.toLocaleString("ar-IQ")} ${earnings.currency}`;
+  const fmt = (v: number) => `${formatNumber(v)} ${earnings.currency}`;
 
   return (
     <div className="rounded-xl border border-border bg-card p-4" dir="rtl">

@@ -5,6 +5,7 @@ import { Calendar as CalendarClock, Clock, Check, MapPin, Stethoscope, Wallet, A
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter, DrawerClose } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
 import { DEMO_AVAILABLE_DATES, DEMO_TIME_SLOTS } from '@/lib/constants/demo-data';
+import { LOCALE } from "@/lib/format";
 
 interface Doctor {
   id: string;
@@ -134,7 +135,7 @@ export function DoctorBookingDrawer({ doctor, open, onOpenChange }: DoctorBookin
                     </div>
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-gray-500">التاريخ</span>
-                      <span className="font-bold text-gray-900">{selectedDate?.toLocaleDateString('ar-IQ', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                      <span className="font-bold text-gray-900">{selectedDate?.toLocaleDateString(LOCALE, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
                     </div>
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-gray-500">الوقت</span>
@@ -200,7 +201,7 @@ export function DoctorBookingDrawer({ doctor, open, onOpenChange }: DoctorBookin
                       let dayLabel = '';
                       if (idx === 0) dayLabel = 'اليوم';
                       else if (idx === 1) dayLabel = 'غداً';
-                      else dayLabel = date.toLocaleDateString('ar-IQ', { weekday: 'long', month: 'numeric', day: 'numeric' });
+                      else dayLabel = date.toLocaleDateString(LOCALE, { weekday: 'long', month: 'numeric', day: 'numeric' });
 
                       return (
                         <div 
@@ -280,7 +281,7 @@ export function DoctorBookingDrawer({ doctor, open, onOpenChange }: DoctorBookin
                     </div>
                     <div className="flex items-center gap-2 text-sm text-gray-700">
                       <CalendarClock className="w-4 h-4 text-primary" />
-                      <span>{selectedDate.toLocaleDateString('ar-IQ', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                      <span>{selectedDate.toLocaleDateString(LOCALE, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
                     </div>
                     <div className="flex items-center gap-2 text-sm text-gray-700">
                       <Clock className="w-4 h-4 text-primary" />
