@@ -31,7 +31,7 @@ export function DashboardHeader({
 }: HeaderProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [showProfile, setShowProfile] = useState(false);
-  const { isDark, toggle } = useDarkMode();
+  const { isDark, toggle, mounted } = useDarkMode();
   const profileRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown on outside click
@@ -94,9 +94,15 @@ export function DashboardHeader({
         <button
           className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
           onClick={toggle}
-          aria-label={isDark ? "الوضع النهاري" : "الوضع الليلي"}
+          aria-label={!mounted ? "تبديل المظهر" : isDark ? "الوضع النهاري" : "الوضع الليلي"}
         >
-          {isDark ? <Sun size={18} /> : <Moon size={18} />}
+          {!mounted ? (
+            <span className="block h-[18px] w-[18px]" aria-hidden="true" />
+          ) : isDark ? (
+            <Sun size={18} />
+          ) : (
+            <Moon size={18} />
+          )}
         </button>
 
         {/* Profile dropdown (req L14) */}

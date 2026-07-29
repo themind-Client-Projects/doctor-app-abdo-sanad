@@ -28,7 +28,7 @@ const statusConfig: Record<EmployeeStatus, { label: string; color: string }> = {
 };
 
 export function OpsHeader({ employeeName, role, newOrders, delayedOrders }: OpsHeaderProps) {
-  const { isDark, toggle } = useDarkMode();
+  const { isDark, toggle, mounted } = useDarkMode();
   const { unreadCount } = useNotifications(null);
   const [status, setStatus] = useState<EmployeeStatus>("available");
   const [currentTime, setCurrentTime] = useState("");
@@ -91,7 +91,13 @@ export function OpsHeader({ employeeName, role, newOrders, delayedOrders }: OpsH
           )}
         </button>
         <button onClick={toggle} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent transition-colors">
-          {isDark ? <Sun size={16} /> : <Moon size={16} />}
+          {!mounted ? (
+            <span className="block h-[16px] w-[16px]" aria-hidden="true" />
+          ) : isDark ? (
+            <Sun size={16} />
+          ) : (
+            <Moon size={16} />
+          )}
         </button>
       </div>
     </header>

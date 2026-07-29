@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 
 /**
@@ -11,13 +12,20 @@ import { useTheme } from "next-themes";
  * reacted to a system-preference change. next-themes keeps one source of
  * truth, avoids the SSR flash, and persists the choice.
  *
- * The `{ isDark, toggle }` shape is unchanged, so existing callers stay as-is.
+ * `mounted` matters: the resolved theme is unknowable during SSR, so anything
+ * that renders differently per theme (a sun/moon icon, an aria-label) must not
+ * render until the client has hydrated — otherwise the server and client trees
+ * disagree and React throws a hydration mismatch.
  */
 export function useDarkMode() {
   const { resolvedTheme, setTheme } = useTheme();
-  const isDark = resolvedTheme === "dark";
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
+
+  const isDark = mounted && resolvedTheme === "dark";
 
   const toggle = () => setTheme(isDark ? "light" : "dark");
 
-  return { isDark, toggle };
+  return { isDark, toggle, mounted };
 }
