@@ -16,76 +16,85 @@ import {
 import { useLocationStore } from '@/stores/patient/location.store';
 import { CitySelectorDrawer } from '@/components/features/patient/city-selector-drawer';
 import Image from 'next/image';
+import { useMemo, useDeferredValue } from 'react';
+import { useDashboardData } from '@/hooks/use-dashboard-data';
+import { formatNumber } from '@/lib/format';
+
+/**
+ * العروض الطبية — live campaigns.
+ *
+ * The four offers here were hardcoded, priced against clinics that matched no
+ * partner and could not be booked. They now come from `Campaign`, with the
+ * before-and-after price derived server-side from the live `PriceConfig` so a
+ * card can never advertise a saving the checkout contradicts.
+ */
+
+type Offer = {
+  id: string;
+  title: string;
+  image: string | null;
+  clinic: string | null;
+  location: string | null;
+  rating: number | null;
+  reviews: number | null;
+  category: string | null;
+  oldPrice: number | null;
+  newPrice: number | null;
+  discountPercent: number | null;
+  expiresInDays: number;
+};
+
+/** The server sends a day count; turning it into Arabic is the client's job. */
+function expiresLabel(days: number): string {
+  if (days <= 0) return 'اليوم';
+  if (days === 1) return 'يوم واحد';
+  if (days === 2) return 'يومين';
+  if (days <= 10) return `${formatNumber(days)} أيام`;
+  return `${formatNumber(days)} يوماً`;
+}
+
+/** Placeholder artwork for a campaign with no image, cycled so a grid of them
+ *  does not look like one repeated card. */
+const FALLBACK_IMAGES = [
+  '/complexes/real_complex_1.png',
+  '/complexes/real_complex_2.png',
+  '/complexes/real_complex_3.png',
+];
 
 export default function OffersPage() {
   const router = useRouter();
   const { selectedCity, openCitySelector } = useLocationStore();
   const [activeCategory, setActiveCategory] = useState('الكل');
+  const [query, setQuery] = useState('');
+  // Keeps typing responsive; the filter pass runs against the settled value.
+  const deferredQuery = useDeferredValue(query);
 
-  const categories = ['الكل', 'أسنان', 'تجميل وليزر', 'عيون', 'تحاليل طبية', 'علاج طبيعي'];
+  const { data, isLoading, error, refetch } = useDashboardData<{
+    offers: Offer[];
+    categories: string[];
+  }>({
+    url: '/api/public/offers',
+    // The city picker already scopes the page, so the server does the filtering
+    // rather than shipping every governorate's offers to be discarded here.
+    params: { channel: 'DIRECT', governorate: selectedCity || undefined },
+  });
 
-  const offers = [
-    {
-      id: 1,
-      title: 'باقة تنظيف وتلميع الأسنان الاحترافية',
-      clinic: 'مجمع النور التخصصي',
-      location: 'المنصور',
-      oldPrice: '60,000',
-      newPrice: '30,000',
-      discount: '50%',
-      rating: '4.9',
-      reviews: 124,
-      image: 'https://images.unsplash.com/photo-1606811841689-23dfddce3e95?auto=format&fit=crop&w=600&q=80',
-      category: 'أسنان',
-      expiresIn: 'يومين'
-    },
-    {
-      id: 2,
-      title: 'جلسة ديرما بن مع بلازما نضارة للبشرة',
-      clinic: 'عيادات الجمال',
-      location: 'الكرادة',
-      oldPrice: '150,000',
-      newPrice: '90,000',
-      discount: '40%',
-      rating: '4.8',
-      reviews: 89,
-      image: 'https://images.unsplash.com/photo-1616683693504-3ea7e9ad6fec?auto=format&fit=crop&w=600&q=80',
-      category: 'تجميل وليزر',
-      expiresIn: '٥ أيام'
-    },
-    {
-      id: 3,
-      title: 'عملية ليزك لتصحيح النظر بالليزر',
-      clinic: 'مركز العيون التخصصي',
-      location: 'الجادرية',
-      oldPrice: '800,000',
-      newPrice: '600,000',
-      discount: '25%',
-      rating: '4.9',
-      reviews: 210,
-      image: 'https://images.unsplash.com/photo-1580281658223-9b93f18a8398?auto=format&fit=crop&w=600&q=80',
-      category: 'عيون',
-      expiresIn: 'أسبوع'
-    },
-    {
-      id: 4,
-      title: 'باقة التحاليل الشاملة (35 فحص)',
-      clinic: 'مختبرات الحياة',
-      location: 'زيونة',
-      oldPrice: '120,000',
-      newPrice: '75,000',
-      discount: '37%',
-      rating: '4.7',
-      reviews: 342,
-      image: 'https://images.unsplash.com/photo-1579154204601-01588f351e67?auto=format&fit=crop&w=600&q=80',
-      category: 'تحاليل طبية',
-      expiresIn: 'يوم واحد'
-    },
-  ];
+  const offers = useMemo(() => data?.offers ?? [], [data]);
+  // Derived from what is actually on offer — a chip that filters to nothing is
+  // worse than one that is absent.
+  const categories = useMemo(() => ['الكل', ...(data?.categories ?? [])], [data]);
 
-  const filteredOffers = activeCategory === 'الكل' 
-    ? offers 
-    : offers.filter(offer => offer.category === activeCategory);
+  const filteredOffers = useMemo(() => {
+    const q = deferredQuery.trim().toLowerCase();
+    return offers.filter((offer) => {
+      const matchesCategory = activeCategory === 'الكل' || offer.category === activeCategory;
+      const matchesQuery =
+        !q ||
+        offer.title.toLowerCase().includes(q) ||
+        (offer.clinic ?? '').toLowerCase().includes(q);
+      return matchesCategory && matchesQuery;
+    });
+  }, [offers, activeCategory, deferredQuery]);
 
   return (
     <div className="flex flex-col min-h-screen bg-[#F8FAFC] pb-24 font-sans" dir="rtl">
@@ -119,7 +128,10 @@ export default function OffersPage() {
               <Search className="w-4 h-4 text-gray-400" />
             </div>
             <input
-              type="text"
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label="ابحث عن العروض"
               className="w-full bg-gray-50 border border-gray-100 text-gray-900 rounded-2xl py-3.5 ps-11 pe-4 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors text-sm font-medium"
               placeholder="ابحث عن العروض، العيادات..."
             />
@@ -180,34 +192,47 @@ export default function OffersPage() {
             <span className="text-sm font-bold text-primary">{filteredOffers.length} عروض</span>
           </div>
 
+          {error ? (
+            <div className="text-center py-12">
+              <h3 className="text-gray-900 font-bold mb-1">تعذّر تحميل العروض</h3>
+              <button onClick={() => void refetch()} className="text-sm text-primary font-bold mt-2">إعادة المحاولة</button>
+            </div>
+          ) : isLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="bg-white rounded-3xl p-3 border border-gray-100 h-[340px] animate-pulse" />
+              ))}
+            </div>
+          ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredOffers.map((offer) => (
+            {filteredOffers.map((offer, i) => (
               <div key={offer.id} className="bg-white rounded-3xl p-3 border border-gray-100 shadow-[0_2px_15px_-4px_rgba(0,0,0,0.05)] flex flex-col group cursor-pointer hover:border-primary/30 transition-colors">
                 
                 {/* Card Image Area */}
                 <div className="relative w-full h-44 rounded-2xl overflow-hidden mb-3 bg-gray-100">
                   <Image
-                    src={offer.image}
+                    src={offer.image ?? FALLBACK_IMAGES[i % FALLBACK_IMAGES.length]}
                     alt={offer.title}
                     fill
+                    unoptimized
                     className="object-cover group-hover:scale-105 transition-transform duration-700"
                   />
                   
                   {/* Badges */}
                   <div className="absolute top-3 right-3 flex flex-col gap-2">
                     <div className="bg-rose-500 text-white text-xs font-black px-3 py-1.5 rounded-xl shadow-md border border-rose-400">
-                      خصم {offer.discount}
+                      خصم {formatNumber(offer.discountPercent ?? 0)}%
                     </div>
                   </div>
                   
                   <div className="absolute bottom-3 left-3 bg-white/95 backdrop-blur-sm text-gray-800 text-xs font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 shadow-sm">
                     <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                    {offer.rating} <span className="text-gray-400 text-[10px] font-medium">({offer.reviews})</span>
+                    {offer.rating?.toFixed(1) ?? '—'} <span className="text-gray-400 text-[10px] font-medium">({formatNumber(offer.reviews ?? 0)})</span>
                   </div>
 
                   <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-md text-white text-[10px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1.5">
                     <Clock className="w-3 h-3 text-emerald-400" />
-                    ينتهي خلال {offer.expiresIn}
+                    ينتهي خلال {expiresLabel(offer.expiresInDays)}
                   </div>
                 </div>
 
@@ -215,7 +240,8 @@ export default function OffersPage() {
                 <div className="px-2 pb-1 flex-1 flex flex-col">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-gray-500 mb-2">
                     <MapPin className="w-3.5 h-3.5 text-primary/70" />
-                    {offer.clinic} <span className="text-gray-300 mx-0.5">•</span> {offer.location}
+                    {offer.clinic ?? 'كل المزوّدين'}
+                    {offer.location ? (<><span className="text-gray-300 mx-0.5">•</span> {offer.location}</>) : null}
                   </div>
 
                   <h3 className="font-bold text-[15px] text-gray-900 mb-4 line-clamp-2 leading-snug group-hover:text-primary transition-colors flex-1">
@@ -226,10 +252,10 @@ export default function OffersPage() {
                   <div className="flex items-end justify-between pt-3 border-t border-gray-50">
                     <div>
                       <div className="flex items-center gap-2 mb-0.5">
-                        <span className="text-gray-400 font-medium text-[13px] line-through decoration-rose-400/50">{offer.oldPrice}</span>
+                        <span className="text-gray-400 font-medium text-[13px] line-through decoration-rose-400/50">{formatNumber(offer.oldPrice ?? 0)}</span>
                       </div>
                       <div className="flex items-baseline gap-1 text-primary">
-                        <span className="font-black text-xl leading-none">{offer.newPrice}</span>
+                        <span className="font-black text-xl leading-none">{formatNumber(offer.newPrice ?? 0)}</span>
                         <span className="font-bold text-xs">د.ع</span>
                       </div>
                     </div>
@@ -242,8 +268,9 @@ export default function OffersPage() {
               </div>
             ))}
           </div>
+          )}
 
-          {filteredOffers.length === 0 && (
+          {!isLoading && !error && filteredOffers.length === 0 && (
             <div className="text-center py-12">
               <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
                 <Search className="w-6 h-6 text-gray-400" />

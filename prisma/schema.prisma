@@ -320,6 +320,7 @@ model Partner {
   wallet         Wallet?
   debts          Debt[]
   invoices       Invoice[]
+  campaigns      Campaign[]
 
   // Assigned orders
   ordersAsNurse     Order[]   @relation("AssignedNurse")
@@ -808,11 +809,22 @@ model Campaign {
   targetServices Json         @default("[]")
   /// Which storefront runs it. NULL means every channel.
   channel        OrderSource?
+  /// The clinic or lab running it. NULL is a platform-wide campaign.
+  ///
+  /// The offer CARD names a provider, shows their rating and their area — none
+  /// of which a campaign could supply, so the page invented four clinics that
+  /// matched no partner and could not be booked.
+  partnerId      String?
+  /// Card artwork. Presentation only; the discount is the contract.
+  imageUrl       String?
   isActive       Boolean      @default(true)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
+  partner Partner? @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+
   @@index([isActive, startDate, endDate])
+  @@index([partnerId])
 }
 
 // #28 — Discount coupons (req L238 "كوبونات الخصم")

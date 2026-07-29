@@ -61,13 +61,17 @@ const OFFERS: {
   targetServices: ServiceType[];
   channel: OrderSource | null;
   days: number;
+  /** Matched to a real Partner by name — the card names a clinic, shows its
+   *  rating and its area, none of which a campaign can invent. */
+  partnerName?: string;
+  imageUrl?: string;
 }[] = [
-  { name: "خصم الأسنان", description: "تنظيف وتبييض بأسعار مخفّضة", discountType: "PERCENTAGE", discountValue: 30, targetServices: ["IN_PERSON_CONSULT"], channel: "DIRECT", days: 30 },
-  { name: "باقة الفحص الشامل", description: "تحاليل شاملة بسعر موحّد", discountType: "PERCENTAGE", discountValue: 25, targetServices: ["LAB_TEST", "HOME_LAB_TEST"], channel: null, days: 45 },
-  { name: "عروض التجميل والليزر", description: "جلسات ليزر بخصم خاص", discountType: "PERCENTAGE", discountValue: 40, targetServices: ["IN_PERSON_CONSULT"], channel: "DIRECT", days: 20 },
-  { name: "خصم العيون", description: "فحص نظر مجاني مع كل استشارة", discountType: "FIXED", discountValue: 10000, targetServices: ["IN_PERSON_CONSULT"], channel: "SANAD", days: 25 },
-  { name: "العلاج الطبيعي", description: "خمس جلسات بسعر أربع", discountType: "PERCENTAGE", discountValue: 20, targetServices: ["PHYSIOTHERAPY"], channel: null, days: 60 },
-  { name: "توصيل الأدوية مجاناً", description: "توصيل مجاني لكل طلب فوق 25 ألف", discountType: "FIXED", discountValue: 5000, targetServices: ["MEDICINE_DELIVERY"], channel: "SANAD", days: 15 },
+  { name: "خصم الأسنان", description: "تنظيف وتبييض بأسعار مخفّضة", discountType: "PERCENTAGE", discountValue: 30, targetServices: ["IN_PERSON_CONSULT"], channel: "DIRECT", days: 30, partnerName: "د. مريم الجنابي", imageUrl: "/complexes/real_complex_1.png" },
+  { name: "باقة الفحص الشامل", description: "تحاليل شاملة بسعر موحّد", discountType: "PERCENTAGE", discountValue: 25, targetServices: ["LAB_TEST", "HOME_LAB_TEST"], channel: null, days: 45, partnerName: "مختبرات الشفاء التخصصية", imageUrl: "/complexes/real_complex_2.png" },
+  { name: "عروض التجميل والليزر", description: "جلسات ليزر بخصم خاص", discountType: "PERCENTAGE", discountValue: 40, targetServices: ["IN_PERSON_CONSULT"], channel: "DIRECT", days: 20, partnerName: "د. عمر الدليمي", imageUrl: "/complexes/real_complex_3.png" },
+  { name: "خصم العيون", description: "فحص نظر مجاني مع كل استشارة", discountType: "FIXED", discountValue: 10000, targetServices: ["IN_PERSON_CONSULT"], channel: "SANAD", days: 25, partnerName: "د. آية الربيعي", imageUrl: "/complexes/real_complex_1.png" },
+  { name: "العلاج الطبيعي", description: "خمس جلسات بسعر أربع", discountType: "PERCENTAGE", discountValue: 20, targetServices: ["PHYSIOTHERAPY"], channel: null, days: 60, partnerName: "مركز التأهيل الطبي الشامل", imageUrl: "/complexes/real_complex_2.png" },
+  { name: "توصيل الأدوية مجاناً", description: "توصيل مجاني لكل طلب فوق 25 ألف", discountType: "PERCENTAGE", discountValue: 100, targetServices: ["MEDICINE_DELIVERY"], channel: "SANAD", days: 15, partnerName: "صيدلية الرازي الكبرى", imageUrl: "/complexes/real_complex_3.png" },
 ];
 
 async function main() {
@@ -80,6 +84,14 @@ async function main() {
 
   /* ── offers ── */
   for (const o of OFFERS) {
+    const partner = o.partnerName
+      ? await prisma.partner.findFirst({ where: { name: o.partnerName, deletedAt: null }, select: { id: true } })
+      : null;
+    // A name that matches nothing used to attach silently as null, and the card
+    // then rendered with no clinic — which reads as a UI bug, not a seed typo.
+    if (o.partnerName && !partner) {
+      throw new Error(`offer "${o.name}" names a partner that does not exist: ${o.partnerName}`);
+    }
     const data = {
       name: o.name,
       description: o.description,
@@ -87,6 +99,8 @@ async function main() {
       discountValue: o.discountValue,
       targetServices: o.targetServices,
       channel: o.channel,
+      partnerId: partner?.id ?? null,
+      imageUrl: o.imageUrl ?? null,
       // Started yesterday so every one of them is live right now — an offer
       // that begins tomorrow is invisible and looks like a seeding failure.
       startDate: new Date(now - DAY),
