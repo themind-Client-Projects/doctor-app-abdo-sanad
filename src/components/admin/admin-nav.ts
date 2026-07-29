@@ -1,9 +1,11 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
+  Layers,
+  Megaphone,
+  PercentSquare,
   BarChart3,
   Building2,
-  FileSignature,
   FileText,
   Gauge,
   Handshake,
@@ -12,6 +14,7 @@ import {
   Receipt,
   Settings,
   ShieldCheck,
+  Stethoscope,
   Tags,
   UserCog,
   Wallet,
@@ -48,11 +51,22 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     title: "الشركاء والخدمات",
     items: [
       { label: "إدارة الشركاء", href: "/admin/partners", icon: Handshake, ready: true },
-      { label: "العقود والاتفاقيات", href: "/admin/contracts", icon: FileSignature, ready: true },
       { label: "الخدمات", href: "/admin/services", icon: FileText, ready: true },
       { label: "الأسعار", href: "/admin/pricing", icon: Tags, ready: true },
       { label: "العمولات والنسب", href: "/admin/commissions", icon: Percent, ready: true },
       { label: "المجمعات الطبية", href: "/admin/complexes", icon: Building2, ready: true },
+    ],
+  },
+  {
+    // What the patient app renders that is not operational data. Kept as its
+    // own group because it is edited by whoever runs marketing, not by whoever
+    // runs dispatch.
+    title: "واجهة التطبيق",
+    items: [
+      { label: "الإعلانات", href: "/admin/banners", icon: Megaphone, ready: true },
+      { label: "الاشتراكات والباقات", href: "/admin/plans", icon: Layers, ready: true },
+      { label: "العروض والحملات", href: "/admin/offers", icon: PercentSquare, ready: true },
+      { label: "التخصصات الطبية", href: "/admin/specialties", icon: Stethoscope, ready: true },
     ],
   },
   {

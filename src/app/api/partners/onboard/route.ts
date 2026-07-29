@@ -44,9 +44,20 @@ const onboardSchema = z
     latitude: z.number().finite().min(-90).max(90).optional(),
     longitude: z.number().finite().min(-180).max(180).optional(),
 
-    // Relations the requirement calls out: "ربطه بمجمع أو سند"
+    // Relations the requirement calls out: "ربطه بمجمع أو سند".
     complexId: z.string().trim().min(1).optional(),
-    isSanadLinked: z.boolean().default(false),
+
+    /**
+     * Which storefronts this provider sells through — the admin's
+     * "سند فقط / خارج سند فقط / الاثنان" choice.
+     *
+     * At least one, because a partner in no channel appears on no page and is
+     * therefore invisible the moment they are created.
+     */
+    channels: z
+      .array(z.enum(["DIRECT", "SANAD", "COMPLEX"]))
+      .min(1, { message: "اختر قناة واحدة على الأقل" })
+      .default(["DIRECT"]),
 
     // DOCTOR only
     specialtyId: z.string().trim().min(1).optional(),
@@ -109,9 +120,17 @@ export const POST = withAuth({ roles: ROLES.ADMIN }, async (req, _ctx, identity)
         latitude: input.latitude,
         longitude: input.longitude,
         status: input.status,
-        isSanadLinked: input.isSanadLinked,
         complexId: input.complexId,
       },
+    });
+
+    // Channel membership is a row per storefront, deduped: a doctor picked as
+    // "الاثنان" who also belongs to a complex must not attempt COMPLEX twice.
+    const channels = [
+      ...new Set([...input.channels, ...(input.complexId ? (["COMPLEX"] as const) : [])]),
+    ];
+    await tx.partnerChannel.createMany({
+      data: channels.map((channel) => ({ partnerId: partner.id, channel })),
     });
 
     // Every partner gets a wallet at creation. Creating it lazily on first
@@ -124,7 +143,6 @@ export const POST = withAuth({ roles: ROLES.ADMIN }, async (req, _ctx, identity)
           userId: user.id,
           specialtyId: input.specialtyId,
           complexId: input.complexId,
-          isSanadLinked: input.isSanadLinked,
           experience: input.experience,
           gender: input.gender,
         },
@@ -143,7 +161,7 @@ export const POST = withAuth({ roles: ROLES.ADMIN }, async (req, _ctx, identity)
         action: `إضافة شريك جديد: ${input.name}`,
         entityType: "partner",
         entityId: partner.id,
-        details: { type: input.type, status: input.status },
+        details: { type: input.type, status: input.status, channels },
       },
     });
 
@@ -154,6 +172,7 @@ export const POST = withAuth({ roles: ROLES.ADMIN }, async (req, _ctx, identity)
         governorate: { select: { id: true, name: true } },
         complex: { select: { id: true, name: true } },
         ownedComplex: { select: { id: true, name: true } },
+        channels: { select: { channel: true, status: true } },
         wallet: { select: { id: true, balance: true } },
       },
     });

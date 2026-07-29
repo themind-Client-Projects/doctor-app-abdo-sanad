@@ -17,7 +17,9 @@ const listQuerySchema = z.object({
   gender: z.enum(["ذكر", "أنثى"]).optional(),
   governorateId: z.string().trim().min(1).optional(),
   minExperience: z.coerce.number().int().min(0).max(80).optional(),
+  /** Kept for existing mobile clients; equivalent to channel=SANAD. */
   sanadOnly: z.enum(["true", "false"]).optional(),
+  channel: z.enum(["DIRECT", "SANAD", "COMPLEX"]).optional(),
   q: z.string().trim().min(1).max(80).optional(),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(50).default(20),
@@ -25,22 +27,29 @@ const listQuerySchema = z.object({
 
 export const GET = withAuth({}, async (req) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
-  const { specialty, gender, governorateId, minExperience, sanadOnly, q, cursor, limit } =
+  const { specialty, gender, governorateId, minExperience, sanadOnly, channel, q, cursor, limit } =
     parseQuery(req.nextUrl.searchParams, listQuerySchema);
+
+  // Channel membership lives on the partner, not the doctor profile: it used to
+  // be duplicated on both with nothing keeping them in agreement.
+  const wanted = channel ?? (sanadOnly === "true" ? "SANAD" : undefined);
 
   const where: Prisma.DoctorProfileWhereInput = {
     // A doctor is only bookable through an active partner record.
     user: {
       isActive: true,
       deletedAt: null,
-      partner: { status: "ACTIVE", deletedAt: null },
+      partner: {
+        status: "ACTIVE",
+        deletedAt: null,
+        ...(wanted ? { channels: { some: { channel: wanted, status: { not: "SUSPENDED" } } } } : {}),
+      },
       ...(governorateId ? { governorateId } : {}),
       ...(q ? { name: { contains: q, mode: "insensitive" } } : {}),
     },
     ...(specialty ? { specialty: { slug: specialty } } : {}),
     ...(gender ? { gender } : {}),
     ...(minExperience !== undefined ? { experience: { gte: minExperience } } : {}),
-    ...(sanadOnly === "true" ? { isSanadLinked: true } : {}),
   };
 
   const keyset = keysetArgs(cursor, limit);
@@ -54,7 +63,6 @@ export const GET = withAuth({}, async (req) => {
       createdAt: true,
       experience: true,
       gender: true,
-      isSanadLinked: true,
       specialty: { select: { slug: true, name: true } },
       user: {
         select: {
@@ -62,7 +70,13 @@ export const GET = withAuth({}, async (req) => {
           image: true,
           governorate: { select: { name: true } },
           // Rating lives on the partner record.
-          partner: { select: { rating: true, address: true } },
+          partner: {
+            select: {
+              rating: true,
+              address: true,
+              channels: { select: { channel: true } },
+            },
+          },
         },
       },
     },
@@ -78,7 +92,7 @@ export const GET = withAuth({}, async (req) => {
       specialty: d.specialty,
       experience: d.experience,
       gender: d.gender,
-      isSanadLinked: d.isSanadLinked,
+      channels: d.user.partner?.channels.map((c) => c.channel) ?? [],
       rating: d.user.partner?.rating ?? null,
       address: d.user.partner?.address ?? null,
       governorate: d.user.governorate?.name ?? null,

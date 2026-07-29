@@ -20,7 +20,8 @@ const updatePartnerSchema = z
     governorateId: nonEmpty.optional(),
     address: nonEmpty.optional(),
     status: partnerStatus.optional(),
-    isSanadLinked: z.boolean().optional(),
+    /** Replaces the whole membership set — the admin dropdown sends all of it. */
+    channels: z.array(z.enum(["DIRECT", "SANAD", "COMPLEX"])).min(1).optional(),
     complexId: nonEmpty.optional(),
   })
   .strict();
@@ -55,18 +56,37 @@ export const PATCH = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params 
   const { id } = await params;
   const input = await parseBody(req, updatePartnerSchema);
 
-  const partner = await prisma.partner.update({
-    where: { id },
-    data: {
-      name: input.name,
-      phone: input.phone,
-      email: input.email,
-      governorateId: input.governorateId,
-      address: input.address,
-      status: input.status,
-      isSanadLinked: input.isSanadLinked,
-      complexId: input.complexId,
-    },
+  const partner = await prisma.$transaction(async (tx) => {
+    await tx.partner.update({
+      where: { id },
+      data: {
+        name: input.name,
+        phone: input.phone,
+        email: input.email,
+        governorateId: input.governorateId,
+        address: input.address,
+        status: input.status,
+        complexId: input.complexId,
+      },
+    });
+
+    if (input.channels) {
+      // Replace the set rather than diffing it: `deleteMany` + `createMany`
+      // inside the transaction is atomic, and dropping a channel must also drop
+      // its per-channel status rather than leave an orphan row behind.
+      await tx.partnerChannel.deleteMany({
+        where: { partnerId: id, channel: { notIn: input.channels } },
+      });
+      await tx.partnerChannel.createMany({
+        data: input.channels.map((channel) => ({ partnerId: id, channel })),
+        skipDuplicates: true,
+      });
+    }
+
+    return tx.partner.findUniqueOrThrow({
+      where: { id },
+      include: { channels: { select: { channel: true, status: true } } },
+    });
   });
 
   return ok(partner, { requestId });

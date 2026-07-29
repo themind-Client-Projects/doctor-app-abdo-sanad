@@ -57,7 +57,7 @@ type Partner = {
   address: string | null;
   rating: number;
   totalTasks: number;
-  isSanadLinked: boolean;
+  channels: { channel: string; status: string }[];
   governorateId: string | null;
   complexId: string | null;
   user: { id: string; email: string | null; phone: string | null } | null;
@@ -80,7 +80,8 @@ type FormState = {
   governorateId: string;
   address: string;
   complexId: string;
-  isSanadLinked: boolean;
+  /** The admin's one choice, expanded to channel rows on save. */
+  reach: Reach;
   specialtyId: string;
   experience: string;
   gender: string;
@@ -97,13 +98,39 @@ const EMPTY: FormState = {
   governorateId: "",
   address: "",
   complexId: "",
-  isSanadLinked: false,
+  reach: "DIRECT",
   specialtyId: "",
   experience: "",
   gender: "",
   ownsComplex: false,
   complexName: "",
 };
+
+/**
+ * "هل هذا المزوّد داخل سند أم خارجه أم الاثنان؟" — one dropdown, because that is
+ * how the decision is actually made when a provider is signed up. It expands to
+ * `PartnerChannel` rows, which is what every browse page filters on.
+ *
+ * COMPLEX is not offered here: complex membership is set by picking a complex
+ * below, and the API derives that channel from it.
+ */
+type Reach = "DIRECT" | "SANAD" | "BOTH";
+
+const REACH_LABELS: Record<Reach, string> = {
+  DIRECT: "خارج سند فقط",
+  SANAD: "داخل سند فقط",
+  BOTH: "داخل سند وخارجه",
+};
+
+const reachToChannels = (r: Reach): string[] =>
+  r === "BOTH" ? ["DIRECT", "SANAD"] : [r];
+
+function channelsToReach(channels: { channel: string }[]): Reach {
+  const has = (c: string) => channels.some((x) => x.channel === c);
+  if (has("DIRECT") && has("SANAD")) return "BOTH";
+  if (has("SANAD")) return "SANAD";
+  return "DIRECT";
+}
 
 /** Omit empty optional strings — the API's `.strict()` schemas reject "" where
  *  a non-empty string is expected, and `undefined` means "not provided". */
@@ -155,7 +182,7 @@ export default function PartnersPage() {
             governorateId: opt(form.governorateId),
             address: opt(form.address),
             status: form.status,
-            isSanadLinked: form.isSanadLinked,
+            channels: reachToChannels(form.reach),
             complexId: opt(form.complexId),
           }),
         });
@@ -172,7 +199,7 @@ export default function PartnersPage() {
           governorateId: opt(form.governorateId),
           address: opt(form.address),
           complexId: opt(form.complexId),
-          isSanadLinked: form.isSanadLinked,
+          channels: reachToChannels(form.reach),
           ...(form.type === "DOCTOR"
             ? {
                 specialtyId: opt(form.specialtyId),
@@ -214,7 +241,7 @@ export default function PartnersPage() {
       governorateId: p.governorateId ?? "",
       address: p.address ?? "",
       complexId: p.complexId ?? "",
-      isSanadLinked: p.isSanadLinked,
+      reach: channelsToReach(p.channels ?? []),
       specialtyId: "",
       experience: "",
       gender: "",
@@ -258,7 +285,11 @@ export default function PartnersPage() {
         <div className="flex flex-wrap gap-1">
           <Pill>{labelOf(PARTNER_TYPE_LABELS, r.type)}</Pill>
           {r.ownedComplex ? <Pill tone="info">مجمع</Pill> : null}
-          {r.isSanadLinked ? <Pill tone="info">سند</Pill> : null}
+          {(r.channels ?? []).map((c) => (
+            <Pill key={c.channel} tone={c.status === "SUSPENDED" ? "danger" : "info"}>
+              {c.channel === "SANAD" ? "سند" : c.channel === "COMPLEX" ? "مجمع" : "مباشر"}
+            </Pill>
+          ))}
         </div>
       ),
       sortValue: (r) => labelOf(PARTNER_TYPE_LABELS, r.type),
@@ -381,19 +412,18 @@ export default function PartnersPage() {
             match: (r, v) => r.status === v,
           },
           {
-            key: "link",
-            label: "كل الارتباطات",
+            key: "channel",
+            label: "كل القنوات",
             options: [
-              { value: "sanad", label: "مرتبط بسند" },
-              { value: "complex", label: "مرتبط بمجمع" },
-              { value: "none", label: "بلا ارتباط" },
+              { value: "SANAD", label: "داخل سند" },
+              { value: "DIRECT", label: "خارج سند" },
+              { value: "BOTH", label: "الاثنان" },
+              { value: "COMPLEX", label: "عبر مجمع" },
             ],
-            match: (r, v) =>
-              v === "sanad"
-                ? r.isSanadLinked
-                : v === "complex"
-                  ? r.complexId !== null
-                  : !r.isSanadLinked && r.complexId === null,
+            match: (r, v) => {
+              const has = (c: string) => (r.channels ?? []).some((x) => x.channel === c);
+              return v === "BOTH" ? has("DIRECT") && has("SANAD") : has(v);
+            },
           },
           {
             key: "contract",
@@ -600,15 +630,24 @@ export default function PartnersPage() {
           </div>
         ) : null}
 
-        <label className="flex cursor-pointer items-center gap-2.5 text-sm text-foreground">
-          <input
-            type="checkbox"
-            className="h-4 w-4 rounded border-input accent-[hsl(var(--primary))]"
-            checked={form.isSanadLinked}
-            onChange={(e) => setForm((f) => ({ ...f, isSanadLinked: e.target.checked }))}
-          />
-          مرتبط بسند — يستقبل طلبات سند
-        </label>
+        <Field
+          label="نطاق الظهور"
+          htmlFor="p-reach"
+          hint="يحدّد أين يظهر هذا المزوّد: في تطبيق سند بأسعاره المخفّضة، أو خارجه بالسعر الأساسي، أو في الاثنين معاً"
+        >
+          <select
+            id="p-reach"
+            className={fieldClass}
+            value={form.reach}
+            onChange={(e) => setForm((f) => ({ ...f, reach: e.target.value as Reach }))}
+          >
+            {(Object.keys(REACH_LABELS) as Reach[]).map((r) => (
+              <option key={r} value={r}>
+                {REACH_LABELS[r]}
+              </option>
+            ))}
+          </select>
+        </Field>
 
         {editing ? null : (
           <>

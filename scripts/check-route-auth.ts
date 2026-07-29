@@ -72,10 +72,14 @@ function checkFile(file: string): Problem[] {
   for (const method of HTTP_METHODS) {
     const assigned = new RegExp(`export\\s+const\\s+${method}\\s*=\\s*([\\s\\S]{0,40})`);
     const match = src.match(assigned);
-    if (match && !match[1].includes("withAuth")) {
+    // `withPublic` is the deliberate opt-out for catalogue data a visitor is
+    // meant to browse before signing in. It is not an absence of a wrapper: it
+    // enforces read-only, keeps the same error mapping, and is greppable — so
+    // every public route stays a reviewable decision rather than an oversight.
+    if (match && !match[1].includes("withAuth") && !match[1].includes("withPublic")) {
       problems.push({
         file: rel,
-        message: `${method} is exported but not wrapped in withAuth()`,
+        message: `${method} is exported but not wrapped in withAuth() or withPublic()`,
       });
     }
   }
@@ -87,7 +91,7 @@ function checkFile(file: string): Problem[] {
     if (reExport.test(src)) {
       problems.push({
         file: rel,
-        message: `${method} is re-exported from another binding — wrap it with withAuth() instead`,
+        message: `${method} is re-exported from another binding — wrap it with withAuth()/withPublic() instead`,
       });
     }
   }

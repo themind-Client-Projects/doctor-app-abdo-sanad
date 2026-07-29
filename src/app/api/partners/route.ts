@@ -21,6 +21,8 @@ const listQuerySchema = paginationSchema.extend({
   status: partnerStatus.optional(),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),
+  /** Restrict to partners selling through one storefront. */
+  channel: z.enum(["DIRECT", "SANAD", "COMPLEX"]).optional(),
 });
 
 // `rating` and `totalTasks` are derived server-side and are deliberately absent,
@@ -35,7 +37,6 @@ const createPartnerSchema = z
     governorateId: nonEmpty.optional(),
     address: z.string().trim().min(1).optional(),
     status: partnerStatus.default("PENDING"),
-    isSanadLinked: z.boolean().default(false),
     complexId: nonEmpty.optional(),
   })
   .strict();
@@ -46,7 +47,7 @@ export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
   // Clamped by `paginationSchema`: pageSize was unbounded and a non-numeric
   // ?page produced skip: NaN.
   const requestId = req.headers.get("x-request-id") ?? undefined;
-  const { page, pageSize, type, status, cursor, limit } = parseQuery(
+  const { page, pageSize, type, status, cursor, limit, channel } = parseQuery(
     req.nextUrl.searchParams,
     listQuerySchema
   );
@@ -57,6 +58,9 @@ export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
     deletedAt: null,
     ...(type ? { type } : {}),
     ...(status ? { status } : {}),
+    // Membership is a row, so "in this storefront" is an indexed join rather
+    // than a boolean scan — and it can say "suspended in Sanad only".
+    ...(channel ? { channels: { some: { channel, status: { not: "SUSPENDED" } } } } : {}),
   };
 
   const include = {
@@ -68,6 +72,7 @@ export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
     // "المجمعات الطبية" tab filtering on `type: "COMPLEX"`, a value the
     // `UserRole` enum has never contained, so that tab always came back empty.
     ownedComplex: { select: { id: true, name: true } },
+    channels: { select: { channel: true, status: true } },
     contract: { select: { id: true, isActive: true, endDate: true } },
   } as const;
 
@@ -126,7 +131,6 @@ export const POST = withAuth({ roles: ROLES.ADMIN }, async (req) => {
       governorateId: input.governorateId ?? null,
       address: input.address ?? null,
       status: input.status,
-      isSanadLinked: input.isSanadLinked,
       complexId: input.complexId ?? null,
       wallet: { create: {} }, // Auto-create wallet
     },

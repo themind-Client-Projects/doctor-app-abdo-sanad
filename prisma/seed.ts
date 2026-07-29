@@ -118,12 +118,12 @@ async function main() {
   const dp1 = await prisma.doctorProfile.upsert({
     where: { userId: u.doctor1.id },
     update: {},
-    create: { userId: u.doctor1.id, complexId: complex.id, isSanadLinked: true, experience: 12, gender: "ذكر" },
+    create: { userId: u.doctor1.id, complexId: complex.id, experience: 12, gender: "ذكر" },
   });
   const dp2 = await prisma.doctorProfile.upsert({
     where: { userId: u.doctor2.id },
     update: {},
-    create: { userId: u.doctor2.id, isSanadLinked: true, experience: 8, gender: "أنثى" },
+    create: { userId: u.doctor2.id, experience: 8, gender: "أنثى" },
   });
   console.log("✅ 2 ملف طبيب");
 
@@ -546,7 +546,15 @@ async function upsertPartner(
       status: "ACTIVE",
       rating: opts.rating ?? 0,
       totalTasks: opts.totalTasks ?? 0,
-      isSanadLinked: opts.isSanadLinked ?? false,
+      // Channel membership is a row per storefront, not a boolean. Everyone
+      // sells direct; `isSanadLinked` in the caller's options now means
+      // "also in Sanad".
+      channels: {
+        create: [
+          { channel: "DIRECT" as const },
+          ...(opts.isSanadLinked ? [{ channel: "SANAD" as const }] : []),
+        ],
+      },
     },
   });
 }

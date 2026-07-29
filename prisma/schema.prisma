@@ -46,7 +46,16 @@ enum OrderStatus {
   DELAYED
 }
 
-// Tracks whether order came from Complex or Sanad (req L160-161, L168-169)
+/// ⭐ THE single sales-channel vocabulary.
+///
+/// Names both where an order came from (`Order.source`) and which storefront a
+/// partner sells through (`PartnerChannel.channel`), because they are the same
+/// three worlds. A second enum with identical members would drift — the schema
+/// already paid that price once with five incompatible `serviceType` sets.
+///
+///   DIRECT  — وريد المباشر: the main app home and its global services
+///   SANAD   — سند: the discount storefront at /sanad, priced from sanadPrice
+///   COMPLEX — orders arriving through a medical complex
 enum OrderSource {
   COMPLEX
   SANAD
@@ -295,17 +304,17 @@ model Partner {
   /// Rating, not money — stays Float on purpose.
   rating        Float         @default(0)
   totalTasks    Int           @default(0)
-  isSanadLinked Boolean       @default(false) // Can receive Sanad orders (req L142, L152, L161, L168)
   complexId     String? // Linked to a medical complex (req L142, L151)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   deletedAt     DateTime?
 
-  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  governorate    Governorate?    @relation(fields: [governorateId], references: [id])
-  complex        MedicalComplex? @relation("PartnerComplex", fields: [complexId], references: [id])
-  ownedComplex   MedicalComplex? @relation("ComplexPartner")
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  governorate    Governorate?     @relation(fields: [governorateId], references: [id])
+  complex        MedicalComplex?  @relation("PartnerComplex", fields: [complexId], references: [id])
+  ownedComplex   MedicalComplex?  @relation("ComplexPartner")
   contract       Contract?
+  channels       PartnerChannel[]
   serviceConfigs ServiceConfig[]
   wallet         Wallet?
   debts          Debt[]
@@ -355,16 +364,15 @@ model Department {
 
 // #8 — Doctor-specific data (req L140-148)
 model DoctorProfile {
-  id            String   @id @default(cuid())
-  userId        String   @unique
+  id          String   @id @default(cuid())
+  userId      String   @unique
   /// FK to Specialty. Previously a free String referencing nothing.
-  specialtyId   String?
-  complexId     String? // Linked to complex (req L142 "ربطه بمجمع")
-  isSanadLinked Boolean  @default(false) // Linked to Sanad (req L142 "أو سند")
-  experience    Int? // years
-  gender        String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  specialtyId String?
+  complexId   String? // Linked to complex (req L142 "ربطه بمجمع")
+  experience  Int? // years
+  gender      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   specialty     Specialty?       @relation(fields: [specialtyId], references: [id])
@@ -787,18 +795,20 @@ model PriceConfig {
 
 // #27 — Marketing campaigns (req L237 "الحملات")
 model Campaign {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   name           String
-  description    String?  @db.Text
+  description    String?      @db.Text
   discountType   String // "PERCENTAGE" or "FIXED"
-  discountValue  Decimal  @db.Decimal(18, 3)
+  discountValue  Decimal      @db.Decimal(18, 3)
   startDate      DateTime
   endDate        DateTime
   /// JSON array of ServiceType member names.
-  targetServices Json     @default("[]")
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  targetServices Json         @default("[]")
+  /// Which storefront runs it. NULL means every channel.
+  channel        OrderSource?
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   @@index([isActive, startDate, endDate])
 }
@@ -1096,4 +1106,97 @@ model Address {
   governorate Governorate? @relation(fields: [governorateId], references: [id])
 
   @@index([userId, isDefault])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// STOREFRONT MODELS
+//
+// What the patient app shows above its operational data: the promo banners at
+// the top of the home screen and the subscription packages below them. Both
+// lived as inline JSX arrays inside src/app/(patient)/page.tsx, so the client
+// could not change a price, run a campaign, or retire a plan without a code
+// deploy — and nothing the patient saw was auditable.
+//
+// Presentation fields (`icon`, `accent`) follow the same contract as
+// `Specialty.icon`/`color`: they are hints a client maps to its OWN palette,
+// never raw CSS. A native app has no Tailwind classes to apply.
+// ═══════════════════════════════════════════════════════════════
+
+/// #39 — Subscription packages (الاشتراكات والباقات).
+model HealthPlan {
+  id           String  @id @default(cuid())
+  name         String
+  description  String?
+  /// Decimal, not Float — this is IQD the patient is billed.
+  monthlyPrice Decimal @db.Decimal(18, 3)
+  /// JSON array of feature strings, rendered as the bullet list on the card.
+  features     Json    @default("[]")
+  /// Palette key the client maps itself, e.g. "blue" | "emerald" | "purple".
+  accent       String  @default("blue")
+  /// Icon key the client maps itself, e.g. "activity" | "star" | "home".
+  icon         String  @default("activity")
+  /// Renders the "الأكثر طلباً" ribbon.
+  isPopular    Boolean @default(false)
+  isActive     Boolean @default(true)
+  sortOrder    Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
+}
+
+/// #40 — Home-screen promo banners (الإعلانات).
+model Banner {
+  id       String  @id @default(cuid())
+  title    String
+  subtitle String?
+  imageUrl String
+  /// Where tapping the banner goes. Null makes it a non-interactive image.
+  href     String?
+
+  /// Which storefront shows it. NULL means every channel — the main home and
+  /// the Sanad home run different promos, so this is normally set.
+  channel   OrderSource?
+  isActive  Boolean      @default(true)
+  sortOrder Int          @default(0)
+  /// Optional flight window. Null on either side means "no bound" — a banner
+  /// with no window is always live while `isActive`.
+  startsAt  DateTime?
+  endsAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
+}
+
+/// #41 — Which storefronts a partner sells through (سند / خارج سند / الاثنان).
+///
+/// Replaces `Partner.isSanadLinked`, a boolean that was duplicated onto
+/// `DoctorProfile.isSanadLinked` with nothing keeping the two in agreement — so
+/// a doctor could be inside Sanad according to one row and outside it according
+/// to the other, and the patient app had no way to tell which was true.
+///
+/// A row per channel rather than a column, because a partner is commonly in
+/// more than one at different prices, and because membership carries its own
+/// state: a lab can be suspended in Sanad while it stays active direct. A
+/// boolean can express none of that.
+model PartnerChannel {
+  id        String      @id @default(cuid())
+  partnerId String
+  /// DIRECT, SANAD or COMPLEX — see the OrderSource doc comment.
+  channel   OrderSource
+
+  /// Status IN THIS CHANNEL, independent of `Partner.status`.
+  status   ServiceStatus @default(ACTIVE)
+  joinedAt DateTime      @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@unique([partnerId, channel])
+  @@index([channel, status])
 }

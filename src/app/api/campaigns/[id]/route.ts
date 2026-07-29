@@ -28,6 +28,8 @@ const updateCampaignSchema = z
     startDate: dateish.optional(),
     endDate: dateish.optional(),
     targetServices: jsonInput,
+    /** Which storefront runs it. NULL/omitted means every channel. */
+    channel: z.enum(["DIRECT", "SANAD", "COMPLEX"]).nullable().optional(),
     isActive: z.boolean().optional(),
   })
   .strict();
@@ -49,6 +51,7 @@ export const PUT = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params })
       startDate: input.startDate,
       endDate: input.endDate,
       targetServices: input.targetServices,
+      channel: input.channel ?? null,
       isActive: input.isActive,
     },
   });

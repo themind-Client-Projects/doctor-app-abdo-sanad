@@ -68,6 +68,18 @@ export const PARTNER_TYPE_LABELS = {
   RADIOLOGY: "أشعة",
 } as const;
 
+/**
+ * The sales channels (`OrderSource`). Names both where an order came from and
+ * which storefront a partner sells through — see the enum's doc comment.
+ */
+export const CHANNEL_LABELS = {
+  DIRECT: "خارج سند",
+  SANAD: "سند",
+  COMPLEX: "عبر مجمع",
+} as const;
+
+export type ChannelKey = keyof typeof CHANNEL_LABELS;
+
 /** Invoice / Debt `status` — a free String column, lower-case by convention. */
 export const INVOICE_STATUS_LABELS = {
   pending: "قيد الانتظار",

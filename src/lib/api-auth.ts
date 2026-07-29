@@ -186,6 +186,52 @@ export function withAuth<Ctx = unknown>(
   };
 }
 
+/**
+ * Wrap a route handler that is deliberately readable by anyone.
+ *
+ * The patient app browses before it signs in — `src/proxy.ts` guards only
+ * `/dashboard`, `/admin` and `/operations`, so the doctor directory, the
+ * specialty list, the promo banners and the subscription plans are all rendered
+ * to visitors with no session. Those pages had no endpoint they could call:
+ * every `/api/v1` route goes through `withAuth({})`, which still 401s an
+ * anonymous caller. So the frontend shipped its catalogue as hardcoded arrays.
+ *
+ * This is the honest fix, and it is deliberately NOT "just drop withAuth":
+ *  - it keeps the request id, the error mapping and the logging identical, so a
+ *    public route fails the same way an authenticated one does;
+ *  - `mutating: false` is enforced here, not by convention — a public route
+ *    that writes is a hole, and this makes it impossible to open by accident;
+ *  - it is greppable, and `scripts/check-route-auth.ts` accepts it by name, so
+ *    every public route is a deliberate, reviewable decision rather than a
+ *    missing wrapper nobody noticed.
+ *
+ * Only ever use it for catalogue data a visitor is meant to browse. Anything
+ * keyed to a person — orders, records, wallets — takes `withAuth`.
+ */
+export function withPublic<Ctx = unknown>(
+  handler: (req: NextRequest, ctx: Ctx) => Promise<Response>
+) {
+  return async (req: NextRequest, ctx: Ctx): Promise<Response> => {
+    const requestId = req.headers.get("x-request-id") ?? randomUUID();
+
+    // A public write is never intended. Blocking it here means a future PATCH
+    // added to a public route file is a 405 rather than an unauthenticated
+    // mutation.
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      return withRequestId(
+        fail(ErrorCode.FORBIDDEN, 405, "هذه الواجهة للقراءة فقط", { requestId }),
+        requestId
+      );
+    }
+
+    try {
+      return withRequestId(await handler(req, ctx), requestId);
+    } catch (error) {
+      return withRequestId(toErrorResponse(req, error, requestId), requestId);
+    }
+  };
+}
+
 function withRequestId(res: Response, requestId: string): Response {
   res.headers.set("x-request-id", requestId);
   return res;
