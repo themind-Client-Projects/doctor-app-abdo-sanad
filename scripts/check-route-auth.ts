@@ -23,7 +23,7 @@ const API_DIR = path.join(process.cwd(), "src", "app", "api");
 const PUBLIC_ROUTES = [
   path.join("api", "auth", "[...nextauth]"), // NextAuth's own handler
   path.join("api", "auth", "otp", "send"), // request an OTP (rate limited)
-  path.join("api", "auth", "token", "route"), // credentials -> bearer pair
+  path.join("api", "auth", "token"), // credentials -> bearer pair
   path.join("api", "auth", "token", "refresh"), // rotate an expired pair
 ];
 
@@ -41,7 +41,13 @@ function walk(dir: string): string[] {
 
 function isPublic(file: string): boolean {
   const rel = path.relative(process.cwd(), file);
-  return PUBLIC_ROUTES.some((p) => rel.includes(p));
+  // EXACT match on the route's directory, not a substring.
+  //
+  // `rel.includes(p)` was an unanchored substring test, so
+  // `src/app/api/patients/api/auth/token/route.ts` — or anything nested under
+  // an allow-listed directory — was silently exempted from authentication.
+  const dir = path.dirname(rel);
+  return PUBLIC_ROUTES.some((p) => dir.endsWith(p));
 }
 
 type Problem = { file: string; message: string };
@@ -74,8 +80,22 @@ function checkFile(file: string): Problem[] {
     }
   }
 
-  const exportsAnyMethod = HTTP_METHODS.some((m) =>
-    new RegExp(`export\\s+(const|async\\s+function|function)\\s+${m}\\b`).test(src)
+  // `export { handler as GET }` matched neither pattern above, so a route
+  // could export a completely unguarded handler and pass silently.
+  for (const method of HTTP_METHODS) {
+    const reExport = new RegExp(`export\\s*\\{[^}]*\\bas\\s+${method}\\b`);
+    if (reExport.test(src)) {
+      problems.push({
+        file: rel,
+        message: `${method} is re-exported from another binding — wrap it with withAuth() instead`,
+      });
+    }
+  }
+
+  const exportsAnyMethod = HTTP_METHODS.some(
+    (m) =>
+      new RegExp(`export\\s+(const|async\\s+function|function)\\s+${m}\\b`).test(src) ||
+      new RegExp(`export\\s*\\{[^}]*\\bas\\s+${m}\\b`).test(src)
   );
   if (exportsAnyMethod && !src.includes("@/lib/api-auth")) {
     problems.push({ file: rel, message: "does not import from @/lib/api-auth" });

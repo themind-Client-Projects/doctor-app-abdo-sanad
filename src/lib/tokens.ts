@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
-import type { UserRole } from "@prisma/client";
+import { Prisma, type UserRole } from "@prisma/client";
 import { prisma } from "./prisma";
 
 /**
@@ -15,7 +15,23 @@ import { prisma } from "./prisma";
 const ACCESS_TOKEN_TTL_SECONDS = 15 * 60; // 15 minutes
 const REFRESH_TOKEN_TTL_DAYS = 60;
 const ISSUER = "warid";
+
+/** Mirrors the Prisma UserRole enum; a claim outside this set is rejected. */
+const VALID_ROLES = new Set<string>([
+  "SUPER_ADMIN",
+  "OPERATIONS",
+  "DOCTOR",
+  "LAB",
+  "PHARMACY",
+  "NURSE",
+  "DRIVER",
+  "RADIOLOGY",
+  "PATIENT",
+]);
 const AUDIENCE = "warid-mobile";
+
+/** HS256's security is entirely the key's entropy. 32 bytes is the floor. */
+const MIN_SECRET_BYTES = 32;
 
 function secretKey(): Uint8Array {
   const secret = process.env.AUTH_SECRET;
@@ -24,7 +40,19 @@ function secretKey(): Uint8Array {
     // unsigned or predictably-signed token.
     throw new Error("AUTH_SECRET is not set — cannot sign access tokens");
   }
-  return new TextEncoder().encode(secret);
+
+  // A short or human-chosen secret makes every token offline-forgeable: an
+  // attacker who captures ONE token can crack a dictionary passphrase and then
+  // mint a SUPER_ADMIN token for any user. Refuse to run rather than issue
+  // tokens that only look protected.
+  const bytes = new TextEncoder().encode(secret);
+  if (bytes.length < MIN_SECRET_BYTES) {
+    throw new Error(
+      `AUTH_SECRET is too short (${bytes.length} bytes). ` +
+        `Use at least ${MIN_SECRET_BYTES}: openssl rand -base64 48`
+    );
+  }
+  return bytes;
 }
 
 export type AccessTokenClaims = {
@@ -65,6 +93,10 @@ export async function verifyAccessToken(token: string): Promise<AccessTokenClaim
     });
 
     if (!payload.sub || typeof payload.role !== "string") return null;
+    // Validate against the real enum. Casting an arbitrary string to UserRole
+    // let a forged/unknown role slip past deny-list checks like
+    // `if (role !== "PATIENT") return;`.
+    if (!VALID_ROLES.has(payload.role)) return null;
 
     return {
       sub: payload.sub,
@@ -99,11 +131,13 @@ type DeviceContext = { userAgent?: string | null; ip?: string | null };
 export async function issueTokens(
   user: { id: string; role: UserRole; partnerId: string | null; doctorProfileId: string | null },
   device: DeviceContext = {},
-  familyId: string = randomUUID()
+  familyId: string = randomUUID(),
+  /** Runs inside a caller's transaction when supplied, so rotation is atomic. */
+  client: Prisma.TransactionClient | typeof prisma = prisma
 ): Promise<IssuedTokens> {
   const raw = randomBytes(32).toString("base64url");
 
-  await prisma.refreshToken.create({
+  await client.refreshToken.create({
     data: {
       tokenHash: hashToken(raw),
       userId: user.id,
@@ -170,27 +204,57 @@ export async function rotateRefreshToken(
     return { ok: false, reason: "inactive" };
   }
 
-  // Consume atomically: `updateMany` on a still-unconsumed row means two
-  // concurrent refreshes cannot both mint a new pair.
-  const consumed = await prisma.refreshToken.updateMany({
-    where: { id: existing.id, consumedAt: null },
-    data: { consumedAt: new Date() },
-  });
-  if (consumed.count === 0) return { ok: false, reason: "reused" };
+  // Consume and re-issue in ONE transaction, with EVERY precondition in the
+  // predicate.
+  //
+  // Two bugs lived here. `revokedAt` was checked only against the row read
+  // above, so a "sign out everywhere" landing in the gap between that read and
+  // this write was outrun: the consume succeeded and then issueTokens INSERTed
+  // a fresh un-revoked row into the family that revokeAllForUser had already
+  // passed over — the user was told they were signed out while a stolen token
+  // stayed live indefinitely. And consume/issue were separate, so a failure to
+  // issue left the old token consumed with no successor, permanently bricking
+  // the session.
+  try {
+    const tokens = await prisma.$transaction(async (tx) => {
+      const consumed = await tx.refreshToken.updateMany({
+        where: {
+          id: existing.id,
+          consumedAt: null,
+          revokedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+        data: { consumedAt: new Date() },
+      });
+      if (consumed.count === 0) throw new RotationLost();
 
-  const tokens = await issueTokens(
-    {
-      id: user.id,
-      role: user.role,
-      partnerId: user.partner?.id ?? null,
-      doctorProfileId: user.doctorProfile?.id ?? null,
-    },
-    device,
-    existing.familyId
-  );
+      return issueTokens(
+        {
+          id: user.id,
+          role: user.role,
+          partnerId: user.partner?.id ?? null,
+          doctorProfileId: user.doctorProfile?.id ?? null,
+        },
+        device,
+        existing.familyId,
+        tx
+      );
+    });
 
-  return { ok: true, tokens };
+    return { ok: true, tokens };
+  } catch (error) {
+    if (error instanceof RotationLost) {
+      // Losing this race means the same token was presented twice at once —
+      // the strongest possible signal that the value leaked.
+      await revokeFamily(existing.familyId);
+      return { ok: false, reason: "reused" };
+    }
+    throw error;
+  }
 }
+
+/** Internal signal: another request consumed or revoked this token first. */
+class RotationLost extends Error {}
 
 /** Revoke one device's lineage (used on logout and on reuse detection). */
 export async function revokeFamily(familyId: string): Promise<void> {
@@ -200,13 +264,31 @@ export async function revokeFamily(familyId: string): Promise<void> {
   });
 }
 
-/** Revoke a single refresh token — the normal logout path. */
-export async function revokeRefreshToken(raw: string): Promise<void> {
+/**
+ * Revoke a device's lineage, but only if it belongs to the caller.
+ *
+ * The unscoped version let any authenticated user revoke another user's
+ * sessions by submitting their raw token.
+ *
+ * @returns how many tokens were actually revoked (0 = not found or not yours).
+ */
+export async function revokeRefreshTokenForUser(
+  raw: string,
+  userId: string
+): Promise<number> {
   const token = await prisma.refreshToken.findUnique({
     where: { tokenHash: hashToken(raw) },
-    select: { familyId: true },
+    select: { familyId: true, userId: true },
   });
-  if (token) await revokeFamily(token.familyId);
+  // Same answer for "no such token" and "not yours", so this cannot be used to
+  // probe whether a token is live.
+  if (!token || token.userId !== userId) return 0;
+
+  const { count } = await prisma.refreshToken.updateMany({
+    where: { familyId: token.familyId, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+  return count;
 }
 
 /** Revoke every session for a user — "sign out everywhere". */

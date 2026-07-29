@@ -270,6 +270,7 @@ model User {
   callsMade      CallLog[]         @relation("Caller")
   callsReceived  CallLog[]         @relation("Receiver")
   feedbacks      PatientFeedback[]
+  addresses      Address[]
 
   @@index([role, isActive])
   @@index([governorateId])
@@ -311,11 +312,12 @@ model Partner {
   invoices       Invoice[]
 
   // Assigned orders
-  ordersAsNurse     Order[] @relation("AssignedNurse")
-  ordersAsDriver    Order[] @relation("AssignedDriver")
-  ordersAsLab       Order[] @relation("AssignedLab")
-  ordersAsPharmacy  Order[] @relation("AssignedPharmacy")
-  ordersAsRadiology Order[] @relation("AssignedRadiology")
+  ordersAsNurse     Order[]   @relation("AssignedNurse")
+  ordersAsDriver    Order[]   @relation("AssignedDriver")
+  ordersAsLab       Order[]   @relation("AssignedLab")
+  ordersAsPharmacy  Order[]   @relation("AssignedPharmacy")
+  ordersAsRadiology Order[]   @relation("AssignedRadiology")
+  products          Product[]
 
   @@index([type, status])
   @@index([status])
@@ -355,18 +357,24 @@ model Department {
 model DoctorProfile {
   id            String   @id @default(cuid())
   userId        String   @unique
+  /// FK to Specialty. Previously a free String referencing nothing.
   specialtyId   String?
   complexId     String? // Linked to complex (req L142 "ربطه بمجمع")
   isSanadLinked Boolean  @default(false) // Linked to Sanad (req L142 "أو سند")
   experience    Int? // years
   gender        String?
+  createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  specialty     Specialty?       @relation(fields: [specialtyId], references: [id])
   schedules     DoctorSchedule[]
   appointments  Appointment[]
   prescriptions Prescription[]
   sanadSessions SanadSession[]
+
+  @@index([createdAt(sort: Desc)])
+  @@index([specialtyId])
 }
 
 // #9 — Operations employee availability state (req L278)
@@ -400,6 +408,7 @@ model Governorate {
   employeeStatuses  EmployeeStatus[]
   orders            Order[]
   bloodBankRequests BloodBankRequest[]
+  addresses         Address[]
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1014,4 +1023,77 @@ model CouponRedemption {
   @@index([couponId])
   @@index([userId, redeemedAt(sort: Desc)])
   @@index([orderId])
+}
+
+/// #36 — Medical specialties (التخصصات).
+///
+/// These lived only in `src/lib/constants/specializations.ts`, so the mobile
+/// app had no way to list them and `DoctorProfile.specialtyId` was an
+/// unconstrained String pointing at nothing.
+model Specialty {
+  id        String   @id @default(cuid())
+  /// Stable machine key, e.g. "cardiology". Clients branch on this, not on name.
+  slug      String   @unique
+  name      String
+  /// Icon + colour are presentation hints; a native client maps them itself.
+  icon      String?
+  color     String?
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  doctors DoctorProfile[]
+
+  @@index([isActive, sortOrder])
+}
+
+/// #37 — Pharmacy catalogue (المنتجات).
+///
+/// The product list existed only in the frontend demo file, so the cart could
+/// never be validated or priced server-side.
+model Product {
+  id          String    @id @default(cuid())
+  pharmacyId  String
+  name        String
+  description String?   @db.Text
+  category    String?
+  price       Decimal   @db.Decimal(18, 3)
+  imageUrl    String?
+  inStock     Boolean   @default(true)
+  requiresRx  Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  pharmacy Partner @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+
+  @@index([pharmacyId, inStock])
+  @@index([category])
+  @@index([createdAt(sort: Desc)])
+}
+
+/// #38 — Saved patient addresses (العناوين).
+///
+/// Orders carried a free-text address, so a patient retyped it every time and
+/// no delivery could be routed to a known location.
+model Address {
+  id            String    @id @default(cuid())
+  userId        String
+  label         String?
+  governorateId String?
+  area          String?
+  street        String?   @db.Text
+  landmark      String?
+  latitude      Float?
+  longitude     Float?
+  isDefault     Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  governorate Governorate? @relation(fields: [governorateId], references: [id])
+
+  @@index([userId, isDefault])
 }

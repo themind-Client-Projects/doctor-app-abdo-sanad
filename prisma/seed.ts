@@ -427,6 +427,56 @@ async function main() {
   console.log("✅ 6 إشعارات + 6 سجلات نشاط");
 
   // ═══════════════════════════════════════════════════════════
+
+  // ═══════════════════════════════════════════════════════════
+  // 15. التخصصات الطبية — moved out of the frontend constants file so the
+  //     mobile app can list them and DoctorProfile.specialtyId is a real FK
+  // ═══════════════════════════════════════════════════════════
+  const specialties = [
+    { slug: "oncology", name: "أورام وأمراض دم", icon: "Droplet", color: "bg-rose-100 text-rose-600", sortOrder: 0 },
+    { slug: "gynecology", name: "أمراض نسائية", icon: "Users", color: "bg-fuchsia-100 text-fuchsia-600", sortOrder: 1 },
+    { slug: "urology", name: "مسالك بولية وأمراض الذكورة", icon: "Activity", color: "bg-blue-100 text-blue-600", sortOrder: 2 },
+    { slug: "pediatrics", name: "صحة الطفل", icon: "Baby", color: "bg-yellow-100 text-yellow-600", sortOrder: 3 },
+    { slug: "internal-medicine", name: "الباطنية والجهاز الهضمي والسكر", icon: "HeartPulse", color: "bg-emerald-100 text-emerald-600", sortOrder: 4 },
+    { slug: "nutrition", name: "التغذية", icon: "Salad", color: "bg-lime-100 text-lime-600", sortOrder: 5 },
+    { slug: "dermatology", name: "الجلدية والتجميل", icon: "Sparkles", color: "bg-pink-100 text-pink-600", sortOrder: 6 },
+    { slug: "palliative-care", name: "التلطيف", icon: "Leaf", color: "bg-teal-100 text-teal-600", sortOrder: 7 },
+    { slug: "dentistry", name: "الأسنان", icon: "Stethoscope", color: "bg-cyan-100 text-cyan-600", sortOrder: 8 },
+    { slug: "orthopedics", name: "المفاصل والكسور", icon: "Accessibility", color: "bg-orange-100 text-orange-600", sortOrder: 9 },
+    { slug: "mental-health", name: "الطب النفسي والإرشاد", icon: "Brain", color: "bg-indigo-100 text-indigo-600", sortOrder: 10 },
+    { slug: "ophthalmology", name: "طب العيون", icon: "Eye", color: "bg-sky-100 text-sky-600", sortOrder: 11 },
+    { slug: "ent", name: "الأنف والأذن والحنجرة", icon: "Ear", color: "bg-violet-100 text-violet-600", sortOrder: 12 },
+  ];
+  for (const sp of specialties) {
+    await prisma.specialty.upsert({
+      where: { slug: sp.slug },
+      update: { name: sp.name, icon: sp.icon, color: sp.color, sortOrder: sp.sortOrder },
+      create: sp,
+    });
+  }
+  console.log(`✅ ${specialties.length} تخصص`);
+
+  // ═══════════════════════════════════════════════════════════
+  // 16. منتجات الصيدلية — the cart could never be priced server-side while
+  //     this lived only in demo-data.ts
+  // ═══════════════════════════════════════════════════════════
+  const products: [string, string, string, number, boolean][] = [
+    ["prod-panadol", "بنادول اكسترا", "مسكنات", 3000, false],
+    ["prod-augmentin", "أوجمنتين 1g", "مضادات حيوية", 12000, true],
+    ["prod-vitc", "فيتامين C 1000", "فيتامينات", 8000, false],
+    ["prod-insulin", "أنسولين لانتوس", "أدوية مزمنة", 45000, true],
+    ["prod-thermometer", "ميزان حرارة رقمي", "مستلزمات طبية", 15000, false],
+    ["prod-bp-monitor", "جهاز قياس ضغط", "مستلزمات طبية", 65000, false],
+  ];
+  for (const [id, name, category, price, requiresRx] of products) {
+    await prisma.product.upsert({
+      where: { id },
+      update: {},
+      create: { id, pharmacyId: p.pharmacy.id, name, category, price, requiresRx },
+    });
+  }
+  console.log(`✅ ${products.length} منتج صيدلية`);
+
   console.log("\n🎉 اكتملت تعبئة البيانات بنجاح!");
   console.log("═══════════════════════════════════════════");
   console.log("👤 حسابات تسجيل الدخول:");

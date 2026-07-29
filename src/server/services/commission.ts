@@ -26,6 +26,14 @@ type Decimal = Prisma.Decimal;
 /** IQD has 3 subunits, matching Decimal(18,3) in the schema. */
 const MONEY_DP = 3;
 
+/**
+ * Settlement touches one wallet, one Transaction and one share per party, so a
+ * 4-way split is well over a dozen sequential round-trips. Prisma's 5s default
+ * interactive-transaction timeout is not enough against a remote pooler, and a
+ * timeout here means settlement can never succeed at all.
+ */
+const MONEY_TX_OPTIONS = { timeout: 20_000, maxWait: 10_000 } as const;
+
 export class CommissionError extends Error {
   constructor(
     readonly code:
@@ -241,6 +249,21 @@ export async function settleOrder(orderId: string, settledById?: string) {
 
   const previousSettlementId = order.orderSettlement?.id ?? null;
 
+  // Pre-resolve wallets outside the transaction. A wallet row holds no money
+  // on creation, so it needs no atomicity — and each upsert is a round-trip to
+  // a remote pooler that would otherwise run inside the critical section.
+  const walletByPartner = new Map<string, string>();
+  for (const share of shares) {
+    if (!share.partnerId || walletByPartner.has(share.partnerId)) continue;
+    const wallet = await prisma.wallet.upsert({
+      where: { partnerId: share.partnerId },
+      update: {},
+      create: { partnerId: share.partnerId },
+      select: { id: true },
+    });
+    walletByPartner.set(share.partnerId, wallet.id);
+  }
+
   return prisma.$transaction(async (tx) => {
     // Re-read inside the transaction: the reads above are three separate
     // round-trips under READ COMMITTED, so the amount could have changed.
@@ -276,15 +299,11 @@ export async function settleOrder(orderId: string, settledById?: string) {
       // only. A nurse/driver share with no assignee is likewise recorded but
       // unpaid, rather than silently vanishing.
       if (share.partnerId) {
-        const wallet = await tx.wallet.upsert({
-          where: { partnerId: share.partnerId },
-          update: {},
-          create: { partnerId: share.partnerId },
-        });
+        const walletId = walletByPartner.get(share.partnerId)!;
 
         const txn = await tx.transaction.create({
           data: {
-            walletId: wallet.id,
+            walletId,
             orderId: order.id,
             amount: share.amount,
             type: "CREDIT",
@@ -294,7 +313,7 @@ export async function settleOrder(orderId: string, settledById?: string) {
         transactionId = txn.id;
 
         await tx.wallet.update({
-          where: { id: wallet.id },
+          where: { id: walletId },
           data: {
             balance: { increment: share.amount },
             totalEarnings: { increment: share.amount },
@@ -336,7 +355,7 @@ export async function settleOrder(orderId: string, settledById?: string) {
       where: { id: settlement.id },
       include: { shares: true },
     });
-  });
+  }, MONEY_TX_OPTIONS);
 }
 
 /**
@@ -426,7 +445,7 @@ export async function reverseSettlement(orderId: string, reversedById?: string) 
       where: { id: settlement.id },
       include: { shares: true },
     });
-  });
+  }, MONEY_TX_OPTIONS);
 }
 
 /** Preview a split without writing anything — powers the admin simulator. */

@@ -72,7 +72,29 @@ export async function requireAuth(
   req: NextRequest,
   opts?: { roles?: readonly UserRole[] }
 ): Promise<Identity> {
-  const identity = (await identityFromBearer(req)) ?? (await identityFromSession());
+  // If an Authorization header is present, its verdict is FINAL — never fall
+  // through to the cookie.
+  //
+  // Falling through meant an expired or tampered bearer silently executed as
+  // whoever the cookie was. In any context holding both (a WebView client, an
+  // internal tool), a stale patient token would run with an admin's cookie
+  // authority, and the audit trail and the client would disagree about who
+  // acted. It also meant a mobile client got 200s instead of 401s and never
+  // learned to refresh — which becomes acute right after a secret rotation,
+  // when every outstanding token is invalid at once.
+  const header = req.headers.get("authorization");
+  if (header) {
+    const bearer = await identityFromBearer(req);
+    if (!bearer) {
+      throw new AuthError(401, "انتهت صلاحية الجلسة، يرجى تحديث الدخول");
+    }
+    if (opts?.roles && !opts.roles.includes(bearer.role)) {
+      throw new AuthError(403, "ليس لديك صلاحية للوصول إلى هذا المورد");
+    }
+    return bearer;
+  }
+
+  const identity = await identityFromSession();
 
   if (!identity) {
     throw new AuthError(401, "يجب تسجيل الدخول");

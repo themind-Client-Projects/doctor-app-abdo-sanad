@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { withAuth } from "@/lib/api-auth";
-import { ok } from "@/lib/api-response";
-import { revokeAllForUser, revokeRefreshToken } from "@/lib/tokens";
+import { ErrorCode, fail, ok } from "@/lib/api-response";
+import { revokeAllForUser, revokeRefreshTokenForUser } from "@/lib/tokens";
 
 /**
  * POST /api/auth/token/logout — revoke this device, or every device.
@@ -24,8 +24,16 @@ const bodySchema = z
 
 export const POST = withAuth({}, async (req: NextRequest, _ctx, identity) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
-  const parsed = bodySchema.safeParse(await req.json().catch(() => ({})));
-  const input = parsed.success ? parsed.data : {};
+  const raw = await req.json().catch(() => null);
+  const parsed = bodySchema.safeParse(raw ?? {});
+
+  // A malformed body used to fall back to `{}`, which took the default branch
+  // and revoked EVERY device. A client sending one unexpected key got signed
+  // out everywhere with no error.
+  if (!parsed.success) {
+    return fail(ErrorCode.VALIDATION_FAILED, 400, "بيانات غير صالحة", { requestId });
+  }
+  const input = parsed.data;
 
   if (input.allDevices) {
     const revoked = await revokeAllForUser(identity.userId);
@@ -33,8 +41,13 @@ export const POST = withAuth({}, async (req: NextRequest, _ctx, identity) => {
   }
 
   if (input.refreshToken) {
-    await revokeRefreshToken(input.refreshToken);
-    return ok({ revoked: 1, scope: "device" }, { requestId });
+    // Ownership: any authenticated caller could previously submit ANOTHER
+    // user's refresh token and revoke that user's entire family.
+    const revoked = await revokeRefreshTokenForUser(input.refreshToken, identity.userId);
+    if (revoked === 0) {
+      return fail(ErrorCode.NOT_FOUND, 404, "الجلسة غير موجودة", { requestId });
+    }
+    return ok({ revoked, scope: "device" }, { requestId });
   }
 
   // No token supplied and not an explicit all-devices request: revoke
