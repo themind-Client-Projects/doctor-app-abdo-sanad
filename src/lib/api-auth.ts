@@ -233,6 +233,64 @@ export function withPublic<Ctx = unknown>(
 }
 
 /**
+ * Wrap a read-only route that behaves differently for a signed-in caller but
+ * must still answer a visitor.
+ *
+ * The patient app is browsable before sign-in, so "who am I?" cannot 401: an
+ * anonymous visitor is a NORMAL outcome there, not an error. `withAuth` would
+ * reject them, and `withPublic` cannot see an identity at all — hence a fourth
+ * wrapper rather than bending either.
+ *
+ * Read-only for the same reason `withPublic` is: a mutation whose authorisation
+ * depends on an identity that may be null has no business being reachable.
+ * Anything that writes takes `withAuth`.
+ */
+export function withMaybeAuth<Ctx = unknown>(
+  handler: (req: NextRequest, ctx: Ctx, identity: Identity | null) => Promise<Response>
+) {
+  return async (req: NextRequest, ctx: Ctx): Promise<Response> => {
+    const requestId = req.headers.get("x-request-id") ?? randomUUID();
+
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      return withRequestId(
+        fail(ErrorCode.FORBIDDEN, 405, "هذه الواجهة للقراءة فقط", { requestId }),
+        requestId
+      );
+    }
+
+    // ANY failure to resolve a session degrades to anonymous, not just an
+    // AuthError.
+    //
+    // This wrapper's contract is "tell me who this is, if you can" on a
+    // read-only route, so a caller that cannot be identified is answered as a
+    // visitor. Re-throwing instead would turn a hiccup in session resolution
+    // into a 500 on a page a visitor is entitled to see — the header would fail
+    // the whole screen rather than quietly hiding a wallet chip.
+    //
+    // Safe because identity here only ever ADDS to a response: null grants
+    // nothing, so degrading can never widen access. The unexpected case is
+    // still logged rather than swallowed silently.
+    let identity: Identity | null = null;
+    try {
+      identity = await requireAuth(req);
+    } catch (error) {
+      if (!(error instanceof AuthError)) {
+        console.warn(
+          `[maybe-auth] ${req.nextUrl.pathname} could not resolve a session requestId=${requestId}`,
+          error
+        );
+      }
+    }
+
+    try {
+      return withRequestId(await handler(req, ctx, identity), requestId);
+    } catch (error) {
+      return withRequestId(toErrorResponse(req, error, requestId), requestId);
+    }
+  };
+}
+
+/**
  * Wrap an inbound webhook from a third party.
  *
  * Distinct from `withPublic`, which is read-only by construction: a webhook is

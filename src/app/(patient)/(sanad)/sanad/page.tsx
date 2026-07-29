@@ -8,7 +8,6 @@ export default function HomePage() {
   return (
     <div className="flex flex-col min-h-screen bg-gray-50/50 pb-24">
       <FlexibleHeader 
-        title="أحمد محمد" 
         subtitle="مرحباً بك في سند،" 
         icon={<Activity className="w-6 h-6" />} 
         showWallet 

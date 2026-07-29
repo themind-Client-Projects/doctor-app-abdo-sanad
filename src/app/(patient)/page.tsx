@@ -81,7 +81,6 @@ function RootLandingContent() {
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 pb-20 font-sans">
       <FlexibleHeader 
-        title="أحمد محمد" 
         subtitle="مرحباً بك،" 
         icon={<Activity className="w-6 h-6" />} 
         showWallet 

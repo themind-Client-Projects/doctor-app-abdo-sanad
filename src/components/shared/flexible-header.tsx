@@ -5,8 +5,15 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronRight, Wallet, MapPin, ChevronDown, Search } from 'lucide-react';
 import { useLocationStore } from '@/stores/patient/location.store';
+import { useMe } from '@/hooks/use-me';
+import { formatNumber } from '@/lib/format';
 
 interface FlexibleHeaderProps {
+  /**
+   * Page title. Omit it on the patient home screens and the header greets the
+   * signed-in user by their real name — every page used to pass the literal
+   * "أحمد محمد", so every account saw the same person.
+   */
   title?: string;
   subtitle?: string;
   icon?: ReactNode; // E.g. Activity or User icon for main pages
@@ -33,6 +40,11 @@ export function FlexibleHeader({
 }: FlexibleHeaderProps) {
   const router = useRouter();
   const { selectedCity, openCitySelector } = useLocationStore();
+  const { user, balance, isSignedIn, isLoading } = useMe();
+
+  // A caller-supplied title always wins ("أطباء بغداد", "المختبرات"). Only when
+  // a screen omits it does the header fall back to greeting the actual user.
+  const resolvedTitle = title ?? user?.name ?? (isLoading ? '' : 'زائر');
 
   const hasMiddleRow = !isCompact && (showCitySelector || (title && (showCitySelector || showSearch)));
 
@@ -60,10 +72,10 @@ export function FlexibleHeader({
             )}
             
             {/* If compact or no middle row is needed, show title here */}
-            {(!hasMiddleRow) && title && (
+            {(!hasMiddleRow) && resolvedTitle && (
               <div>
                 {subtitle && <p className="text-xs text-gray-500 font-medium leading-tight mb-0.5">{subtitle}</p>}
-                <h1 className="text-base sm:text-lg font-bold text-gray-900 leading-tight">{title}</h1>
+                <h1 className="text-base sm:text-lg font-bold text-gray-900 leading-tight">{resolvedTitle}</h1>
               </div>
             )}
           </div>
@@ -80,9 +92,14 @@ export function FlexibleHeader({
               </button>
             )}
 
-            {showWallet && (
+            {/* Hidden for a visitor rather than showing a zero balance they
+                cannot act on — and while the answer is in flight, so the chip
+                does not flash a figure that then changes. */}
+            {showWallet && isSignedIn && (
               <Link href="/wallet" className="flex items-center gap-1.5 bg-[#eaf6ef] text-[#10b981] px-3 py-1.5 rounded-full border border-[#10b981]/20 shrink-0 cursor-pointer active:scale-95 transition-transform hover:bg-[#dcf0e6]">
-                <span className="font-bold text-sm mt-0.5 whitespace-nowrap">150,000 د.ع</span>
+                <span className="font-bold text-sm mt-0.5 whitespace-nowrap">
+                  {formatNumber(balance ?? 0)} د.ع
+                </span>
                 <Wallet className="w-5 h-5 stroke-[2.5]" />
               </Link>
             )}
@@ -92,10 +109,10 @@ export function FlexibleHeader({
         {/* Middle Row: Title & City Selector (if not compact) */}
         {hasMiddleRow && (
           <div className="flex items-center justify-between">
-            {title && (
+            {resolvedTitle && (
               <div>
                 {subtitle && <p className="text-xs text-gray-500 font-medium leading-tight mb-0.5">{subtitle}</p>}
-                <h1 className="text-xl sm:text-2xl font-extrabold text-gray-900 leading-tight">{title}</h1>
+                <h1 className="text-xl sm:text-2xl font-extrabold text-gray-900 leading-tight">{resolvedTitle}</h1>
               </div>
             )}
 

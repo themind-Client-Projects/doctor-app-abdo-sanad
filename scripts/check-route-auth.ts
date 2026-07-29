@@ -80,6 +80,9 @@ function checkFile(file: string): Problem[] {
       match &&
       (match[1].includes("withAuth") ||
         match[1].includes("withPublic") ||
+        // Read-only, identity-if-present: the patient app browses before it
+        // signs in, so "who am I?" must answer a visitor rather than 401.
+        match[1].includes("withMaybeAuth") ||
         // An inbound webhook: unauthenticated by necessity, but obliged to
         // verify a signature AND confirm with the sender before acting.
         match[1].includes("withWebhook"));
