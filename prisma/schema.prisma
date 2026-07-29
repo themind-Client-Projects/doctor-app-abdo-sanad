@@ -1263,6 +1263,7 @@ model PatientWallet {
 
   user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions PatientTransaction[]
+  payments     PaymentIntent[]
 }
 
 /// #43 — Every movement on a patient wallet. The balance is their sum.
@@ -1316,4 +1317,53 @@ model FeatureFlag {
   updatedAt DateTime @updatedAt
 
   @@index([group])
+}
+
+/// #45 — A payment attempt against an external gateway (Wayl).
+///
+/// Its own row rather than a field on the wallet, because a payment has a life
+/// of its own: it is created before the money exists, the user may abandon it,
+/// and the gateway confirms it asynchronously by webhook — possibly more than
+/// once, and possibly out of order.
+///
+/// `settledAt` is the idempotency key that matters. A webhook that fires twice
+/// must credit the wallet ONCE, so crediting is guarded on a transition from
+/// unsettled to settled rather than on the webhook's own claim about status.
+/// Free money is what the naive version produces.
+model PaymentIntent {
+  id       String @id @default(cuid())
+  walletId String
+
+  /// What we send Wayl as `referenceId` — unique on their side too, so a retry
+  /// of the same intent cannot open a second payment link.
+  reference String @unique
+
+  /// Major IQD units, matching Wayl's `total`. Their minimum is 1,000.
+  amount   Decimal @db.Decimal(18, 3)
+  currency String  @default("IQD")
+
+  /// PENDING → SETTLED | CANCELLED | FAILED. Ours, not the gateway's — their
+  /// vocabulary (Created/Pending/Processing/Complete/Delivered/Cancelled/
+  /// Rejected/Returned) is theirs to change.
+  status String @default("PENDING")
+
+  provider       String  @default("WAYL")
+  /// Wayl's `id` for the link.
+  providerRef    String?
+  /// Wayl's `url` — where the patient actually pays.
+  checkoutUrl    String?
+  /// Their last reported status verbatim, for support and reconciliation.
+  providerStatus String?
+
+  /// Set exactly once, when the wallet is credited. The guard against a
+  /// repeated webhook paying out twice.
+  settledAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  wallet PatientWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([walletId, createdAt(sort: Desc)])
+  @@index([status])
 }

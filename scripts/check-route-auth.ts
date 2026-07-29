@@ -76,10 +76,17 @@ function checkFile(file: string): Problem[] {
     // meant to browse before signing in. It is not an absence of a wrapper: it
     // enforces read-only, keeps the same error mapping, and is greppable — so
     // every public route stays a reviewable decision rather than an oversight.
-    if (match && !match[1].includes("withAuth") && !match[1].includes("withPublic")) {
+    const wrapped =
+      match &&
+      (match[1].includes("withAuth") ||
+        match[1].includes("withPublic") ||
+        // An inbound webhook: unauthenticated by necessity, but obliged to
+        // verify a signature AND confirm with the sender before acting.
+        match[1].includes("withWebhook"));
+    if (match && !wrapped) {
       problems.push({
         file: rel,
-        message: `${method} is exported but not wrapped in withAuth() or withPublic()`,
+        message: `${method} is exported but not wrapped in withAuth() / withPublic() / withWebhook()`,
       });
     }
   }

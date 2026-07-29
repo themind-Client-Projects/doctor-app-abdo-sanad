@@ -232,6 +232,37 @@ export function withPublic<Ctx = unknown>(
   };
 }
 
+/**
+ * Wrap an inbound webhook from a third party.
+ *
+ * Distinct from `withPublic`, which is read-only by construction: a webhook is
+ * an unauthenticated WRITE, and pretending otherwise would either block it
+ * (405) or quietly weaken `withPublic` for everything else.
+ *
+ * There is no session to check, so the handler carries the burden instead, and
+ * both halves are mandatory:
+ *   1. verify the signature over the RAW body, and
+ *   2. confirm the claim against the sender's own API before acting on it.
+ *
+ * A webhook body is input from anyone who can reach the URL. Treating it as
+ * fact is how a forged POST becomes a credited wallet.
+ */
+export function withWebhook<Ctx = unknown>(
+  handler: (req: NextRequest, ctx: Ctx) => Promise<Response>
+) {
+  return async (req: NextRequest, ctx: Ctx): Promise<Response> => {
+    const requestId = req.headers.get("x-request-id") ?? randomUUID();
+    try {
+      return withRequestId(await handler(req, ctx), requestId);
+    } catch (error) {
+      // Logged with the path, because a webhook failure is invisible otherwise
+      // — the sender sees a 500 and retries, and nobody here is watching.
+      console.error(`[webhook] ${req.method} ${req.nextUrl.pathname} requestId=${requestId}`, error);
+      return withRequestId(toErrorResponse(req, error, requestId), requestId);
+    }
+  };
+}
+
 function withRequestId(res: Response, requestId: string): Response {
   res.headers.set("x-request-id", requestId);
   return res;
