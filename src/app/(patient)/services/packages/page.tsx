@@ -44,7 +44,7 @@ export default function SanadPackagesPage() {
         <section className="text-center mb-8">
           <h2 className="text-2xl font-extrabold text-primary mb-2">سند رعاية أشمل صحة أوفر</h2>
           <p className="text-sm font-medium text-gray-600 mb-6">
-            وفر حتى 80% على جميع احتياجاتك من الرعاية الصحية
+            وفر حتى 50% على جميع احتياجاتك من الرعاية الصحية
           </p>
 
           <div className="flex items-center justify-center gap-2 flex-wrap mb-6">
@@ -83,8 +83,8 @@ export default function SanadPackagesPage() {
             userCount="مستخدم واحد"
             userSavings="وفر ١,٢٠٠ ريال/عام"
             features={[
-              "خصم يصل إلي ٨٠٪ علي الكشوفات و الخدمات مع سند",
-              "خصم يصل إلي ٨٠٪ مع سند.",
+              "خصم يصل إلى ٥٠٪ على الكشوفات والخدمات مع سند",
+              "خصم يصل إلى ٥٠٪ مع سند.",
               "أسعار مخفضة شاملة للعمليات مع سند"
             ]}
           />

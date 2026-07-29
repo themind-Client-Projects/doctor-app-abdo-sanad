@@ -100,8 +100,8 @@ export default function ServicesPage() {
         {/* Sanad Promo Banner */}
         <PromoBanner 
           brandName="سند"
-          title="وفر حتى 80% على جميع الخدمات الطبية"
-          subtitle="خصومات طبية في المملكة"
+          title="وفر حتى 50% على جميع الخدمات الطبية"
+          subtitle="خصومات طبية في العراق"
           href="/sanad" 
         />
       </main>

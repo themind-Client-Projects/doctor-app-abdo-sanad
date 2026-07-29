@@ -1,4 +1,5 @@
 import { BottomNavbar } from "@/components/shared/bottom-navbar";
+import { ForceLight } from "@/components/force-light";
 
 export default function PatientLayout({
   children,
@@ -7,6 +8,8 @@ export default function PatientLayout({
 }) {
   return (
     <div className="min-h-screen bg-secondary/30 relative pb-16">
+      {/* Patient screens are light-only by design — see the component. */}
+      <ForceLight />
       {/* Main Content Area */}
       <main className="max-w-md mx-auto min-h-screen bg-background shadow-sm overflow-hidden">
         {children}

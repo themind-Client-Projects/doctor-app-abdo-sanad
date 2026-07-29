@@ -33,7 +33,11 @@ export default function RootLayout({
         <ThemeProvider
           attribute="class"
           defaultTheme="light"
-          enableSystem
+          // NOT `enableSystem`: it made the whole app follow the OS, so a
+          // patient on a dark-mode phone got the light-only patient screens
+          // rendered under a `dark` class — white text on white cards. Dark
+          // mode is a staff-dashboard feature, reached by its own toggle.
+          enableSystem={false}
           disableTransitionOnChange
         >
           {children}
