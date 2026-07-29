@@ -52,13 +52,22 @@ export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
   );
 
   const where: Prisma.PartnerWhereInput = {
+    // Partners are retired by soft-delete, so historical orders keep naming who
+    // served them. Without this they would keep appearing in dispatch pickers.
+    deletedAt: null,
     ...(type ? { type } : {}),
     ...(status ? { status } : {}),
   };
 
   const include = {
-    governorate: { select: { name: true } },
-    complex: { select: { name: true } },
+    user: { select: { id: true, email: true, phone: true } },
+    governorate: { select: { id: true, name: true } },
+    complex: { select: { id: true, name: true } },
+    // Which partners own a medical complex — `MedicalComplex.partnerId` is
+    // @unique, so a complex IS a partner plus this row. The admin screen had a
+    // "المجمعات الطبية" tab filtering on `type: "COMPLEX"`, a value the
+    // `UserRole` enum has never contained, so that tab always came back empty.
+    ownedComplex: { select: { id: true, name: true } },
     contract: { select: { id: true, isActive: true, endDate: true } },
   } as const;
 

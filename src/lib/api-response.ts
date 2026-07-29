@@ -100,11 +100,22 @@ export function ok<T>(
 export function okList<T>(
   data: T[],
   page: PageMeta,
-  init?: { requestId?: string; legacy?: { total: number; page: number; pageSize: number } }
+  init?: {
+    requestId?: string;
+    legacy?: { total: number; page: number; pageSize: number };
+    /** Domain aggregate over the *filtered* set, not just the page — e.g. the
+     *  rating distribution behind a list of feedback. Lives in `meta` so the
+     *  `{data, meta}` envelope stays uniform across every endpoint. */
+    summary?: Record<string, unknown>;
+  }
 ): NextResponse {
   return NextResponse.json({
     data: serializeDecimals(data),
-    meta: { requestId: init?.requestId, page },
+    meta: {
+      requestId: init?.requestId,
+      page,
+      ...(init?.summary ? { summary: serializeDecimals(init.summary) } : {}),
+    },
     ...(init?.legacy
       ? {
           total: init.legacy.total,

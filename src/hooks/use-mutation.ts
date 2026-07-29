@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 /** Shape of an error returned by the API contract (src/lib/api-response.ts). */
@@ -80,15 +80,37 @@ export function useMutation<T = unknown, TArgs extends unknown[] = unknown[]>(
 ) {
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
+
   // Guards against setting state after the component unmounts mid-request.
+  // This ref existed but was never cleared, so the guard was always true and
+  // an unmount during an in-flight request still wrote to a dead component.
   const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // `fn` and `options` are inline literals at every call site, so depending on
+  // them directly gave `mutate` a new identity on every render — which
+  // invalidated any memo or effect downstream of it. Reading them through refs
+  // keeps `mutate` stable for the component's whole life while still calling
+  // the latest closure.
+  const fnRef = useRef(fn);
+  const optionsRef = useRef(options);
+  useEffect(() => {
+    fnRef.current = fn;
+    optionsRef.current = options;
+  });
 
   const mutate = useCallback(
     async (...args: TArgs): Promise<T | undefined> => {
+      const options = optionsRef.current;
       setIsPending(true);
       setError(null);
       try {
-        const data = await fn(...args);
+        const data = await fnRef.current(...args);
         if (options.successMessage !== null) {
           toast.success(options.successMessage ?? "تمت العملية بنجاح");
         }
@@ -114,7 +136,7 @@ export function useMutation<T = unknown, TArgs extends unknown[] = unknown[]>(
         if (mountedRef.current) setIsPending(false);
       }
     },
-    [fn, options]
+    []
   );
 
   return { mutate, isPending, error };

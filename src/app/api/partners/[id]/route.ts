@@ -72,10 +72,64 @@ export const PATCH = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params 
   return ok(partner, { requestId });
 });
 
-// DELETE /api/partners/[id]
-export const DELETE = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
+/**
+ * DELETE /api/partners/[id] — retire a partner.
+ *
+ * A soft delete, because a hard one destroys history. `Order.assignedNurseId`
+ * and its five siblings are optional FKs, so Prisma's default action on delete
+ * is SET NULL: removing a nurse would silently blank out who performed every
+ * visit they ever made, and the settlement rows would point at a party that no
+ * longer exists. `Partner.deletedAt` is in the schema for exactly this, and the
+ * list endpoint filters on it, so a retired partner disappears from every
+ * picker while every order still names who served it.
+ */
+export const DELETE = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }, identity) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
-  await prisma.partner.delete({ where: { id } });
-  return ok({ message: "تم الحذف" }, { requestId });
+
+  const partner = await prisma.partner.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      name: true,
+      userId: true,
+      deletedAt: true,
+      wallet: { select: { balance: true, pendingAmount: true } },
+    },
+  });
+  if (!partner || partner.deletedAt) {
+    return fail(ErrorCode.NOT_FOUND, 404, "الشريك غير موجود", { requestId });
+  }
+
+  // Retiring a partner who is still owed money would strand the balance: there
+  // is no screen that lists retired partners to pay them from.
+  const owed = Number(partner.wallet?.balance ?? 0) + Number(partner.wallet?.pendingAmount ?? 0);
+  if (owed > 0) {
+    return fail(
+      ErrorCode.BUSINESS_RULE_VIOLATION,
+      422,
+      "لا يمكن إيقاف شريك له رصيد أو مستحقات — سوِّ الحساب أولاً",
+      { requestId }
+    );
+  }
+
+  await prisma.$transaction([
+    prisma.partner.update({
+      where: { id },
+      data: { deletedAt: new Date(), status: "SUSPENDED" },
+    }),
+    // Retiring the partner without disabling the login leaves a working
+    // account for a provider the platform no longer works with.
+    prisma.user.update({ where: { id: partner.userId }, data: { isActive: false } }),
+    prisma.activityLog.create({
+      data: {
+        userId: identity.userId,
+        action: `إيقاف الشريك: ${partner.name}`,
+        entityType: "partner",
+        entityId: id,
+      },
+    }),
+  ]);
+
+  return ok({ message: "تم إيقاف الشريك" }, { requestId });
 });

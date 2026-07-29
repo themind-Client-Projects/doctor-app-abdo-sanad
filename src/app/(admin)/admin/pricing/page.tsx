@@ -1,89 +1,305 @@
 "use client";
 
+import { useCallback, useState } from "react";
+import { Tags } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
-import { DollarSign, Tag, Gift, Search } from "lucide-react";
-import { useState } from "react";
+import { apiFetch, useMutation } from "@/hooks/use-mutation";
+import { DataTable, type Column } from "@/components/admin/data-table";
+import { Field, FormDialog, fieldClass } from "@/components/admin/form-dialog";
+import { PageHeader, Pill, RowActions } from "@/components/admin/crud-kit";
+import { SERVICE_TYPE_KEYS, SERVICE_TYPE_LABELS, labelOf } from "@/lib/labels";
+import { formatCurrency, formatNumber } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
-// Section 6: إدارة الأسعار (req L231-238) — 6 features
-// السعر الأساسي, سعر سند, سعر المجمع, الخصومات, الحملات, الكوبونات
+// إدارة الأسعار (req L231-238)
+//
+// The page fetched /api/pricing and then rendered static cards, so the data was
+// never shown and nothing could be edited. /api/pricing has had full CRUD all
+// along — this wires the screen to it.
 // ─────────────────────────────────────────────────────────────
+
+const SERVICE_LABELS: Record<string, string> = SERVICE_TYPE_LABELS;
+const SERVICE_TYPES: readonly string[] = SERVICE_TYPE_KEYS;
+
+type PriceConfig = {
+  id: string;
+  serviceType: string;
+  basePrice: number | string;
+  sanadPrice: number | string | null;
+  complexPrice: number | string | null;
+  discountPercent: number | string | null;
+  isActive: boolean;
+};
+
+type FormState = {
+  serviceType: string;
+  basePrice: string;
+  sanadPrice: string;
+  complexPrice: string;
+  discountPercent: string;
+  isActive: boolean;
+};
+
+const EMPTY: FormState = {
+  serviceType: "",
+  basePrice: "",
+  sanadPrice: "",
+  complexPrice: "",
+  discountPercent: "",
+  isActive: true,
+};
+
+/** Empty string means "not set" — send null, not 0, which would be a real price. */
+const numOrNull = (v: string) => (v.trim() === "" ? null : Number(v));
 
 export default function PricingPage() {
-  const { data: configs, isLoading } = useDashboardData<Record<string, unknown>[]>({ url: "/api/pricing" });
-  const { data: campaigns } = useDashboardData<Record<string, unknown>[]>({ url: "/api/campaigns" });
-  const { data: coupons } = useDashboardData<Record<string, unknown>[]>({ url: "/api/coupons" });
+  const { data, isLoading, error, refetch } = useDashboardData<PriceConfig[]>({
+    url: "/api/pricing",
+  });
+
+  const [editing, setEditing] = useState<PriceConfig | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState<PriceConfig | null>(null);
+  const [form, setForm] = useState<FormState>(EMPTY);
+
+  const close = useCallback(() => {
+    setEditing(null);
+    setCreating(false);
+    setDeleting(null);
+    setForm(EMPTY);
+  }, []);
+
+  const done = useCallback(() => {
+    close();
+    refetch?.();
+  }, [close, refetch]);
+
+  const { mutate: save, isPending: saving } = useMutation(
+    async () => {
+      const body = {
+        serviceType: form.serviceType,
+        basePrice: Number(form.basePrice),
+        sanadPrice: numOrNull(form.sanadPrice),
+        complexPrice: numOrNull(form.complexPrice),
+        discountPercent: numOrNull(form.discountPercent),
+        isActive: form.isActive,
+      };
+      return editing
+        ? apiFetch(`/api/pricing/${editing.id}`, {
+            method: "PUT",
+            // serviceType is @unique and identifies the row — changing it is a
+            // create, not an edit.
+            body: JSON.stringify({ ...body, serviceType: undefined }),
+          })
+        : apiFetch("/api/pricing", { method: "POST", body: JSON.stringify(body) });
+    },
+    { successMessage: editing ? "تم تحديث السعر" : "تمت إضافة السعر", onSuccess: done }
+  );
+
+  const { mutate: remove, isPending: removing } = useMutation(
+    async () => apiFetch(`/api/pricing/${deleting!.id}`, { method: "DELETE" }),
+    { successMessage: "تم حذف السعر", onSuccess: done }
+  );
+
+  const openEdit = (row: PriceConfig) => {
+    setEditing(row);
+    setForm({
+      serviceType: row.serviceType,
+      basePrice: String(row.basePrice ?? ""),
+      sanadPrice: row.sanadPrice == null ? "" : String(row.sanadPrice),
+      complexPrice: row.complexPrice == null ? "" : String(row.complexPrice),
+      discountPercent: row.discountPercent == null ? "" : String(row.discountPercent),
+      isActive: row.isActive,
+    });
+  };
+
+  const columns: Column<PriceConfig>[] = [
+    {
+      key: "serviceType",
+      header: "الخدمة",
+      render: (r) => (
+        <span className="font-medium text-foreground">
+          {SERVICE_LABELS[r.serviceType] ?? r.serviceType}
+        </span>
+      ),
+    },
+    {
+      key: "basePrice",
+      header: "السعر الأساسي",
+      render: (r) => formatCurrency(r.basePrice),
+      sortValue: (r) => Number(r.basePrice),
+    },
+    {
+      key: "sanadPrice",
+      header: "سعر سند",
+      secondary: true,
+      render: (r) => (r.sanadPrice == null ? "—" : formatCurrency(r.sanadPrice)),
+    },
+    {
+      key: "complexPrice",
+      header: "سعر المجمع",
+      secondary: true,
+      render: (r) => (r.complexPrice == null ? "—" : formatCurrency(r.complexPrice)),
+    },
+    {
+      key: "discountPercent",
+      header: "الخصم",
+      secondary: true,
+      render: (r) => (r.discountPercent == null ? "—" : `${formatNumber(r.discountPercent)}%`),
+    },
+    {
+      key: "isActive",
+      header: "الحالة",
+      render: (r) => (
+        <Pill tone={r.isActive ? "positive" : "neutral"}>{r.isActive ? "مفعّل" : "معطّل"}</Pill>
+      ),
+    },
+  ];
 
   return (
-    <div className="space-y-6" dir="rtl">
-      <div>
-        <h1 className="text-xl font-bold text-foreground">إدارة الأسعار</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">6 عناصر: السعر الأساسي، سعر سند، سعر المجمع، الخصومات، الحملات، الكوبونات</p>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="إدارة الأسعار"
+        subtitle="السعر الأساسي، سعر سند، سعر المجمع والخصومات لكل خدمة"
+        icon={Tags}
+        action={{
+          label: "سعر جديد",
+          onClick: () => {
+            setForm(EMPTY);
+            setCreating(true);
+          },
+        }}
+      />
 
-      {/* 3 Pricing types */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/20 p-5">
-          <div className="flex items-center gap-2 mb-2">
-            <DollarSign size={18} className="text-blue-600 dark:text-blue-400" />
-            <span className="text-sm font-semibold text-foreground">السعر الأساسي</span>
-          </div>
-          <p className="text-xs text-muted-foreground">سعر الخدمة الافتراضي لجميع المقدمين</p>
-        </div>
-        <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/20 p-5">
-          <div className="flex items-center gap-2 mb-2">
-            <DollarSign size={18} className="text-emerald-600 dark:text-emerald-400" />
-            <span className="text-sm font-semibold text-foreground">سعر سند</span>
-          </div>
-          <p className="text-xs text-muted-foreground">سعر مخصص لخدمات سند الطبية</p>
-        </div>
-        <div className="rounded-xl border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/20 p-5">
-          <div className="flex items-center gap-2 mb-2">
-            <DollarSign size={18} className="text-purple-600 dark:text-purple-400" />
-            <span className="text-sm font-semibold text-foreground">سعر المجمع</span>
-          </div>
-          <p className="text-xs text-muted-foreground">سعر خاص حسب عقد المجمع الطبي</p>
-        </div>
-      </div>
-
-      {/* Campaigns (L237) */}
-      <div className="rounded-xl border border-border bg-card p-6">
-        <h2 className="text-base font-semibold text-foreground mb-4 flex items-center gap-2"><Tag size={18} className="text-primary" /> الحملات</h2>
-        {(campaigns ?? []).length === 0 ? (
-          <p className="text-sm text-muted-foreground py-6 text-center">لا توجد حملات نشطة</p>
-        ) : (
-          <div className="space-y-3">
-            {(campaigns ?? []).map((c, i) => (
-              <div key={i} className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-muted/30 transition-colors">
-                <div>
-                  <span className="text-sm font-medium text-foreground block">{c.name as string}</span>
-                  <span className="text-xs text-muted-foreground">خصم {c.discountPercent as number}%</span>
-                </div>
-                <span className={`text-xs font-medium ${c.isActive ? "text-emerald-600" : "text-muted-foreground"}`}>
-                  {c.isActive ? "نشطة" : "منتهية"}
-                </span>
-              </div>
-            ))}
-          </div>
+      <DataTable
+        rows={data}
+        columns={columns}
+        isLoading={isLoading}
+        error={error}
+        onRetry={refetch}
+        searchable={(r) => `${labelOf(SERVICE_LABELS, r.serviceType)} ${r.serviceType}`}
+        searchPlaceholder="بحث عن خدمة..."
+        filters={[
+          {
+            key: "isActive",
+            label: "كل الحالات",
+            options: [
+              { value: "yes", label: "مفعّل" },
+              { value: "no", label: "معطّل" },
+            ],
+            match: (r, v) => (v === "yes" ? r.isActive : !r.isActive),
+          },
+        ]}
+        emptyMessage="لا توجد أسعار معرّفة بعد"
+        actions={(r) => (
+          <RowActions
+            label={labelOf(SERVICE_LABELS, r.serviceType)}
+            onEdit={() => openEdit(r)}
+            onDelete={() => setDeleting(r)}
+          />
         )}
-      </div>
+      />
 
-      {/* Coupons (L238) */}
-      <div className="rounded-xl border border-border bg-card p-6">
-        <h2 className="text-base font-semibold text-foreground mb-4 flex items-center gap-2"><Gift size={18} className="text-primary" /> كوبونات الخصم</h2>
-        {(coupons ?? []).length === 0 ? (
-          <p className="text-sm text-muted-foreground py-6 text-center">لا توجد كوبونات</p>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {(coupons ?? []).map((c, i) => (
-              <div key={i} className="p-4 rounded-lg border border-dashed border-border hover:border-primary transition-colors">
-                <span className="text-base font-mono font-bold text-primary block mb-1">{c.code as string}</span>
-                <span className="text-xs text-muted-foreground">خصم {c.discountPercent as number}% — استخدم {c.currentUsage as number}/{c.maxUsage as number}</span>
-              </div>
+      <FormDialog
+        open={creating || editing !== null}
+        title={editing ? "تعديل السعر" : "سعر جديد"}
+        description={
+          editing
+            ? SERVICE_LABELS[editing.serviceType] ?? editing.serviceType
+            : "يُستخدم السعر الأساسي عند غياب سعر سند أو المجمع"
+        }
+        onClose={close}
+        onSubmit={() => void save()}
+        isPending={saving}
+      >
+        <Field label="نوع الخدمة" htmlFor="serviceType">
+          <select
+            id="serviceType"
+            className={fieldClass}
+            value={form.serviceType}
+            disabled={editing !== null}
+            onChange={(e) => setForm((f) => ({ ...f, serviceType: e.target.value }))}
+          >
+            <option value="">— اختر —</option>
+            {SERVICE_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {SERVICE_LABELS[t]}
+              </option>
             ))}
-          </div>
-        )}
-      </div>
+          </select>
+        </Field>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="السعر الأساسي (د.ع)" htmlFor="basePrice">
+            <input
+              id="basePrice"
+              type="number"
+              min={0}
+              dir="ltr"
+              className={fieldClass}
+              value={form.basePrice}
+              onChange={(e) => setForm((f) => ({ ...f, basePrice: e.target.value }))}
+            />
+          </Field>
+          <Field label="الخصم %" htmlFor="discountPercent" hint="اتركه فارغاً لعدم وجود خصم">
+            <input
+              id="discountPercent"
+              type="number"
+              min={0}
+              max={100}
+              dir="ltr"
+              className={fieldClass}
+              value={form.discountPercent}
+              onChange={(e) => setForm((f) => ({ ...f, discountPercent: e.target.value }))}
+            />
+          </Field>
+          <Field label="سعر سند" htmlFor="sanadPrice">
+            <input
+              id="sanadPrice"
+              type="number"
+              min={0}
+              dir="ltr"
+              className={fieldClass}
+              value={form.sanadPrice}
+              onChange={(e) => setForm((f) => ({ ...f, sanadPrice: e.target.value }))}
+            />
+          </Field>
+          <Field label="سعر المجمع" htmlFor="complexPrice">
+            <input
+              id="complexPrice"
+              type="number"
+              min={0}
+              dir="ltr"
+              className={fieldClass}
+              value={form.complexPrice}
+              onChange={(e) => setForm((f) => ({ ...f, complexPrice: e.target.value }))}
+            />
+          </Field>
+        </div>
+
+        <label className="flex cursor-pointer items-center gap-2.5 text-sm text-foreground">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-input accent-[hsl(var(--primary))]"
+            checked={form.isActive}
+            onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))}
+          />
+          مفعّل
+        </label>
+      </FormDialog>
+
+      <FormDialog
+        open={deleting !== null}
+        title="حذف السعر"
+        description={`سيتم حذف سعر «${
+          deleting ? (SERVICE_LABELS[deleting.serviceType] ?? deleting.serviceType) : ""
+        }». لا يمكن التراجع.`}
+        submitLabel="حذف"
+        submitTone="danger"
+        onClose={close}
+        onSubmit={() => void remove()}
+        isPending={removing}
+      />
     </div>
   );
 }
