@@ -3,7 +3,8 @@
 import { useMemo } from 'react';
 import { useFilters } from '@/hooks/use-filters';
 import { useLocationStore } from '@/stores/patient/location.store';
-import { getAllDoctors } from '@/services/doctors.service';
+import { useDashboardData } from '@/hooks/use-dashboard-data';
+import type { Channel } from '@/hooks/use-storefront';
 import type { Doctor } from '@/types/patient';
 
 const ITEMS_PER_PAGE = 5;
@@ -11,17 +12,38 @@ const ITEMS_PER_PAGE = 5;
 interface UseDoctorsOptions {
   /** Limit results instead of paginating (e.g. for home page featured list) */
   limit?: number;
+  /**
+   * Which storefront is asking. This is the whole reason /doctors and
+   * /sanad/doctors can share one component: the pool AND the quoted price both
+   * come from the channel, so the Sanad page shows Sanad providers at
+   * `sanadPrice` while the same markup on / shows everyone at `basePrice`.
+   */
+  channel?: Channel;
 }
 
 /**
- * Centralized hook for doctor filtering, search, and pagination.
- * Replaces duplicate logic in: home, doctors, teleconsultation, complexes pages.
+ * Doctor filtering, search and pagination for every browse surface.
+ *
+ * Reads `/api/public/doctors` — a public endpoint, because the patient app
+ * browses before it signs in. It previously called `getAllDoctors()`, which
+ * returned fourteen invented doctors from `src/lib/constants/demo-data.ts`:
+ * nobody an admin could edit, and nobody a booking could ever resolve to.
+ *
+ * Search and specialty filtering stay client-side on purpose. The result set is
+ * capped at 60 rows, so filtering in the browser is instant and does not fire a
+ * request per keystroke over a mobile connection.
  */
 export function useDoctors(options?: UseDoctorsOptions) {
   const { searchQuery, category, page } = useFilters();
   const { selectedCity } = useLocationStore();
+  const channel = options?.channel ?? 'DIRECT';
 
-  const allDoctors = useMemo(() => getAllDoctors(), []);
+  const { data, isLoading, error, refetch } = useDashboardData<Doctor[]>({
+    url: '/api/public/doctors',
+    params: { channel },
+  });
+
+  const allDoctors = useMemo(() => data ?? [], [data]);
 
   const filteredDoctors = useMemo(() => {
     return allDoctors.filter(doctor => {
@@ -52,5 +74,8 @@ export function useDoctors(options?: UseDoctorsOptions) {
     totalPages,
     totalCount: filteredDoctors.length,
     itemsPerPage: ITEMS_PER_PAGE,
+    isLoading,
+    error,
+    refetch,
   };
 }

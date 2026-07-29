@@ -3,7 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { withPublic } from "@/lib/api-auth";
 import { ok } from "@/lib/api-response";
-import { parseQuery } from "@/lib/validation";
+import { parseQuery, serviceTypeSchema } from "@/lib/validation";
 
 /**
  * GET /api/public/partners — labs, pharmacies, radiology centres and complexes
@@ -22,6 +22,14 @@ const listQuerySchema = z.object({
   governorate: z.string().trim().min(1).optional(), // name
   /** Which storefront the visitor is browsing. */
   channel: z.enum(["DIRECT", "SANAD", "COMPLEX"]).default("DIRECT"),
+  /**
+   * Filter by the service a partner actually offers, which is how the browse
+   * pages are scoped: /labs is LAB_TEST, /nursing is NURSING, /physiotherapy is
+   * PHYSIOTHERAPY. Filtering by service rather than by partner type is what
+   * lets /physiotherapy work at all — the client's partner taxonomy
+   * (req L128-182) has no physiotherapy category, because it is a service.
+   */
+  service: serviceTypeSchema.optional(),
   /** Only partners that own a medical complex. */
   complexesOnly: z.enum(["true", "false"]).optional(),
   q: z.string().trim().min(1).max(80).optional(),
@@ -30,7 +38,7 @@ const listQuerySchema = z.object({
 
 export const GET = withPublic(async (req) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
-  const { type, governorate, complexesOnly, channel, q, limit } = parseQuery(
+  const { type, governorate, complexesOnly, channel, service, q, limit } = parseQuery(
     req.nextUrl.searchParams,
     listQuerySchema
   );
@@ -42,6 +50,13 @@ export const GET = withPublic(async (req) => {
     // page against different pools.
     channels: { some: { channel, status: { not: "SUSPENDED" } } },
     ...(type ? { type } : {}),
+    ...(service
+      ? {
+          serviceConfigs: {
+            some: { serviceType: service, status: { in: ["ACTIVE", "REACTIVATED"] as const } },
+          },
+        }
+      : {}),
     ...(governorate ? { governorate: { name: governorate } } : {}),
     ...(complexesOnly === "true" ? { ownedComplex: { isNot: null } } : {}),
     ...(q ? { name: { contains: q, mode: "insensitive" } } : {}),

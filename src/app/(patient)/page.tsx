@@ -25,12 +25,57 @@ import { useDoctors } from '@/hooks/use-doctors';
 import { useBookingDrawer } from '@/hooks/use-booking-drawer';
 import { DoctorCard } from '@/components/shared/doctor-card';
 import { CategoryFilters } from '@/components/shared/category-filters';
-import { SPECIALIZATIONS } from '@/lib/constants/specializations';
 import { useFilters } from '@/hooks/use-filters';
+import { useStorefront } from '@/hooks/use-storefront';
+import { formatNumber } from '@/lib/format';
+
+/**
+ * Tailwind cannot see a class name it did not find in the source, so a theme
+ * built from `from-${accent}-50` would be purged. The DB stores an accent KEY
+ * and the map below is what turns it into the classes the design already uses —
+ * the same contract as `Specialty.icon`: a hint the client resolves itself.
+ */
+const PLAN_ACCENTS: Record<string, { theme: string; iconBg: string; btn: string }> = {
+  blue: {
+    theme: 'from-blue-50/50 to-white border-blue-100',
+    iconBg: 'bg-blue-100 text-blue-600',
+    btn: 'bg-blue-50 text-blue-600 hover:bg-blue-100',
+  },
+  emerald: {
+    theme: 'from-emerald-50/50 to-white border-emerald-200 ring-2 ring-emerald-500/20',
+    iconBg: 'bg-emerald-100 text-emerald-600',
+    btn: 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-md shadow-emerald-500/20',
+  },
+  purple: {
+    theme: 'from-purple-50/50 to-white border-purple-100',
+    iconBg: 'bg-purple-100 text-purple-600',
+    btn: 'bg-purple-50 text-purple-600 hover:bg-purple-100',
+  },
+  amber: {
+    theme: 'from-amber-50/50 to-white border-amber-100',
+    iconBg: 'bg-amber-100 text-amber-600',
+    btn: 'bg-amber-50 text-amber-600 hover:bg-amber-100',
+  },
+  rose: {
+    theme: 'from-rose-50/50 to-white border-rose-100',
+    iconBg: 'bg-rose-100 text-rose-600',
+    btn: 'bg-rose-50 text-rose-600 hover:bg-rose-100',
+  },
+};
+
+const PLAN_ICONS: Record<string, React.ElementType> = {
+  activity: Activity,
+  star: Star,
+  home: HomeIcon,
+  shield: CheckCircle2,
+  heart: Activity,
+};
 
 function RootLandingContent() {
   const { category: activeSpecialty } = useFilters();
-  const { paginatedDoctors: filteredDoctors } = useDoctors({ limit: 4 });
+  // The main app home is the DIRECT storefront — سند is its own world at /sanad.
+  const { paginatedDoctors: filteredDoctors } = useDoctors({ limit: 4, channel: 'DIRECT' });
+  const { storefront } = useStorefront('DIRECT');
   const { drawerOpen, setDrawerOpen, selectedDoctor, openBooking } = useBookingDrawer();
 
   return (
@@ -58,20 +103,28 @@ function RootLandingContent() {
         {/* Ads Carousel */}
         <section>
           <div className="flex gap-4 overflow-x-auto hide-scrollbar snap-x pb-2">
-            {[1, 2, 3].map((item) => (
-              <div 
-                key={item} 
-                className="min-w-[85vw] sm:min-w-[300px] h-40 rounded-[2rem] p-6 text-white flex justify-start items-center shadow-md snap-center relative overflow-hidden group"
-              >
-                <Image src="/ads/real_clinic_banner.png" alt="إعلان" fill className="object-cover group-hover:scale-105 transition-transform duration-500" />
-                <div className="absolute inset-0 bg-gradient-to-l from-emerald-900/80 via-emerald-800/60 to-transparent" />
-                
-                <div className="relative z-10 flex flex-col justify-center max-w-[80%]">
-                  <h3 className="font-extrabold text-2xl mb-1.5 leading-tight drop-shadow-md">إعلانات وتخفيضات</h3>
-                  <p className="text-sm text-white/90 leading-relaxed font-medium drop-shadow">تعرف على أحدث العروض والخدمات في مجمعاتنا</p>
-                </div>
-              </div>
-            ))}
+            {storefront.banners.map((banner) => {
+              const card = (
+                <>
+                  <Image src={banner.imageUrl} alt={banner.title} fill className="object-cover group-hover:scale-105 transition-transform duration-500" />
+                  <div className="absolute inset-0 bg-gradient-to-l from-emerald-900/80 via-emerald-800/60 to-transparent" />
+
+                  <div className="relative z-10 flex flex-col justify-center max-w-[80%]">
+                    <h3 className="font-extrabold text-2xl mb-1.5 leading-tight drop-shadow-md">{banner.title}</h3>
+                    {banner.subtitle && (
+                      <p className="text-sm text-white/90 leading-relaxed font-medium drop-shadow">{banner.subtitle}</p>
+                    )}
+                  </div>
+                </>
+              );
+              const className = "min-w-[85vw] sm:min-w-[300px] h-40 rounded-[2rem] p-6 text-white flex justify-start items-center shadow-md snap-center relative overflow-hidden group";
+              // A banner with no href stays a plain image rather than a dead link.
+              return banner.href ? (
+                <Link key={banner.id} href={banner.href} className={className}>{card}</Link>
+              ) : (
+                <div key={banner.id} className={className}>{card}</div>
+              );
+            })}
           </div>
         </section>
 
@@ -125,52 +178,15 @@ function RootLandingContent() {
             <span className="text-xs text-primary font-medium cursor-pointer">عرض الكل</span>
           </div>
           <div className="flex gap-4 overflow-x-auto hide-scrollbar snap-x pb-4">
-            {[
-              {
-                id: 1,
-                name: 'الأساسية',
-                description: 'رعاية صحية أولية للأفراد',
-                price: '15,000',
-                icon: <Activity className="w-6 h-6" />,
-                theme: 'from-blue-50/50 to-white border-blue-100',
-                iconBg: 'bg-blue-100 text-blue-600',
-                popular: false,
-                features: ['كشفية مجانية شهرياً', 'خصم 10% على التحاليل'],
-                btnColor: 'bg-blue-50 text-blue-600 hover:bg-blue-100'
-              },
-              {
-                id: 2,
-                name: 'الشاملة',
-                description: 'تغطية متكاملة لجميع احتياجاتك',
-                price: '25,000',
-                icon: <Star className="w-6 h-6" />,
-                theme: 'from-emerald-50/50 to-white border-emerald-200 ring-2 ring-emerald-500/20',
-                iconBg: 'bg-emerald-100 text-emerald-600',
-                popular: true,
-                features: ['3 كشفيات مجانية', 'خصم 25% على التحاليل', 'استشارة هاتفية 24/7'],
-                btnColor: 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-md shadow-emerald-500/20'
-              },
-              {
-                id: 3,
-                name: 'العائلة',
-                description: 'رعاية صحية لك ولعائلتك',
-                price: '45,000',
-                icon: <HomeIcon className="w-6 h-6" />,
-                theme: 'from-purple-50/50 to-white border-purple-100',
-                iconBg: 'bg-purple-100 text-purple-600',
-                popular: false,
-                features: ['تغطية لـ 4 أفراد', 'خصم 30% على التحاليل', 'طبيب العائلة المنزلي'],
-                btnColor: 'bg-purple-50 text-purple-600 hover:bg-purple-100'
-              }
-            ].map((pkg) => (
-              <div key={pkg.id} className={`min-w-[280px] bg-gradient-to-b ${pkg.theme} rounded-[2rem] p-5 shadow-sm border snap-center relative transition-colors`}>
-                {pkg.popular && (
+            {storefront.plans.map((pkg) => (
+              <div key={pkg.id} className={`min-w-[280px] bg-gradient-to-b ${(PLAN_ACCENTS[pkg.accent] ?? PLAN_ACCENTS.blue).theme} rounded-[2rem] p-5 shadow-sm border snap-center relative transition-colors`}>
+                {pkg.isPopular && (
                   <div className="absolute top-0 left-5 -translate-y-1/2 bg-emerald-500 text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-sm">
                     الأكثر طلباً
                   </div>
                 )}
-                <div className={`w-12 h-12 ${pkg.iconBg} rounded-2xl flex items-center justify-center mb-4`}>
-                  {pkg.icon}
+                <div className={`w-12 h-12 ${(PLAN_ACCENTS[pkg.accent] ?? PLAN_ACCENTS.blue).iconBg} rounded-2xl flex items-center justify-center mb-4`}>
+                  {(() => { const Icon = PLAN_ICONS[pkg.icon] ?? Activity; return <Icon className="w-6 h-6" />; })()}
                 </div>
                 <h4 className="font-extrabold text-gray-800 text-lg mb-1">{pkg.name}</h4>
                 <p className="text-xs text-gray-500 mb-4">{pkg.description}</p>
@@ -185,8 +201,8 @@ function RootLandingContent() {
                 </div>
 
                 <div className="flex items-center justify-between mt-auto pt-4 border-t border-gray-100/50">
-                  <span className="font-extrabold text-gray-900 text-xl">{pkg.price} <span className="text-[10px] text-gray-400 font-normal">د.ع / شهر</span></span>
-                  <button className={`text-xs font-bold px-5 py-2.5 rounded-xl transition-colors ${pkg.btnColor}`}>
+                  <span className="font-extrabold text-gray-900 text-xl">{formatNumber(pkg.monthlyPrice)} <span className="text-[10px] text-gray-400 font-normal">د.ع / شهر</span></span>
+                  <button className={`text-xs font-bold px-5 py-2.5 rounded-xl transition-colors ${(PLAN_ACCENTS[pkg.accent] ?? PLAN_ACCENTS.blue).btn}`}>
                     اشتراك
                   </button>
                 </div>
@@ -198,7 +214,7 @@ function RootLandingContent() {
         {/* Specialties Filter */}
         <section className="-mx-4 mb-2">
           <CategoryFilters
-            categories={SPECIALIZATIONS}
+            categories={storefront.specialties.map((s) => ({ id: s.slug, name: s.name }))}
             allLabel="جميع التخصصات"
           />
         </section>

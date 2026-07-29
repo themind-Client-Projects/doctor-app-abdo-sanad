@@ -1,6 +1,13 @@
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { withPublic } from "@/lib/api-auth";
 import { ok } from "@/lib/api-response";
+import { parseQuery } from "@/lib/validation";
+
+const querySchema = z.object({
+  /** Which storefront is asking: / is DIRECT, /sanad is SANAD. */
+  channel: z.enum(["DIRECT", "SANAD", "COMPLEX"]).default("DIRECT"),
+});
 
 /**
  * GET /api/public/storefront — everything the patient home screen renders
@@ -18,7 +25,12 @@ import { ok } from "@/lib/api-response";
 
 export const GET = withPublic(async (req) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
+  const { channel } = parseQuery(req.nextUrl.searchParams, querySchema);
   const now = new Date();
+
+  // A NULL channel means "every storefront", so each query matches its own
+  // channel OR the unscoped rows — not one or the other.
+  const inChannel = { OR: [{ channel }, { channel: null }] };
 
   const [banners, plans, offers, specialties] = await Promise.all([
     prisma.banner.findMany({
@@ -26,6 +38,7 @@ export const GET = withPublic(async (req) => {
         isActive: true,
         // A flight window is optional on both sides: null means "no bound".
         AND: [
+          inChannel,
           { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
           { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
         ],
@@ -52,7 +65,7 @@ export const GET = withPublic(async (req) => {
     // Offers are `Campaign` rows that are live right now — the model already
     // carries the discount, the window and the targeted services.
     prisma.campaign.findMany({
-      where: { isActive: true, startDate: { lte: now }, endDate: { gte: now } },
+      where: { isActive: true, startDate: { lte: now }, endDate: { gte: now }, ...inChannel },
       orderBy: { endDate: "asc" },
       take: 20,
       select: {

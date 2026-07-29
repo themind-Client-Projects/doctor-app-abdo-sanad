@@ -276,6 +276,7 @@ model User {
   employeeStatus EmployeeStatus?
   notifications  Notification[]
   activityLogs   ActivityLog[]
+  patientWallet  PatientWallet?
   callsMade      CallLog[]         @relation("Caller")
   callsReceived  CallLog[]         @relation("Receiver")
   feedbacks      PatientFeedback[]
@@ -527,20 +528,21 @@ model Order {
   updatedAt            DateTime      @updatedAt
   deletedAt            DateTime?
 
-  governorate       Governorate?       @relation(fields: [governorateId], references: [id])
-  assignedNurse     Partner?           @relation("AssignedNurse", fields: [assignedNurseId], references: [id])
-  assignedDriver    Partner?           @relation("AssignedDriver", fields: [assignedDriverId], references: [id])
-  assignedLab       Partner?           @relation("AssignedLab", fields: [assignedLabId], references: [id])
-  assignedPharmacy  Partner?           @relation("AssignedPharmacy", fields: [assignedPharmacyId], references: [id])
-  assignedRadiology Partner?           @relation("AssignedRadiology", fields: [assignedRadiologyId], references: [id])
-  timeline          OrderTimeline[]
-  transactions      Transaction[]
-  callLogs          CallLog[]
-  labSamples        LabSample[]
-  radiologyRequests RadiologyRequest[]
-  prescriptions     Prescription[]     @relation("OrderPrescriptions")
-  feedbacks         PatientFeedback[]
-  orderSettlement   OrderSettlement?
+  governorate         Governorate?         @relation(fields: [governorateId], references: [id])
+  assignedNurse       Partner?             @relation("AssignedNurse", fields: [assignedNurseId], references: [id])
+  assignedDriver      Partner?             @relation("AssignedDriver", fields: [assignedDriverId], references: [id])
+  assignedLab         Partner?             @relation("AssignedLab", fields: [assignedLabId], references: [id])
+  assignedPharmacy    Partner?             @relation("AssignedPharmacy", fields: [assignedPharmacyId], references: [id])
+  assignedRadiology   Partner?             @relation("AssignedRadiology", fields: [assignedRadiologyId], references: [id])
+  timeline            OrderTimeline[]
+  transactions        Transaction[]
+  callLogs            CallLog[]
+  labSamples          LabSample[]
+  radiologyRequests   RadiologyRequest[]
+  prescriptions       Prescription[]       @relation("OrderPrescriptions")
+  feedbacks           PatientFeedback[]
+  patientTransactions PatientTransaction[]
+  orderSettlement     OrderSettlement?
 
   @@index([status, createdAt(sort: Desc)])
   @@index([createdAt(sort: Desc)])
@@ -1199,4 +1201,52 @@ model PartnerChannel {
 
   @@unique([partnerId, channel])
   @@index([channel, status])
+}
+
+/// #42 — The patient's own prepaid balance (محفظتي).
+///
+/// Deliberately NOT the same table as `Wallet`, which is keyed `partnerId
+/// @unique` and is a provider EARNINGS ledger written by `settleOrder`. The two
+/// have opposite lifecycles: a partner wallet is credited when an order settles,
+/// a patient wallet is debited when one is paid for. Sharing a table would put
+/// patient top-ups inside the settlement path and make "sum of transactions ==
+/// balance" mean two different things at once.
+///
+/// The patient header already displays a balance ("150,000 د.ع") and /wallet
+/// already lists five transactions — both entirely invented, because nothing
+/// behind them existed.
+model PatientWallet {
+  id      String  @id @default(cuid())
+  userId  String  @unique
+  balance Decimal @default(0) @db.Decimal(18, 3)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions PatientTransaction[]
+}
+
+/// #43 — Every movement on a patient wallet. The balance is their sum.
+model PatientTransaction {
+  id       String  @id @default(cuid())
+  walletId String
+  orderId  String?
+
+  amount Decimal @db.Decimal(18, 3)
+  /// "CREDIT" adds to the balance, "DEBIT" removes from it.
+  type   String
+  /// Why it moved: TOPUP | PAYMENT | REFUND | REWARD.
+  reason String  @default("PAYMENT")
+
+  description String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  wallet PatientWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  order  Order?        @relation(fields: [orderId], references: [id])
+
+  @@index([walletId, createdAt(sort: Desc)])
+  @@index([orderId])
 }
