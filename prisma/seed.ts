@@ -383,9 +383,9 @@ async function main() {
   // ═══════════════════════════════════════════════════════════
   // 17. بنك الدم — bloodType is BloodType enum, needs requestType
   // ═══════════════════════════════════════════════════════════
-  await prisma.bloodBankRequest.upsert({ where: { id: "seed-bb-68" }, update: {}, create: { id: "seed-bb-68", requestType: "طلب دم عاجل", bloodType: "A_POS", governorateId: govs["بغداد"].id, status: "new" } });
-  await prisma.bloodBankRequest.upsert({ where: { id: "seed-bb-851" }, update: {}, create: { id: "seed-bb-851", requestType: "تبرع بالدم", bloodType: "O_NEG", governorateId: govs["بغداد"].id, status: "matched", donorName: "سعد الجبوري", drawAppointment: new Date() } });
-  await prisma.bloodBankRequest.upsert({ where: { id: "seed-bb-162" }, update: {}, create: { id: "seed-bb-162", requestType: "طلب دم", bloodType: "B_POS", governorateId: govs["البصرة"].id, status: "completed", donorName: "كرار العبادي", drawAppointment: new Date(today.getTime() - 2 * 86400000) } });
+  await prisma.bloodBankRequest.upsert({ where: { id: "seed-bb-68" }, update: {}, create: { id: "seed-bb-68", requestType: "REQUESTER", fullName: "حيدر عباس كريم", phone: "07701234501", age: 34, gender: "ذكر", residence: "بغداد - الكرادة", landmark: "قرب جامع الرحمن", bloodType: "A_POS", governorateId: govs["بغداد"].id, status: "new", operationType: "عملية قلب مفتوح", bagsNeeded: 3, operationPlace: "مستشفى ابن البيطار" } });
+  await prisma.bloodBankRequest.upsert({ where: { id: "seed-bb-851" }, update: {}, create: { id: "seed-bb-851", requestType: "DONOR", fullName: "سعد الجبوري محمد", phone: "07701234502", age: 28, gender: "ذكر", residence: "بغداد - الأعظمية", landmark: "قرب ساحة عنتر", bloodType: "O_NEG", governorateId: govs["بغداد"].id, status: "matched", lastDonation: new Date(today.getTime() - 120 * 86400000), donorName: "سعد الجبوري", drawAppointment: new Date() } });
+  await prisma.bloodBankRequest.upsert({ where: { id: "seed-bb-162" }, update: {}, create: { id: "seed-bb-162", requestType: "REQUESTER", fullName: "زينب علي حسن", phone: "07701234503", age: 41, gender: "أنثى", residence: "البصرة - المعقل", landmark: "قرب مستشفى الموانئ", bloodType: "B_POS", governorateId: govs["البصرة"].id, status: "fulfilled", operationType: "ولادة قيصرية", bagsNeeded: 2, operationPlace: "مستشفى البصرة التعليمي", donorName: "كرار العبادي", drawAppointment: new Date(today.getTime() - 2 * 86400000) } });
   console.log("✅ 3 طلبات بنك دم");
 
   // ═══════════════════════════════════════════════════════════

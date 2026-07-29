@@ -874,24 +874,62 @@ model CallLog {
 }
 
 // #31 — Blood bank management (req L433-443, 8 fields)
+/// #32 — مصرف الدم. The full intake form, per the client's field list.
+///
+/// The model previously held only bloodType/governorate/status: nine of the
+/// twelve fields on the form had nowhere to go, so a request could not identify
+/// who made it or what they needed. Everything below is what the app employee
+/// receives and acts on.
 model BloodBankRequest {
-  id              String    @id @default(cuid())
-  requestType     String // الطلبات الجديدة
-  bloodType       BloodType // زمرة الدم
-  governorateId   String? // المحافظة
-  status          String    @default("new") // الحالة
-  donorId         String? // المتبرع المقبول (user ID)
+  id String @id @default(cuid())
+
+  /// "REQUESTER" (طالب دم) or "DONOR" (متبرع دم) — the toggle at the top of
+  /// the form, which decides whether the operation fields below apply.
+  requestType String
+  /// Who submitted it, when they are a signed-in user.
+  userId      String?
+
+  // ── Identity (الاستمارة) ──────────────────────────────────────────────────
+  fullName  String // الاسم الثلاثي
+  photoUrl  String? // صورة المستخدم
+  age       Int? // العمر
+  gender    String? // الجنس
+  phone     String // رقم الهاتف
+  residence String? // السكن
+  /// أقرب نقطة دالة — a landmark, because Iraqi addresses are given by one.
+  landmark  String?
+
+  bloodType     BloodType // فصيلة الدم
+  governorateId String? // المحافظة
+  /// آخر تبرع — drives donor eligibility, which is why it is a date not a note.
+  lastDonation  DateTime?
+
+  // ── Only when requestType is REQUESTER ───────────────────────────────────
+  operationType  String? // نوع العملية
+  bagsNeeded     Int? // عدد أكياس الدم
+  operationPlace String? // مكان العملية
+
+  // ── Workflow (موظف التطبيق) ──────────────────────────────────────────────
+  /// new → broadcast (أُرسلت للمتبرعين) → matched → fulfilled → cancelled
+  status          String    @default("new")
+  /// Set when the employee pushes the case to donors inside the app.
+  broadcastAt     DateTime?
+  donorId         String?
   donorName       String?
-  drawAppointment DateTime? // موعد السحب
-  testStatus      String? // حالة التحاليل
-  deliveryStatus  String? // حالة التسليم
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  drawAppointment DateTime?
+  testStatus      String?
+  deliveryStatus  String?
+  notes           String?   @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   governorate Governorate? @relation(fields: [governorateId], references: [id])
 
   @@index([status, createdAt(sort: Desc)])
   @@index([bloodType, governorateId])
+  @@index([requestType, status])
+  @@index([userId])
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1249,4 +1287,33 @@ model PatientTransaction {
 
   @@index([walletId, createdAt(sort: Desc)])
   @@index([orderId])
+}
+
+/// #44 — Admin-controlled switches for options the client wants to hold back
+/// until they are ready ("يكون معلق تفعيله من الادمن فقط").
+///
+/// A typed row per switch rather than a generic key/value bag: every one of
+/// these gates real money or a real workflow, and `value Json` would mean the
+/// difference between `true`, `"true"` and `{enabled:true}` is discovered in
+/// production. `numericValue` carries the one parameter some of them need —
+/// the taxi nursing add-on has a preset price, not just an on/off.
+///
+/// Keys are seeded, never created from the UI: a flag the code does not read is
+/// a switch that silently does nothing.
+model FeatureFlag {
+  /// Stable machine key the code branches on, e.g. "booking.electronic".
+  key         String  @id
+  label       String
+  description String?
+  /// Groups the admin screen, e.g. "booking" | "taxi" | "sanad".
+  group       String  @default("general")
+
+  isEnabled Boolean @default(false)
+
+  /// Optional parameter — money, so Decimal. Null when the flag is a pure toggle.
+  numericValue Decimal? @db.Decimal(18, 3)
+
+  updatedAt DateTime @updatedAt
+
+  @@index([group])
 }

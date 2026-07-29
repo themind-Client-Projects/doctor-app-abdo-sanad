@@ -30,20 +30,44 @@ const drawAppointment = z
 // and an unknown blood group crashed as a 500 instead of a 400.
 const createBloodBankRequestSchema = z
   .object({
-    requestType: z
-      .string({ message: "نوع الطلب مطلوب" })
-      .trim()
-      .min(1, { message: "نوع الطلب مطلوب" }),
+    /** The toggle at the top of the form: طالب دم or متبرع دم. */
+    requestType: z.enum(["REQUESTER", "DONOR"], { message: "نوع الطلب مطلوب" }),
+    userId: nonEmpty.optional(),
+
+    // ── Identity ────────────────────────────────────────────────────────────
+    fullName: z.string().trim().min(3, { message: "الاسم الثلاثي مطلوب" }).max(120),
+    phone: z.string().trim().min(6, { message: "رقم الهاتف مطلوب" }).max(32),
+    photoUrl: z.string().trim().max(500).optional(),
+    age: z.number().int().min(1).max(120).optional(),
+    gender: z.string().trim().max(16).optional(),
+    residence: z.string().trim().max(240).optional(),
+    landmark: z.string().trim().max(160).optional(),
     bloodType,
     governorateId: nonEmpty.optional(),
+    lastDonation: drawAppointment.optional(),
+
+    // ── REQUESTER only ──────────────────────────────────────────────────────
+    operationType: z.string().trim().max(160).optional(),
+    bagsNeeded: z.number().int().min(1).max(50).optional(),
+    operationPlace: z.string().trim().max(240).optional(),
+
+    // ── Workflow — set by the employee, not by the form ─────────────────────
     status: nonEmpty.default("new"),
     donorId: nonEmpty.optional(),
     donorName: z.string().optional(),
     drawAppointment: drawAppointment.optional(),
     testStatus: z.string().optional(),
     deliveryStatus: z.string().optional(),
+    notes: z.string().trim().max(1000).optional(),
   })
-  .strict();
+  .strict()
+  // A blood REQUEST without an operation, a bag count and a place is not
+  // actionable — the employee cannot match donors against it. A DONOR
+  // registration carries none of those, which is why this is conditional.
+  .refine((v) => v.requestType !== "REQUESTER" || Boolean(v.operationType && v.bagsNeeded && v.operationPlace), {
+    message: "نوع العملية وعدد الأكياس ومكان العملية مطلوبة لطلب الدم",
+    path: ["operationType"],
+  });
 
 // GET /api/blood-bank — Blood bank requests (req L433-443)
 //
@@ -73,6 +97,19 @@ export const POST = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
   const data = await prisma.bloodBankRequest.create({
     data: {
       requestType: input.requestType,
+      userId: input.userId ?? null,
+      fullName: input.fullName,
+      phone: input.phone,
+      photoUrl: input.photoUrl ?? null,
+      age: input.age ?? null,
+      gender: input.gender ?? null,
+      residence: input.residence ?? null,
+      landmark: input.landmark ?? null,
+      lastDonation: input.lastDonation ?? null,
+      operationType: input.operationType ?? null,
+      bagsNeeded: input.bagsNeeded ?? null,
+      operationPlace: input.operationPlace ?? null,
+      notes: input.notes ?? null,
       bloodType: input.bloodType,
       governorateId: input.governorateId ?? null,
       status: input.status,
