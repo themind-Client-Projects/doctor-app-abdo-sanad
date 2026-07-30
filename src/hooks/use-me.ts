@@ -22,6 +22,8 @@ export type Me = {
     role: string;
   } | null;
   wallet: { balance: number } | null;
+  /** Counts behind the /profile tiles. Absent for a visitor. */
+  stats: { completedOrders: number; prescriptions: number; labReports: number } | null;
 };
 
 export function useMe() {
@@ -30,6 +32,7 @@ export function useMe() {
   return {
     user: data?.user ?? null,
     balance: data?.wallet?.balance ?? null,
+    stats: data?.stats ?? null,
     /** True once we know one way or the other — the header must not flash a
      *  wallet chip at a visitor while the answer is still in flight. */
     isSignedIn: Boolean(data?.user),

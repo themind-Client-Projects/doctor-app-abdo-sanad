@@ -18,7 +18,7 @@ export const GET = withMaybeAuth(async (req, _ctx, identity) => {
 
   if (!identity) return ok({ user: null, wallet: null }, { requestId });
 
-  const [user, wallet] = await Promise.all([
+  const [user, wallet, completedOrders, prescriptions, labReports] = await Promise.all([
     prisma.user.findUnique({
       where: { id: identity.userId },
       select: { id: true, name: true, phone: true, email: true, image: true, role: true },
@@ -29,7 +29,24 @@ export const GET = withMaybeAuth(async (req, _ctx, identity) => {
       where: { userId: identity.userId },
       select: { balance: true },
     }),
+    // The three tiles on /profile were the literals 12 / 3 / 8 for every
+    // account. Counted rather than stored: a stored total drifts the moment an
+    // order is cancelled or a record is deleted.
+    prisma.order.count({ where: { patientId: identity.userId, status: "COMPLETED" } }),
+    prisma.prescription.count({ where: { patientId: identity.userId } }),
+    // `LabSample` has no patientId — it reaches the patient through its order,
+    // so the count has to traverse the relation rather than assume a column.
+    prisma.labSample.count({
+      where: { deletedAt: null, order: { patientId: identity.userId } },
+    }),
   ]);
 
-  return ok({ user, wallet: { balance: wallet?.balance ?? 0 } }, { requestId });
+  return ok(
+    {
+      user,
+      wallet: { balance: wallet?.balance ?? 0 },
+      stats: { completedOrders, prescriptions, labReports },
+    },
+    { requestId }
+  );
 });
