@@ -96,7 +96,7 @@ export default function ProfilePage() {
               // A visitor got an "تعديل الحساب" button for an account they do
               // not have; the useful action is signing in.
               <Link
-                href="/login"
+                href="/signin"
                 className="w-full bg-primary text-primary-foreground py-3 rounded-xl text-sm font-bold shadow-sm hover:bg-primary/90 transition-colors active:scale-[0.98] text-center"
               >
                 تسجيل الدخول
