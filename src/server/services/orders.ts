@@ -1,5 +1,5 @@
 import { Prisma, type OrderStatus } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
+import { prisma, TX_OPTIONS } from "@/lib/prisma";
 import { quoteService, redeemCoupon } from "./pricing";
 import { settleOrder } from "./commission";
 
@@ -136,7 +136,7 @@ export async function advanceOrder(params: {
       data: { status: nextStatus },
       include: { timeline: { orderBy: { step: "asc" } } },
     });
-  });
+  }, TX_OPTIONS);
 }
 
 /**
@@ -245,7 +245,7 @@ export async function priceOrder(params: {
     }
 
     return row;
-  });
+  }, TX_OPTIONS);
 
   return { order: updated, quote };
 }

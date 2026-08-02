@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
+import { prisma, TX_OPTIONS } from "@/lib/prisma";
 
 /**
  * The patient wallet — a prepaid balance the patient spends, distinct from
@@ -86,7 +86,7 @@ export async function creditWallet(params: {
       where: { id: wallet.id },
       data: { balance: { increment: amount } },
     });
-  });
+  }, TX_OPTIONS);
 }
 
 /**
@@ -133,7 +133,7 @@ export async function debitWallet(params: {
     });
 
     return tx.patientWallet.findUniqueOrThrow({ where: { id: wallet.id } });
-  });
+  }, TX_OPTIONS);
 }
 
 /**

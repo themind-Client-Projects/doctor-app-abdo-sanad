@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
 import { Prisma, type UserRole } from "@prisma/client";
-import { prisma } from "./prisma";
+import { prisma, TX_OPTIONS } from "./prisma";
 
 /**
  * Bearer-token auth for the mobile client.
@@ -239,7 +239,7 @@ export async function rotateRefreshToken(
         existing.familyId,
         tx
       );
-    });
+    }, TX_OPTIONS);
 
     return { ok: true, tokens };
   } catch (error) {
