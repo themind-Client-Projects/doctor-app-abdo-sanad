@@ -6,6 +6,8 @@ import Image from 'next/image';
 import { Car, MapPin, ChevronRight, Check, CheckCircle2, Wallet, Navigation, Bus, ChevronDown } from 'lucide-react';
 import { FlexibleHeader } from '@/components/shared/flexible-header';
 import { useAuthGuard } from '@/hooks/use-auth-guard';
+import { useFeatureFlags } from '@/hooks/use-feature-flags';
+import { formatNumber } from '@/lib/format';
 import {
   Drawer,
   DrawerClose,
@@ -66,6 +68,13 @@ export default function TaxiServicePage() {
 
   // Booking State
   const [selectedPackage, setSelectedPackage] = useState<typeof TAXI_PACKAGES[0] | null>(null);
+  // "زر تفعيل الخدمة التمريضية ضمن اجرائات تحديد نوع الرحلة" — part of choosing
+  // the trip, not a separate flow, and only offered while the admin has it on.
+  const [withNurse, setWithNurse] = useState(false);
+  const { isEnabled, valueOf } = useFeatureFlags();
+  const nurseEnabled = isEnabled('taxi.nursing_addon');
+  // The admin sets the price; the client never invents one.
+  const nursePrice = valueOf('taxi.nursing_addon') ?? 0;
   const [paymentDrawerOpen, setPaymentDrawerOpen] = useState(false);
   const [bookingConfirmed, setBookingConfirmed] = useState(false);
 
@@ -79,6 +88,10 @@ export default function TaxiServicePage() {
   };
 
   const { ensureSignedIn } = useAuthGuard();
+
+  // Total = fare + the add-on when it is both switched on AND chosen. Derived,
+  // never stored, so switching the flag off cannot leave a charge behind.
+  const total = (selectedPackage?.priceNum ?? 0) + (nurseEnabled && withNurse ? nursePrice : 0);
 
   const handleSelectPackage = (pkg: typeof TAXI_PACKAGES[0]) => {
     // The next screen takes payment, so the gate belongs here — not after
@@ -269,6 +282,37 @@ export default function TaxiServicePage() {
             <p className="text-sm text-gray-500 mb-6">لقد حددنا لك أفضل الخيارات بناءً على وجهتك</p>
 
             <div className="space-y-4">
+              {nurseEnabled ? (
+                <button
+                  type="button"
+                  onClick={() => setWithNurse((v) => !v)}
+                  aria-pressed={withNurse}
+                  className={`w-full mb-4 flex items-center justify-between gap-3 rounded-2xl border p-4 text-right transition-colors ${
+                    withNurse
+                      ? 'border-primary bg-primary/5'
+                      : 'border-gray-200 bg-white hover:border-gray-300'
+                  }`}
+                >
+                  <span className="min-w-0">
+                    <span className="block font-extrabold text-gray-800">مرافقة ممرض</span>
+                    <span className="block text-xs text-gray-500 mt-0.5">
+                      ممرض مختص يرافقك خلال الرحلة — {formatNumber(nursePrice)} د.ع تُضاف إلى الأجرة
+                    </span>
+                  </span>
+                  <span
+                    className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
+                      withNurse ? 'bg-primary' : 'bg-gray-200'
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-[inset-inline-start] ${
+                        withNurse ? 'start-6' : 'start-1'
+                      }`}
+                    />
+                  </span>
+                </button>
+              ) : null}
+
               {TAXI_PACKAGES.map((pkg) => (
                 <div key={pkg.id} className={`bg-gradient-to-b ${pkg.theme} rounded-3xl p-5 shadow-sm border relative transition-colors`}>
                   {pkg.popular && (
@@ -348,9 +392,15 @@ export default function TaxiServicePage() {
                       <span className="text-sm text-gray-500">إلى</span>
                       <span className="font-bold text-gray-800 text-left line-clamp-1">{destination}</span>
                     </div>
+                    {nurseEnabled && withNurse ? (
+                      <div className="flex justify-between items-center pt-3">
+                        <span className="text-sm text-gray-500">مرافقة ممرض</span>
+                        <span className="font-bold text-gray-800">+{formatNumber(nursePrice)} د.ع</span>
+                      </div>
+                    ) : null}
                     <div className="flex justify-between items-center pt-3">
                       <span className="text-gray-500 font-bold">الإجمالي</span>
-                      <span className="font-extrabold text-xl text-primary">{selectedPackage?.price} د.ع</span>
+                      <span className="font-extrabold text-xl text-primary">{formatNumber(total)} د.ع</span>
                     </div>
                   </div>
 
@@ -362,7 +412,7 @@ export default function TaxiServicePage() {
                       </div>
                     </div>
                     <p className="text-xs text-gray-500 text-right leading-relaxed">
-                      سيتم استقطاع مبلغ <span className="font-bold text-gray-800">{selectedPackage?.price} د.ع</span> من محفظة سند الخاصة بك.
+                      سيتم استقطاع مبلغ <span className="font-bold text-gray-800">{formatNumber(total)} د.ع</span> من محفظتك.
                     </p>
                   </div>
                 </div>

@@ -27,6 +27,7 @@ import { CitySelectorDrawer } from '@/components/features/patient/city-selector-
 import { useDoctors } from '@/hooks/use-doctors';
 import { useBookingDrawer } from '@/hooks/use-booking-drawer';
 import { useStorefront, type Channel } from '@/hooks/use-storefront';
+import { useFeatureFlags } from '@/hooks/use-feature-flags';
 import { useDashboardData } from '@/hooks/use-dashboard-data';
 
 /** Cover images live in /public and are keyed by position — the DB stores no
@@ -41,12 +42,26 @@ const COMPLEX_COVERS = [
 type ComplexAd = { id: string; name: string; complex: { id: string; name: string } | null };
 
 export function DoctorsBrowse({ channel = 'DIRECT' }: { channel?: Channel }) {
-  const { paginatedDoctors, totalCount, itemsPerPage, isLoading } = useDoctors({ channel });
-  const { storefront } = useStorefront(channel);
+  // "زر تفعيل خدمات سند داخل اوبشن حجز الأطباء بالاعلى" — a switch at the top
+  // of the doctor list that moves it to the Sanad pool and its prices.
+  //
+  // Offered only OUTSIDE Sanad: on /sanad/doctors you are already there, and a
+  // toggle that turns on what is already on is noise.
+  const { isEnabled } = useFeatureFlags();
+  const canOfferSanad = isEnabled('sanad.in_doctor_booking') && channel === 'DIRECT';
+  const [sanadOn, setSanadOn] = useState(false);
+
+  // The switch changes the CHANNEL, so the pool and the quoted price move
+  // together — showing Sanad prices against non-Sanad doctors would advertise
+  // a discount those providers never agreed to.
+  const activeChannel: Channel = canOfferSanad && sanadOn ? 'SANAD' : channel;
+
+  const { paginatedDoctors, totalCount, itemsPerPage, isLoading } = useDoctors({ channel: activeChannel });
+  const { storefront } = useStorefront(activeChannel);
   // Real complexes, scoped to the same storefront the visitor is browsing.
   const { data: complexAds } = useDashboardData<ComplexAd[]>({
     url: '/api/public/partners',
-    params: { channel, complexesOnly: 'true', limit: '10' },
+    params: { channel: activeChannel, complexesOnly: 'true', limit: '10' },
   });
   const { drawerOpen, setDrawerOpen, selectedDoctor, openBooking } = useBookingDrawer();
   const { selectedCity } = useLocationStore();
@@ -73,6 +88,39 @@ export function DoctorsBrowse({ channel = 'DIRECT' }: { channel?: Channel }) {
       </div>
 
       <main className="mt-6 space-y-8">
+        {canOfferSanad ? (
+          <section className="px-4">
+            <button
+              type="button"
+              onClick={() => setSanadOn((v) => !v)}
+              aria-pressed={sanadOn}
+              className={`w-full flex items-center justify-between gap-3 rounded-2xl border p-4 text-right transition-colors ${
+                sanadOn ? 'border-primary bg-primary/5' : 'border-gray-200 bg-white hover:border-gray-300'
+              }`}
+            >
+              <span className="min-w-0">
+                <span className="block font-extrabold text-gray-800">أسعار سند</span>
+                <span className="block text-xs text-gray-500 mt-0.5">
+                  {sanadOn
+                    ? 'تعرض الآن أطباء سند بأسعارهم المخفّضة'
+                    : 'فعّل لعرض أطباء سند بخصومات تصل إلى 50%'}
+                </span>
+              </span>
+              <span
+                className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
+                  sanadOn ? 'bg-primary' : 'bg-gray-200'
+                }`}
+              >
+                <span
+                  className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-[inset-inline-start] ${
+                    sanadOn ? 'start-6' : 'start-1'
+                  }`}
+                />
+              </span>
+            </button>
+          </section>
+        ) : null}
+
         {/* Clinics Ads — hidden entirely when this storefront has no complexes,
             rather than leaving an empty titled strip. */}
         <section className={(complexAds ?? []).length === 0 ? 'hidden' : undefined}>

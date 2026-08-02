@@ -3,6 +3,7 @@
 import { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { Calendar as CalendarClock, Clock, Check, MapPin, Stethoscope, Wallet, ArrowRight, ShieldCheck, CreditCard } from 'lucide-react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter, DrawerClose } from '@/components/ui/drawer';
+import { useFeatureFlags } from '@/hooks/use-feature-flags';
 import { Button } from '@/components/ui/button';
 import { DEMO_AVAILABLE_DATES, DEMO_TIME_SLOTS } from '@/lib/constants/demo-data';
 import { LOCALE } from "@/lib/format";
@@ -26,6 +27,14 @@ export function DoctorBookingDrawer({ doctor, open, onOpenChange }: DoctorBookin
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [step, setStep] = useState<'select_time' | 'payment' | 'success'>('select_time');
+  // Both are admin-controlled and OFF until switched on.
+  //   الحجز الإلكتروني — the patient completes the booking in-app.
+  //   الاستقطاع الإلكتروني — the fee comes out of the wallet on confirm.
+  // Suspended, the drawer still takes the request but says an employee
+  // will call to confirm, which is what happens today anyway.
+  const { isEnabled } = useFeatureFlags();
+  const eBooking = isEnabled('booking.electronic_booking');
+  const eDeduction = isEnabled('booking.electronic_deduction');
   const [useWallet, setUseWallet] = useState(true);
 
   // Mock wallet balance for demo
@@ -308,6 +317,13 @@ export function DoctorBookingDrawer({ doctor, open, onOpenChange }: DoctorBookin
           {step !== 'success' && (
             <div className="shrink-0 bg-white border-t border-gray-100 p-4 z-20 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 8px) + 8px)' }}>
               <DrawerFooter className="p-0 flex flex-col gap-2">
+                {step === 'payment' && !eDeduction ? (
+                  <p className="text-xs text-gray-500 leading-relaxed text-center pb-1">
+                    {eBooking
+                      ? 'سيتم تأكيد حجزك مباشرة، والدفع عند الوصول.'
+                      : 'سيصلك اتصال من موظف التطبيق لتأكيد الموعد والدفع.'}
+                  </p>
+                ) : null}
                 {step === 'select_time' ? (
                   <Button
                     className="w-full rounded-xl py-5 font-bold text-base shadow-lg shadow-primary/20 transition-colors hover:shadow-primary/30 active:scale-[0.98]"
@@ -321,7 +337,14 @@ export function DoctorBookingDrawer({ doctor, open, onOpenChange }: DoctorBookin
                     className="w-full rounded-xl py-5 font-bold text-base shadow-lg shadow-primary/20 transition-colors hover:shadow-primary/30 active:scale-[0.98]"
                     onClick={confirmBooking}
                   >
-                    تأكيد الدفع من المحفظة
+                    {/* The label must describe what the button actually does.
+                        Promising a wallet deduction while the flag is off would
+                        be a lie the next screen contradicts. */}
+                    {eDeduction
+                      ? 'تأكيد والاستقطاع من المحفظة'
+                      : eBooking
+                        ? 'تأكيد الحجز'
+                        : 'إرسال طلب الحجز'}
                   </Button>
                 )}
                 <DrawerClose asChild>
