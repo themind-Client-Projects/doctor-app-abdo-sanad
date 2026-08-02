@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { canAccess, matchesRoute, roleHomePath, roleRoutes } from "@/lib/roles";
+import {
+  canAccess,
+  isPatientPrivate,
+  matchesRoute,
+  roleHomePath,
+  roleRoutes,
+} from "@/lib/roles";
 
 /**
  * Page-level access control.
@@ -12,26 +18,44 @@ import { canAccess, matchesRoute, roleHomePath, roleRoutes } from "@/lib/roles";
 export default auth((req) => {
   const { pathname } = req.nextUrl;
 
+  const user = req.auth?.user;
+  // Guard on a concrete identity rather than object existence. Auth.js can
+  // populate `req.auth` with an error object on a config failure, which makes
+  // a bare `if (!req.auth)` check fail open (GHSA-8fpg-xm3f-6cx3).
+  const signedIn = Boolean(user?.id && user.role);
+
+  // Already signed in and asking for a sign-in page: send them home rather than
+  // showing a form for a session they already hold.
+  if (pathname === "/signin" || pathname === "/login") {
+    if (!signedIn) return NextResponse.next();
+    return NextResponse.redirect(new URL(roleHomePath[user!.role!] ?? "/", req.url));
+  }
+
+  // Personal patient screens: any signed-in user, redirected to the PATIENT
+  // sign-in. Sending them to /login would offer a staff email+password form for
+  // an account that has neither — patients sign in by phone.
+  if (isPatientPrivate(pathname)) {
+    if (signedIn) return NextResponse.next();
+    const signinUrl = new URL("/signin", req.url);
+    signinUrl.searchParams.set("callbackUrl", pathname);
+    return NextResponse.redirect(signinUrl);
+  }
+
   const isProtected = Object.keys(roleRoutes).some((route) =>
     matchesRoute(pathname, route)
   );
   if (!isProtected) return NextResponse.next();
 
-  const user = req.auth?.user;
-
-  // Guard on a concrete identity rather than object existence. Auth.js can
-  // populate `req.auth` with an error object on a config failure, which makes
-  // a bare `if (!req.auth)` check fail open (GHSA-8fpg-xm3f-6cx3).
-  if (!user?.id || !user.role) {
+  if (!signedIn) {
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  if (!canAccess(user.role, pathname)) {
+  if (!canAccess(user!.role!, pathname)) {
     const url = new URL("/unauthorized", req.url);
     url.searchParams.set("from", pathname);
-    url.searchParams.set("home", roleHomePath[user.role] ?? "/");
+    url.searchParams.set("home", roleHomePath[user!.role!] ?? "/");
     return NextResponse.redirect(url);
   }
 
@@ -39,5 +63,19 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/admin/:path*", "/operations/:path*"],
+  matcher: [
+    // Staff areas.
+    "/dashboard/:path*",
+    "/admin/:path*",
+    "/operations/:path*",
+    // Personal patient screens. The browse pages are deliberately absent — the
+    // patient app is meant to be explored before signing up.
+    "/wallet/:path*",
+    "/bookings/:path*",
+    "/notifications/:path*",
+    "/profile/:path*",
+    // So an already-signed-in user is not shown a sign-in form.
+    "/signin",
+    "/login",
+  ],
 };

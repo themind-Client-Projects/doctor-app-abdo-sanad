@@ -5,6 +5,7 @@ import type { ChangeEvent, ClipboardEvent, FocusEvent, FormEvent, KeyboardEvent 
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { AlertCircle, ArrowRight, Loader2, Phone } from "lucide-react";
+import { resolveHomePath } from "@/lib/roles";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
 /**
@@ -35,7 +36,12 @@ export default function SignInPage() {
 
 function SignInFlow() {
   const router = useRouter();
-  const callbackUrl = useSearchParams().get("callbackUrl") ?? "/";
+  // NEVER pushed straight from the query string: `?callbackUrl=https://evil.com`
+  // would turn the sign-in page into an open redirect that borrows this app's
+  // credibility. `resolveHomePath` rejects absolute and protocol-relative URLs
+  // and falls back to the role's home.
+  const rawCallback = useSearchParams().get("callbackUrl");
+  const callbackUrl = resolveHomePath("PATIENT", rawCallback);
   const reduce = useReducedMotion();
 
   const [phone, setPhone] = useState("");

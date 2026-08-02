@@ -13,6 +13,26 @@ export const roleRoutes: Record<string, readonly UserRole[]> = {
 };
 
 /**
+ * Patient routes that hold PERSONAL data and therefore need a session — but no
+ * particular ROLE, since each one is scoped to whoever is signed in.
+ *
+ * Deliberately short. The rest of the patient app is browsable signed-out: the
+ * doctor directory, the storefronts, the offers and the specialty filters are
+ * all public, which is why `/api/public/*` and `withMaybeAuth` exist. Gating
+ * the browse pages would hide the catalogue from the people it is meant to
+ * attract.
+ *
+ * Kept OUT of `roleRoutes` on purpose: these are authentication-only, and
+ * putting them there would make `canAccess` demand a role list none of them has.
+ */
+export const patientPrivateRoutes = ["/wallet", "/bookings", "/notifications", "/profile"] as const;
+
+/** Does this path hold personal data that requires signing in? */
+export function isPatientPrivate(pathname: string): boolean {
+  return patientPrivateRoutes.some((route) => matchesRoute(pathname, route));
+}
+
+/**
  * Where each role belongs after signing in.
  *
  * Login previously pushed every role to /dashboard, so PATIENT (the default
