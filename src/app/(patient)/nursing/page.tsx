@@ -7,6 +7,7 @@ import { FlexibleHeader } from '@/components/shared/flexible-header';
 
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { HomecareReservationForm } from '@/components/forms/homecare-reservation-form';
+import { useAuthGuard } from '@/hooks/use-auth-guard';
 
 interface NursingCenterLocal {
   id: number;
@@ -24,9 +25,15 @@ export default function NursingPage() {
   const [selectedCenter, setSelectedCenter] = useState<NursingCenterLocal | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
+  const { ensureSignedIn } = useAuthGuard();
+
   const openReservation = (center: NursingCenterLocal) => {
-    setSelectedCenter(center);
-    setDrawerOpen(true);
+    // Gated before the form opens rather than at submit — a guest filling in
+    // an address and a date only to be bounced has done that work for nothing.
+    ensureSignedIn(() => {
+      setSelectedCenter(center);
+      setDrawerOpen(true);
+    });
   };
 
   const centers = [

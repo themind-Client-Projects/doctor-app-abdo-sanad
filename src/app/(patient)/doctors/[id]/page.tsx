@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 
 import { SPECIALIZATIONS } from '@/lib/constants/specializations';
+import { useAuthGuard } from '@/hooks/use-auth-guard';
 import { DEMO_DOCTORS, DEMO_TIME_SLOTS, DEMO_AVAILABLE_DATES, isDateAvailable } from '@/lib/constants/demo-data';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
@@ -68,13 +69,22 @@ export default function DoctorListingPage({ params }: { params: Promise<{ id: st
     setTimeout(() => setIsLoading(false), 300);
   };
 
+  const { ensureSignedIn } = useAuthGuard();
+
   // ── Handle booking flow ──
+  //
+  // This page keeps its OWN drawer state rather than going through
+  // `useBookingDrawer`, so gating the shared hook does not cover it — it needs
+  // the guard applied here too. That divergence is exactly why the audit went
+  // surface by surface instead of trusting one choke point.
   const openBooking = (doctor: Doctor) => {
-    setSelectedDoctor(doctor);
-    setSelectedDate(undefined);
-    setSelectedTime(null);
-    setBookingConfirmed(false);
-    setDrawerOpen(true);
+    ensureSignedIn(() => {
+      setSelectedDoctor(doctor);
+      setSelectedDate(undefined);
+      setSelectedTime(null);
+      setBookingConfirmed(false);
+      setDrawerOpen(true);
+    });
   };
 
   const confirmBooking = () => {

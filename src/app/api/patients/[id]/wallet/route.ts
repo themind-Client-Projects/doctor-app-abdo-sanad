@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
 import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { parseBody } from "@/lib/validation";
-import { InsufficientBalance, creditWallet, debitWallet, ensureWallet } from "@/server/services/patient-wallet";
+import { InsufficientBalance, creditWallet, debitWallet } from "@/server/services/patient-wallet";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -31,7 +31,14 @@ export const GET = withAuth<Ctx>({ roles: ROLES.OPERATIONS }, async (req, { para
   const patient = await prisma.user.findUnique({ where: { id }, select: { id: true, name: true } });
   if (!patient) return fail(ErrorCode.NOT_FOUND, 404, "المستخدم غير موجود", { requestId });
 
-  const wallet = await ensureWallet(id);
+  // Read-only for the same reason as the patient's own view: two admins
+  // opening the same patient at once must not race to create their wallet.
+  const wallet = await prisma.patientWallet.findUnique({
+    where: { userId: id },
+    select: { id: true, balance: true },
+  });
+  if (!wallet) return ok({ patient, balance: 0, transactions: [] }, { requestId });
+
   const transactions = await prisma.patientTransaction.findMany({
     where: { walletId: wallet.id },
     orderBy: { createdAt: "desc" },

@@ -5,6 +5,7 @@ import { Bell, CalendarCheck, Megaphone, Stethoscope, Clock, CheckCircle2 } from
 import { useDashboardData } from '@/hooks/use-dashboard-data';
 import { apiFetch, useMutation } from '@/hooks/use-mutation';
 import { formatRelative } from '@/lib/format';
+import { FlexibleHeader } from '@/components/shared/flexible-header';
 
 /**
  * الإشعارات — the signed-in user's real inbox.
@@ -74,14 +75,15 @@ export default function NotificationsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20 font-sans">
-      <div className="px-5 pt-2 pb-2 flex items-center justify-between">
-        <h1 className="text-xl font-extrabold text-gray-900">الإشعارات</h1>
-        {data && data.unread > 0 ? (
-          <span className="bg-primary/10 text-primary text-xs font-bold px-2.5 py-1 rounded-full">
-            {data.unread} جديد
-          </span>
-        ) : null}
-      </div>
+      {/* Was a bare <h1>: no back button, so the only way out was the bottom
+          bar — and none from a deep link. */}
+      <FlexibleHeader
+        title="الإشعارات"
+        subtitle={data && data.unread > 0 ? `${data.unread} إشعار جديد` : 'كل إشعاراتك'}
+        icon={<Bell className="w-6 h-6" />}
+        showBackButton
+        showWallet={false}
+      />
 
       <main className="p-4 space-y-3">
         {error ? (

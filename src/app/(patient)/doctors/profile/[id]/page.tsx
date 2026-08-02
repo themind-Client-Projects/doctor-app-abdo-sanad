@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { ArrowRight, Share2, Heart, Star, Plus, Check } from 'lucide-react';
 import { DEMO_DOCTORS } from '@/lib/constants/demo-data';
 import { DoctorBookingDrawer } from '@/components/shared/doctor-booking-drawer';
+import { useAuthGuard } from '@/hooks/use-auth-guard';
 
 // Mock Services specific for the UI
 const MOCK_SERVICES = [
@@ -23,6 +24,9 @@ export default function DoctorProfilePage({ params }: { params: Promise<{ id: st
   const [activeTab, setActiveTab] = useState<'services' | 'safety'>('services');
   const [selectedServices, setSelectedServices] = useState<number[]>([]);
   const [isBookingOpen, setIsBookingOpen] = useState(false);
+  // This page opens the booking drawer directly, so the shared hook's gate
+  // does not reach it.
+  const { ensureSignedIn } = useAuthGuard();
 
   // Find doctor
   const doctor = useMemo(() => {
@@ -135,7 +139,7 @@ export default function DoctorProfilePage({ params }: { params: Promise<{ id: st
               {/* Optional Checkout Action if items are selected */}
               {selectedServices.length > 0 && (
                 <button 
-                  onClick={() => setIsBookingOpen(true)}
+                  onClick={() => ensureSignedIn(() => setIsBookingOpen(true))}
                   className="w-full bg-[#10b981] text-white font-bold py-4 rounded-2xl shadow-lg shadow-[#10b981]/30 transition-transform active:scale-95 animate-in slide-in-from-bottom-2 fade-in"
                 >
                   تأكيد واختيار موعد ({selectedServices.length} خدمات)

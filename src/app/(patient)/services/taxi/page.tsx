@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Car, MapPin, ChevronRight, Check, CheckCircle2, Wallet, Navigation, Bus, ChevronDown } from 'lucide-react';
 import { FlexibleHeader } from '@/components/shared/flexible-header';
+import { useAuthGuard } from '@/hooks/use-auth-guard';
 import {
   Drawer,
   DrawerClose,
@@ -77,9 +78,15 @@ export default function TaxiServicePage() {
     }
   };
 
+  const { ensureSignedIn } = useAuthGuard();
+
   const handleSelectPackage = (pkg: typeof TAXI_PACKAGES[0]) => {
-    setSelectedPackage(pkg);
-    setPaymentDrawerOpen(true);
+    // The next screen takes payment, so the gate belongs here — not after
+    // someone has reviewed a fare they cannot actually pay.
+    ensureSignedIn(() => {
+      setSelectedPackage(pkg);
+      setPaymentDrawerOpen(true);
+    });
   };
 
   const confirmPayment = () => {

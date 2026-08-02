@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronRight, Droplet, Search, HeartHandshake, CheckCircle2, AlertCircle, Phone, MapPin } from 'lucide-react';
 import { FlexibleHeader } from '@/components/shared/flexible-header';
+import { useAuthGuard } from '@/hooks/use-auth-guard';
 
 type Role = 'none' | 'need' | 'donate';
 type BloodType = 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-';
@@ -34,8 +35,14 @@ export default function BloodBankPage() {
   const [donateBloodType, setDonateBloodType] = useState<BloodType>('O+');
   const [donateSuccess, setDonateSuccess] = useState(false);
 
+  const { ensureSignedIn } = useAuthGuard();
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
+    // Searching for donors creates a blood request that the app employee acts
+    // on and that donors are messaged about — it needs someone to attribute it
+    // to and a number to call back.
+    if (!ensureSignedIn()) return;
     // Simulate searching
     setTimeout(() => {
       // Filter mock donors based on selected blood type for demo purposes
@@ -47,6 +54,9 @@ export default function BloodBankPage() {
 
   const handleDonate = (e: React.FormEvent) => {
     e.preventDefault();
+    // Registering as a donor is a standing record about a person, so it needs
+    // an account behind it.
+    if (!ensureSignedIn()) return;
     // Simulate saving
     setTimeout(() => {
       setDonateSuccess(true);

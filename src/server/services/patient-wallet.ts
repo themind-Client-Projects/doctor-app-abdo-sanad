@@ -27,13 +27,29 @@ export class InsufficientBalance extends Error {
 
 export type WalletReason = "TOPUP" | "PAYMENT" | "REFUND" | "REWARD";
 
-/** Resolve the wallet, creating it on first use so an older account still works. */
+/**
+ * Resolve the wallet, creating it on first use so an older account still works.
+ *
+ * `upsert` is NOT atomic against a unique constraint: Prisma reads, then
+ * writes. Two requests arriving together both see "no wallet" and both insert,
+ * and the loser gets P2002 — which `withAuth` maps to a 409. That is exactly
+ * what the patient app produced, because React's dev double-invoke fires the
+ * wallet fetch twice at once.
+ *
+ * Catching P2002 and re-reading is the fix: whichever request lost the race
+ * still ends up with the row the winner created.
+ */
 export async function ensureWallet(userId: string, tx: Prisma.TransactionClient = prisma) {
-  return tx.patientWallet.upsert({
-    where: { userId },
-    update: {},
-    create: { userId },
-  });
+  const existing = await tx.patientWallet.findUnique({ where: { userId } });
+  if (existing) return existing;
+
+  try {
+    return await tx.patientWallet.create({ data: { userId } });
+  } catch (error) {
+    // P2002 = someone else created it between the read and the write.
+    if ((error as { code?: string })?.code !== "P2002") throw error;
+    return tx.patientWallet.findUniqueOrThrow({ where: { userId } });
+  }
 }
 
 /**

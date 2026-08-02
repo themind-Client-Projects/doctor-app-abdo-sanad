@@ -8,12 +8,18 @@ import { ChevronRight, ChevronDown, Search } from 'lucide-react';
 import { useLocationStore } from '@/stores/patient/location.store';
 import { CitySelectorDrawer } from '@/components/features/patient/city-selector-drawer';
 import { SurgeryBookingDrawer } from '@/components/features/patient/surgery-booking-drawer';
+import { useAuthGuard } from '@/hooks/use-auth-guard';
 import { Button } from '@/components/ui/button';
 
 export default function SurgeriesPage() {
   const router = useRouter();
   const { selectedCity, openCitySelector } = useLocationStore();
   const [isBookingOpen, setIsBookingOpen] = useState(false);
+  const { ensureSignedIn } = useAuthGuard();
+
+  // Both entry points route through here, so the rule cannot be applied to one
+  // button and forgotten on the other.
+  const openBooking = () => ensureSignedIn(() => setIsBookingOpen(true));
 
   const steps = [
     { num: 1, title: 'اختار المنطقة', desc: 'يمكنك اختيار الفرع الأقرب إليك' },
@@ -56,7 +62,7 @@ export default function SurgeriesPage() {
         
         {/* Top Promo Banner with Real Image */}
         <div 
-          onClick={() => setIsBookingOpen(true)}
+          onClick={openBooking}
           className="relative rounded-[2rem] overflow-hidden shadow-sm cursor-pointer active:scale-[0.98] transition-colors h-[170px] flex flex-col justify-center px-6 group border border-gray-100"
         >
           <Image 
@@ -105,7 +111,7 @@ export default function SurgeriesPage() {
 
         <div className="mt-8">
           <Button 
-            onClick={() => setIsBookingOpen(true)} 
+            onClick={openBooking} 
             className="w-full bg-primary hover:bg-primary/90 text-white rounded-2xl py-7 text-lg font-extrabold shadow-lg shadow-primary/25 active:scale-[0.98] transition-colors"
           >
             ابدأ حجز عمليتك الآن

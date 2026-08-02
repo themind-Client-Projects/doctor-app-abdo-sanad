@@ -86,7 +86,12 @@ export function resolveHomePath(
   if (!callbackUrl) return home;
   // Reject protocol-relative and absolute URLs — open-redirect guard.
   if (!callbackUrl.startsWith("/") || callbackUrl.startsWith("//")) return home;
-  if (role && !canAccess(role, callbackUrl)) return home;
+
+  // Authorise the PATH, not the query string: `/doctors?category=cardiology`
+  // must be judged as `/doctors`, or a preserved filter would look like an
+  // unknown route and silently drop the user on their home page instead.
+  const path = callbackUrl.split(/[?#]/)[0];
+  if (role && !canAccess(role, path)) return home;
 
   return callbackUrl;
 }

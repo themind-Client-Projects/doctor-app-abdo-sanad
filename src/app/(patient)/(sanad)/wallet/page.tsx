@@ -5,6 +5,7 @@ import { Wallet, ArrowUpRight, ArrowDownLeft, Plus, Receipt, Clock, TrendingUp, 
 import { useDashboardData } from '@/hooks/use-dashboard-data';
 import { apiFetch, useMutation } from '@/hooks/use-mutation';
 import { formatNumber, formatRelative } from '@/lib/format';
+import { FlexibleHeader } from '@/components/shared/flexible-header';
 
 /**
  * محفظتي — the patient's real balance.
@@ -79,11 +80,17 @@ export default function WalletPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50/50 pb-24 font-sans">
-      {/* Page Title */}
-      <div className="px-5 pt-2 pb-4">
-        <h1 className="text-xl font-extrabold text-gray-900">محفظتي</h1>
-        <p className="text-gray-500 text-sm mt-1 font-medium">إدارة رصيدك ومعاملاتك</p>
-      </div>
+      {/* The only patient screen that rendered a bare <h1> instead of the
+          shared header — so it had no back button and no way out but the
+          bottom bar. `showWallet` is off here: a chip linking to the page you
+          are already on is noise. */}
+      <FlexibleHeader
+        title="محفظتي"
+        subtitle="إدارة رصيدك ومعاملاتك"
+        icon={<Wallet className="w-6 h-6" />}
+        showBackButton
+        showWallet={false}
+      />
 
       {/* Balance Card */}
       <div className="px-5">

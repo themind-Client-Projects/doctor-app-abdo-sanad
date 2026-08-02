@@ -1,5 +1,7 @@
 'use client';
 
+import { useAuthGuard } from '@/hooks/use-auth-guard';
+
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -53,7 +55,13 @@ export function HomecareReservationForm({ centerName, type = 'nursing', onSucces
     },
   });
 
+  const { ensureSignedIn } = useAuthGuard();
+
   const onSubmit = async (data: HomecareFormValues) => {
+    // This form is rendered by BOTH /homecare and the /nursing drawer, so the
+    // gate lives here as well as at the drawer — /homecare renders it inline
+    // with no drawer to gate.
+    if (!ensureSignedIn()) return;
     setIsSubmitting(true);
     // Simulate API call
     await new Promise((resolve) => setTimeout(resolve, 1500));
