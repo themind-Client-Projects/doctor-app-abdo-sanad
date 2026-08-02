@@ -1,18 +1,12 @@
 import { ProviderBrowse } from '@/components/features/patient/provider-browse';
 
-/**
- * المختبرات والأشعة — خارج سند.
- *
- * Replaces a hand-written list of three hardcoded providers whose search box
- * filtered nothing. Shares one component with /sanad/labs; only the channel
- * differs, which decides both the pool and the price.
- */
+/** المختبرات والأشعة داخل سند — the same screen against the Sanad pool and its prices. */
 export default function Page() {
   return (
     <ProviderBrowse
       serviceType="LAB_TEST"
-      channel="DIRECT"
-      title="المختبرات والأشعة"
+      channel="SANAD"
+      title="المختبرات والأشعة — سند"
       subtitle="احجز فحوصاتك الطبية بدقة وسهولة"
       searchPlaceholder="ابحث عن مختبر أو تحليل..."
       emptyTitle="لا توجد مختبرات"

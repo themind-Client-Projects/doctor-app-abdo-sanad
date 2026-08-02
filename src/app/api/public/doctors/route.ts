@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { withPublic } from "@/lib/api-auth";
-import { ok } from "@/lib/api-response";
+import { keysetArgs, okList, toPage } from "@/lib/api-response";
 import { parseQuery } from "@/lib/validation";
 
 /**
@@ -24,7 +24,9 @@ const listQuerySchema = z.object({
   specialty: z.string().trim().min(1).optional(), // slug
   q: z.string().trim().min(1).max(80).optional(),
   governorate: z.string().trim().min(1).optional(), // name, as the city picker uses
-  limit: z.coerce.number().int().min(1).max(100).default(60),
+  limit: z.coerce.number().int().min(1).max(50).default(12),
+  /** Opaque keyset cursor over (createdAt, id) — see api-response.ts. */
+  cursor: z.string().optional(),
 });
 
 /** `DoctorProfile.gender` is a free String; the UI type is a strict union. */
@@ -34,7 +36,7 @@ function toGender(value: string | null): "male" | "female" {
 
 export const GET = withPublic(async (req) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
-  const { channel, specialty, q, governorate, limit } = parseQuery(
+  const { channel, specialty, q, governorate, limit, cursor } = parseQuery(
     req.nextUrl.searchParams,
     listQuerySchema
   );
@@ -57,11 +59,16 @@ export const GET = withPublic(async (req) => {
     ...(specialty ? { specialty: { slug: specialty } } : {}),
   };
 
+  // Keyset, not offset: the list is ordered by createdAt desc, so a doctor
+  // onboarded between page 1 and page 2 shifts everything down — the reader
+  // sees a duplicate and silently misses someone.
+  const keyset = keysetArgs(cursor, limit);
   const rows = await prisma.doctorProfile.findMany({
-    where,
-    take: limit,
-    orderBy: { createdAt: "desc" },
+    where: keyset.where ? { AND: [where, keyset.where] } : where,
+    take: keyset.take,
+    orderBy: keyset.orderBy,
     select: {
+      createdAt: true,
       id: true,
       experience: true,
       gender: true,
@@ -108,7 +115,9 @@ export const GET = withPublic(async (req) => {
         ? Number(priceRow.complexPrice ?? priceRow.basePrice)
         : Number(priceRow.basePrice);
 
-  const data = rows.map((d) => ({
+  const { items, page } = toPage(rows, limit);
+
+  const data = items.map((d) => ({
     id: d.id,
     name: d.user.name ?? "",
     specialty: d.specialty?.name ?? "",
@@ -127,5 +136,5 @@ export const GET = withPublic(async (req) => {
     image: d.user.image ?? undefined,
   }));
 
-  return ok(data, { requestId });
+  return okList(data, page, { requestId });
 });

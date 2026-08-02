@@ -1,18 +1,12 @@
 import { ProviderBrowse } from '@/components/features/patient/provider-browse';
 
-/**
- * خدمات التمريض — خارج سند.
- *
- * Replaces a hand-written list of three hardcoded providers whose search box
- * filtered nothing. Shares one component with /sanad/nursing; only the channel
- * differs, which decides both the pool and the price.
- */
+/** خدمات التمريض داخل سند — the same screen against the Sanad pool and its prices. */
 export default function Page() {
   return (
     <ProviderBrowse
       serviceType="NURSING"
-      channel="DIRECT"
-      title="خدمات التمريض"
+      channel="SANAD"
+      title="خدمات التمريض — سند"
       subtitle="ممرضون محترفون لرعايتك في منزلك"
       searchPlaceholder="ابحث عن مركز تمريض..."
       emptyTitle="لا توجد مراكز تمريض"

@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { withPublic } from "@/lib/api-auth";
-import { ok } from "@/lib/api-response";
+import { keysetArgs, okList, toPage } from "@/lib/api-response";
 import { parseQuery, serviceTypeSchema } from "@/lib/validation";
 
 /**
@@ -33,12 +33,13 @@ const listQuerySchema = z.object({
   /** Only partners that own a medical complex. */
   complexesOnly: z.enum(["true", "false"]).optional(),
   q: z.string().trim().min(1).max(80).optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
+  limit: z.coerce.number().int().min(1).max(50).default(12),
+  cursor: z.string().optional(),
 });
 
 export const GET = withPublic(async (req) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
-  const { type, governorate, complexesOnly, channel, service, q, limit } = parseQuery(
+  const { type, governorate, complexesOnly, channel, service, q, limit, cursor } = parseQuery(
     req.nextUrl.searchParams,
     listQuerySchema
   );
@@ -62,12 +63,16 @@ export const GET = withPublic(async (req) => {
     ...(q ? { name: { contains: q, mode: "insensitive" } } : {}),
   };
 
+  const keyset = keysetArgs(cursor, limit);
   const rows = await prisma.partner.findMany({
-    where,
-    take: limit,
-    orderBy: [{ rating: "desc" }, { name: "asc" }],
+    where: keyset.where ? { AND: [where, keyset.where] } : where,
+    take: keyset.take,
+    // Keyset requires ordering BY the cursor's columns, so rating can no longer
+    // drive it — sorting by rating and paging by createdAt would skip rows.
+    orderBy: keyset.orderBy,
     select: {
       id: true,
+      createdAt: true,
       name: true,
       type: true,
       phone: true,
@@ -87,7 +92,9 @@ export const GET = withPublic(async (req) => {
     },
   });
 
-  const data = rows.map((p) => ({
+  const { items, page } = toPage(rows, limit);
+
+  const data = items.map((p) => ({
     id: p.id,
     name: p.name,
     type: p.type,
@@ -104,5 +111,5 @@ export const GET = withPublic(async (req) => {
     hasBloodDraw: p.serviceConfigs.some((s) => s.isBloodDraw),
   }));
 
-  return ok(data, { requestId });
+  return okList(data, page, { requestId });
 });

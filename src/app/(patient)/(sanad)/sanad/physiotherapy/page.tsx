@@ -1,18 +1,12 @@
 import { ProviderBrowse } from '@/components/features/patient/provider-browse';
 
-/**
- * العلاج الطبيعي — خارج سند.
- *
- * Replaces a hand-written list of three hardcoded providers whose search box
- * filtered nothing. Shares one component with /sanad/physiotherapy; only the channel
- * differs, which decides both the pool and the price.
- */
+/** العلاج الطبيعي داخل سند — the same screen against the Sanad pool and its prices. */
 export default function Page() {
   return (
     <ProviderBrowse
       serviceType="PHYSIOTHERAPY"
-      channel="DIRECT"
-      title="العلاج الطبيعي"
+      channel="SANAD"
+      title="العلاج الطبيعي — سند"
       subtitle="أفضل المراكز لاستعادة حركتك ونشاطك"
       searchPlaceholder="ابحث عن مركز علاج طبيعي..."
       emptyTitle="لا توجد مراكز علاج طبيعي"
