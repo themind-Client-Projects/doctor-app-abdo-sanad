@@ -14,6 +14,8 @@ import {
   Receipt,
   Settings,
   ToggleLeft,
+  Droplet,
+  Users,
   ShieldCheck,
   Stethoscope,
   Tags,
@@ -56,6 +58,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       { label: "الأسعار", href: "/admin/pricing", icon: Tags, ready: true },
       { label: "العمولات والنسب", href: "/admin/commissions", icon: Percent, ready: true },
       { label: "المجمعات الطبية", href: "/admin/complexes", icon: Building2, ready: true },
+      { label: "مصرف الدم", href: "/admin/blood-bank", icon: Droplet, ready: true },
     ],
   },
   {
@@ -90,6 +93,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     title: "إدارة النظام",
     items: [
       { label: "المستخدمون", href: "/admin/users", icon: UserCog, ready: true },
+      { label: "المرضى والمحافظ", href: "/admin/patients", icon: Users, ready: true },
       { label: "الصلاحيات والأدوار", href: "/admin/roles", icon: ShieldCheck, ready: true },
       { label: "سجل النشاطات", href: "/admin/activity", icon: Activity, ready: true },
       { label: "خيارات النظام", href: "/admin/features", icon: ToggleLeft, ready: true },

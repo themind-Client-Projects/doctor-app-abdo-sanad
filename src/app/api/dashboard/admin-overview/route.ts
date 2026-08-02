@@ -58,6 +58,10 @@ export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
     topPartnerRows,
     recentActivity,
     activeServices,
+    ordersByChannel,
+    partnersByChannel,
+    patientWallets,
+    featureFlags,
   ] = await Promise.all([
     prisma.user.count({ where: { deletedAt: null } }),
     prisma.user.count({ where: { deletedAt: null, createdAt: { lt: today } } }),
@@ -117,6 +121,34 @@ export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
       },
     }),
     prisma.serviceConfig.groupBy({ by: ["status"], _count: { _all: true } }),
+
+    // ── Added with the sales-channel model ──────────────────────────────────
+    // Revenue and volume per storefront. سند discounts heavily, so the split
+    // by COUNT and the split by MONEY are different questions and the dashboard
+    // has to answer both — a channel can carry most of the orders and a
+    // minority of the revenue.
+    prisma.order.groupBy({
+      by: ["source"],
+      where: { deletedAt: null },
+      _count: { _all: true },
+      _sum: { totalAmount: true },
+    }),
+    // Which providers sell where. Counted from PartnerChannel rather than the
+    // boolean it replaced, so a partner in two channels is counted in both.
+    prisma.partnerChannel.groupBy({
+      by: ["channel"],
+      where: { status: { not: "SUSPENDED" } },
+      _count: { _all: true },
+    }),
+    // Money the platform is holding on behalf of patients — a liability, not
+    // revenue, and previously invisible.
+    prisma.patientWallet.aggregate({ _sum: { balance: true }, _count: true }),
+    // Optional features the admin has switched on, so the home screen shows
+    // the platform's actual configuration rather than assuming defaults.
+    prisma.featureFlag.findMany({
+      select: { key: true, label: true, isEnabled: true },
+      orderBy: { group: "asc" },
+    }),
   ]);
 
   // Names for the top-partner table — groupBy cannot join.
@@ -192,6 +224,28 @@ export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
           orders: r._count._all,
         }))
         .sort((a, b) => b.revenue - a.revenue),
+
+      // Per-storefront split — count and money separately, because سند's
+      // discounts make them tell different stories.
+      byChannel: ordersByChannel
+        .map((r) => ({
+          channel: r.source,
+          orders: r._count._all,
+          revenue: Number(r._sum.totalAmount ?? 0),
+          partners: partnersByChannel.find((p) => p.channel === r.source)?._count._all ?? 0,
+        }))
+        .sort((a, b) => b.orders - a.orders),
+
+      patientWallets: {
+        count: patientWallets._count,
+        totalBalance: Number(patientWallets._sum.balance ?? 0),
+      },
+
+      featureFlags: featureFlags.map((f) => ({
+        key: f.key,
+        label: f.label,
+        isEnabled: f.isEnabled,
+      })),
 
       revenueTrend: Array.from(byDay.entries()).map(([date, v]) => ({
         date,

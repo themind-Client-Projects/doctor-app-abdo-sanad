@@ -30,7 +30,14 @@ const updateBloodBankRequestSchema = z
     requestType: nonEmpty.optional(),
     bloodType: bloodType.optional(),
     governorateId: nonEmpty.optional(),
-    status: nonEmpty.optional(),
+    // An enum, not a free string: the employee screen drives this workflow and
+    // a typo used to be storable, leaving a request in a state no filter
+    // matched and no one could see.
+    status: z
+      .enum(["new", "broadcast", "matched", "fulfilled", "cancelled"], {
+        message: "حالة غير صالحة",
+      })
+      .optional(),
     donorId: nonEmpty.optional(),
     donorName: z.string().optional(),
     drawAppointment: drawAppointment.optional(),
@@ -55,10 +62,16 @@ export const PATCH = withAuth<Ctx>(
       return fail(ErrorCode.NOT_FOUND, 404, "غير موجود", { requestId });
     }
 
+    // `broadcastAt` is DERIVED, never sent: it records when the case actually
+    // went out to donors, so letting a client supply it would allow a timestamp
+    // that disagrees with the status it is supposed to evidence.
+    const broadcastAt = input.status === "broadcast" ? new Date() : undefined;
+
     // `undefined` leaves a column untouched in Prisma.
     const data = await prisma.bloodBankRequest.update({
       where: { id },
       data: {
+        broadcastAt,
         requestType: input.requestType,
         bloodType: input.bloodType,
         governorateId: input.governorateId,

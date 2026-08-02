@@ -14,6 +14,8 @@ import {
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { DonutChart, DonutLegend, TrendChart } from "@/components/charts/chart-primitives";
 import { formatCurrency, formatNumber, formatRelative } from "@/lib/format";
+import { CHANNEL_LABELS, labelOf } from "@/lib/labels";
+import Link from "next/link";
 
 // ─────────────────────────────────────────────────────────────
 // Command Center — لوحة المدير العام (req L117-127)
@@ -82,6 +84,9 @@ type Overview = {
   partnersByStatus: { status: string; count: number; percent: number }[];
   revenueByService: { serviceType: string; revenue: number; orders: number }[];
   revenueTrend: { date: string; revenue: number; orders: number }[];
+  byChannel: { channel: string; orders: number; revenue: number; partners: number }[];
+  patientWallets: { count: number; totalBalance: number };
+  featureFlags: { key: string; label: string; isEnabled: boolean }[];
   topPartners: {
     partnerId: string | null;
     name: string | null;
@@ -278,6 +283,86 @@ export default function AdminCommandCenter() {
           ) : (
             <Empty />
           )}
+        </Panel>
+      </section>
+
+      {/* ── storefronts + configuration ─────────────────────── */}
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Panel title="الأداء حسب الواجهة" className="lg:col-span-2">
+          {data?.byChannel.length ? (
+            <div className="space-y-3">
+              {data.byChannel.map((c) => {
+                const totalRevenue = data.byChannel.reduce((a, x) => a + x.revenue, 0);
+                const share = totalRevenue ? Math.round((c.revenue / totalRevenue) * 100) : 0;
+                return (
+                  <div key={c.channel}>
+                    <div className="mb-1 flex items-center justify-between text-sm">
+                      <span className="font-medium text-foreground">
+                        {labelOf(CHANNEL_LABELS, c.channel)}
+                      </span>
+                      <span className="tabular-nums text-muted-foreground">
+                        {formatNumber(c.orders)} طلب · {formatNumber(c.partners)} مزوّد
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full bg-primary transition-[width] duration-500"
+                          style={{ width: `${share}%` }}
+                        />
+                      </div>
+                      <span className="w-28 shrink-0 text-end text-xs font-semibold tabular-nums text-foreground">
+                        {formatCurrency(c.revenue)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+              {/* Volume and money answer different questions once سند discounts
+                  are in play, so the bar is share of REVENUE and the count sits
+                  beside it rather than being conflated into one number. */}
+              <p className="pt-1 text-xs leading-relaxed text-muted-foreground">
+                الشريط يمثّل حصة الإيراد — قد تحمل واجهة عدد طلبات أكبر بإيراد أقل بسبب خصومات سند.
+              </p>
+            </div>
+          ) : (
+            <p className="py-8 text-center text-sm text-muted-foreground">لا توجد بيانات</p>
+          )}
+        </Panel>
+
+        <Panel title="إعدادات المنصة">
+          <div className="mb-4 rounded-xl bg-muted/40 p-3">
+            <p className="text-xs text-muted-foreground">أرصدة المرضى (التزام على المنصة)</p>
+            <p className="mt-1 text-xl font-bold tabular-nums text-foreground">
+              {formatCurrency(data?.patientWallets.totalBalance ?? 0)}
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {formatNumber(data?.patientWallets.count ?? 0)} محفظة
+            </p>
+          </div>
+
+          <ul className="space-y-2">
+            {(data?.featureFlags ?? []).map((f) => (
+              <li key={f.key} className="flex items-center justify-between gap-2 text-sm">
+                <span className="min-w-0 truncate text-foreground">{f.label}</span>
+                <span
+                  className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                    f.isEnabled
+                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {f.isEnabled ? "مفعّل" : "معلّق"}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <Link
+            href="/admin/features"
+            className="mt-3 block text-xs font-semibold text-primary hover:underline"
+          >
+            إدارة الخيارات ←
+          </Link>
         </Panel>
       </section>
 
