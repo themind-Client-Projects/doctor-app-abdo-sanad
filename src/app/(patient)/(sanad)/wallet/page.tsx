@@ -87,7 +87,6 @@ export default function WalletPage() {
       <FlexibleHeader
         title="محفظتي"
         subtitle="إدارة رصيدك ومعاملاتك"
-        icon={<Wallet className="w-6 h-6" />}
         showBackButton
         showWallet={false}
       />

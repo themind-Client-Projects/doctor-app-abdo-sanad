@@ -1,13 +1,18 @@
 'use client';
 
-import { useState, useRef, use } from 'react';
+import { useState, useMemo, useRef, use } from 'react';
 import { Filter, MapPin, Star, Phone, CalendarClock, Clock, Stethoscope, UserCheck, ChevronLeft, Check, Briefcase } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 
 import { SPECIALIZATIONS } from '@/lib/constants/specializations';
 import { useAuthGuard } from '@/hooks/use-auth-guard';
-import { DEMO_DOCTORS, DEMO_TIME_SLOTS, DEMO_AVAILABLE_DATES, isDateAvailable } from '@/lib/constants/demo-data';
+// Time slots and the availability calendar are still demo data — real slots
+// need DoctorSchedule joined against existing appointments, which is the
+// booking work, not this fix.
+import { DEMO_TIME_SLOTS, DEMO_AVAILABLE_DATES, isDateAvailable } from '@/lib/constants/demo-data';
+import { useDashboardData } from '@/hooks/use-dashboard-data';
+import { useStorefront } from '@/hooks/use-storefront';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
 import { DoctorCard } from '@/components/shared/doctor-card';
@@ -30,14 +35,27 @@ export default function DoctorListingPage({ params }: { params: Promise<{ id: st
   const { id } = use(params);
   const router = useRouter();
   
-  // Find the specialization from our constants
-  const specialization = SPECIALIZATIONS.find(s => s.id === id);
-  const SpecIcon = specialization?.icon;
-  const doctors = DEMO_DOCTORS[id] || [];
+  // `id` is a Specialty SLUG. The icon still comes from the constant — it is a
+  // React component and cannot come over the wire — but the NAME and the doctor
+  // list now come from the database, which is what makes this page agree with
+  // the listing that linked to it.
+  const specConstant = SPECIALIZATIONS.find(s => s.id === id);
+  const SpecIcon = specConstant?.icon;
+
+  const { storefront } = useStorefront('DIRECT');
+  const specialization = useMemo(() => {
+    const fromDb = storefront.specialties.find(s => s.slug === id);
+    return fromDb ? { id: fromDb.slug, name: fromDb.name } : specConstant;
+  }, [storefront.specialties, id, specConstant]);
+
+  const { data: fetchedDoctors, isLoading, error } = useDashboardData<Doctor[]>({
+    url: '/api/public/doctors',
+    params: { specialty: id, channel: 'DIRECT' },
+  });
+  const doctors = useMemo(() => fetchedDoctors ?? [], [fetchedDoctors]);
 
   // ── Filter state ──
   const [activeFilter, setActiveFilter] = useState<'all' | 'available' | 'nearest'>('all');
-  const [isLoading, setIsLoading] = useState(false);
 
   // ── Reservation Drawer state ──
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -54,19 +72,19 @@ export default function DoctorListingPage({ params }: { params: Promise<{ id: st
   const filteredDoctors = (() => {
     switch (activeFilter) {
       case 'available':
-        return doctors.filter(d => d.isAvailable);
+        return doctors.filter((d: Doctor) => d.isAvailable);
       case 'nearest':
-        return [...doctors].sort((a, b) => b.rating - a.rating);
+        return [...doctors].sort((a: Doctor, b: Doctor) => b.rating - a.rating);
       default:
         return doctors;
     }
   })();
 
-  // ── Handle filter change with simulated loading ──
+  // Filtering is client-side over an already-loaded list, so it is instant —
+  // the old 300ms simulated spinner was there only because filtering a
+  // hardcoded array had no latency to show.
   const handleFilterChange = (filter: 'all' | 'available' | 'nearest') => {
     setActiveFilter(filter);
-    setIsLoading(true);
-    setTimeout(() => setIsLoading(false), 300);
   };
 
   const { ensureSignedIn } = useAuthGuard();

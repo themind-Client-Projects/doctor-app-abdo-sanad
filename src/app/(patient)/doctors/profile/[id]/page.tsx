@@ -4,46 +4,58 @@ import { useState, useMemo, use } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { ArrowRight, Share2, Heart, Star, Plus, Check } from 'lucide-react';
-import { DEMO_DOCTORS } from '@/lib/constants/demo-data';
 import { DoctorBookingDrawer } from '@/components/shared/doctor-booking-drawer';
 import { useAuthGuard } from '@/hooks/use-auth-guard';
+import { useDashboardData } from '@/hooks/use-dashboard-data';
+import type { Doctor } from '@/types/patient';
 
-// Mock Services specific for the UI
-const MOCK_SERVICES = [
-  { id: 1, name: 'جلسة علاج البشرة بالبلازما للوجه' },
-  { id: 2, name: 'جلسة بلازما للشعر' },
-  { id: 3, name: 'حقن فيلر 1 مل (StylAge L/ XL / الشفاه)' },
-  { id: 4, name: 'تقشير بارد لجلسة واحدة' },
-  { id: 5, name: 'حقن فيلر 1 مل (Juvederm Voluma/Volift)' },
-];
+/** What the profile adds on top of the list's `Doctor`. */
+type DoctorDetail = Doctor & {
+  services: { serviceType: string; name: string }[];
+  schedules: { dayOfWeek: number; startTime: string; endTime: string }[];
+};
 
 export default function DoctorProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const { id } = use(params);
   
   const [activeTab, setActiveTab] = useState<'services' | 'safety'>('services');
-  const [selectedServices, setSelectedServices] = useState<number[]>([]);
+  const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [isBookingOpen, setIsBookingOpen] = useState(false);
   // This page opens the booking drawer directly, so the shared hook's gate
   // does not reach it.
   const { ensureSignedIn } = useAuthGuard();
 
-  // Find doctor
-  const doctor = useMemo(() => {
-    const allDoctors = Object.values(DEMO_DOCTORS).flat();
-    return allDoctors.find(d => d.id === id);
-  }, [id]);
+  // The id is a real `DoctorProfile.id` from the listing. This page used to
+  // look it up in `demo-data.ts`, so every link from the wired list resolved to
+  // nothing and rendered "لم يتم العثور على الطبيب".
+  const { data: doctor, isLoading, error } = useDashboardData<DoctorDetail>({
+    url: `/api/public/doctors/${id}`,
+  });
 
-  if (!doctor) {
+  if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 flex-col gap-4">
-        <h1 className="font-bold text-gray-800">لم يتم العثور على الطبيب</h1>
+      <div className="min-h-screen bg-gray-50 p-5 space-y-4">
+        <div className="h-40 rounded-3xl bg-white border border-gray-100 animate-pulse" />
+        <div className="h-24 rounded-3xl bg-white border border-gray-100 animate-pulse" />
+        <div className="h-64 rounded-3xl bg-white border border-gray-100 animate-pulse" />
+      </div>
+    );
+  }
+
+  // A genuine 404 and a network failure read differently, so they say so.
+  if (error || !doctor) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 flex-col gap-4 px-6 text-center">
+        <h1 className="font-bold text-gray-800">
+          {error ? 'تعذّر تحميل بيانات الطبيب' : 'لم يتم العثور على الطبيب'}
+        </h1>
         <button onClick={() => router.back()} className="px-6 py-2 bg-primary text-white rounded-xl">العودة</button>
       </div>
     );
   }
 
-  const toggleService = (serviceId: number) => {
+  const toggleService = (serviceId: string) => {
     setSelectedServices(prev => 
       prev.includes(serviceId) ? prev.filter(sId => sId !== serviceId) : [...prev, serviceId]
     );
@@ -106,15 +118,20 @@ export default function DoctorProfilePage({ params }: { params: Promise<{ id: st
         {activeTab === 'services' ? (
           <div className="flex flex-col h-full">
             <div className="flex-1 overflow-y-auto px-4 py-2">
-              {MOCK_SERVICES.map((service, idx) => {
-                const isSelected = selectedServices.includes(service.id);
+              {doctor.services.length === 0 ? (
+                <p className="py-12 text-center text-sm text-gray-500">
+                  لا توجد خدمات مفعّلة لهذا الطبيب حالياً
+                </p>
+              ) : null}
+              {doctor.services.map((service, idx) => {
+                const isSelected = selectedServices.includes(service.serviceType);
                 return (
                   <div 
-                    key={service.id} 
+                    key={service.serviceType} 
                     className={`flex items-center justify-between py-5 cursor-pointer group ${
-                      idx !== MOCK_SERVICES.length - 1 ? 'border-b border-gray-100' : ''
+                      idx !== doctor.services.length - 1 ? 'border-b border-gray-100' : ''
                     }`}
-                    onClick={() => toggleService(service.id)}
+                    onClick={() => toggleService(service.serviceType)}
                   >
                     <span className="font-bold text-gray-800 text-[15px] text-right flex-1 ml-4 leading-relaxed group-hover:text-[#10b981] transition-colors">{service.name}</span>
                     <button 
