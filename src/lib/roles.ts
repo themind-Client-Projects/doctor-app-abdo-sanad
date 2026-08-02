@@ -25,7 +25,14 @@ export const roleRoutes: Record<string, readonly UserRole[]> = {
  * Kept OUT of `roleRoutes` on purpose: these are authentication-only, and
  * putting them there would make `canAccess` demand a role list none of them has.
  */
-export const patientPrivateRoutes = ["/wallet", "/bookings", "/notifications", "/profile"] as const;
+export const patientPrivateRoutes = [
+  "/wallet",
+  "/bookings",
+  "/notifications",
+  "/profile",
+  // Onboarding: reachable only with a session, since it edits one.
+  "/complete-profile",
+] as const;
 
 /** Does this path hold personal data that requires signing in? */
 export function isPatientPrivate(pathname: string): boolean {

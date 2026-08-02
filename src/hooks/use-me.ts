@@ -20,6 +20,8 @@ export type Me = {
     email: string | null;
     image: string | null;
     role: string;
+    governorateId: string | null;
+    area: string | null;
   } | null;
   wallet: { balance: number } | null;
   /** Counts behind the /profile tiles. Absent for a visitor. */

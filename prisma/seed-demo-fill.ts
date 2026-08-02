@@ -112,6 +112,15 @@ async function main() {
     else await prisma.campaign.create({ data });
   }
 
+  /* ── governorate areas ── */
+  // بغداد is split into الكرخ and الرصافة, and sign-up asks which. The form
+  // shows a second picker for ANY governorate with areas defined, so this is
+  // data rather than a special case in the UI.
+  await prisma.governorate.updateMany({
+    where: { name: "بغداد" },
+    data: { areas: ["الكرخ", "الرصافة"] },
+  });
+
   /* ── coupons ── */
   for (const c of [
     { code: "WARID10", discountType: "PERCENTAGE", discountValue: 10, maxUses: 0 },

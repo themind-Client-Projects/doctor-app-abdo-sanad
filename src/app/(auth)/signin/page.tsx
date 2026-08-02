@@ -42,6 +42,10 @@ function SignInFlow() {
   // and falls back to the role's home.
   const rawCallback = useSearchParams().get("callbackUrl");
   const callbackUrl = resolveHomePath("PATIENT", rawCallback);
+  // Every sign-in lands on onboarding, which passes straight through when the
+  // profile is already complete. Branching here instead would mean asking each
+  // provider a question only the database can answer.
+  const afterSignIn = `/complete-profile?next=${encodeURIComponent(callbackUrl)}`;
   const reduce = useReducedMotion();
 
   const [phone, setPhone] = useState("");
@@ -50,6 +54,7 @@ function SignInFlow() {
   const [error, setError] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [code, setCode] = useState<string[]>(Array(CODE_LENGTH).fill(""));
 
   const inputsRef = useRef<Array<HTMLInputElement | null>>([]);
@@ -128,14 +133,14 @@ function SignInFlow() {
         // session, and pushing without it lands on a page still rendered as a
         // signed-out visitor.
         router.refresh();
-        router.push(callbackUrl);
+        router.push(afterSignIn);
       } catch {
         setError("تعذّر التحقق. حاول مجدداً.");
       } finally {
         setIsVerifying(false);
       }
     },
-    [phone, callbackUrl, router]
+    [phone, afterSignIn, router]
   );
 
   const handleChange = (i: number, e: ChangeEvent<HTMLInputElement>) => {
@@ -235,11 +240,31 @@ function SignInFlow() {
 
             <button
               type="button"
-              onClick={() => void signIn("google", { callbackUrl })}
-              className="flex h-12 w-full cursor-pointer items-center justify-center gap-2.5 rounded-xl border border-gray-300 bg-white text-sm font-bold text-gray-900 transition-colors hover:bg-gray-50"
+              disabled={isGoogleLoading || isSending}
+              onClick={() => {
+                // Not reset in a `finally`: signIn navigates away, so the
+                // spinner must stay up until the page is gone. Clearing it
+                // would flash the idle state under a redirect in flight.
+                setIsGoogleLoading(true);
+                setError("");
+                void signIn("google", { callbackUrl: afterSignIn }).catch(() => {
+                  setIsGoogleLoading(false);
+                  setError("تعذّر الاتصال بـ Google. حاول مجدداً.");
+                });
+              }}
+              className="flex h-12 w-full cursor-pointer items-center justify-center gap-2.5 rounded-xl border border-gray-300 bg-white text-sm font-bold text-gray-900 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <GoogleMark />
-              المتابعة عبر Google
+              {isGoogleLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  جاري التحويل إلى Google...
+                </>
+              ) : (
+                <>
+                  <GoogleMark />
+                  المتابعة عبر Google
+                </>
+              )}
             </button>
           </motion.div>
         ) : (

@@ -263,6 +263,13 @@ model User {
   role          UserRole  @default(PATIENT)
   isActive      Boolean   @default(true)
   governorateId String?
+  /// The area within the governorate — for بغداد this is الكرخ or الرصافة.
+  ///
+  /// Matches `Order.area` and `EmployeeStatus.area`, which are already free
+  /// strings drawn from `Governorate.areas`. Required at sign-up only where the
+  /// chosen governorate actually defines areas, so it generalises past Baghdad
+  /// instead of hardcoding one city's geography.
+  area          String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?

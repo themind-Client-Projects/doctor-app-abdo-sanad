@@ -21,7 +21,11 @@ export const GET = withMaybeAuth(async (req, _ctx, identity) => {
   const [user, wallet, completedOrders, prescriptions, labReports] = await Promise.all([
     prisma.user.findUnique({
       where: { id: identity.userId },
-      select: { id: true, name: true, phone: true, email: true, image: true, role: true },
+      select: {
+        id: true, name: true, phone: true, email: true, image: true, role: true,
+        // What the onboarding screen judges completeness on.
+        governorateId: true, area: true,
+      },
     }),
     // Read-only: the wallet is created on first write, not by looking at it —
     // a GET that creates rows turns every page load into a mutation.

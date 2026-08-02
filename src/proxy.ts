@@ -74,6 +74,7 @@ export const config = {
     "/bookings/:path*",
     "/notifications/:path*",
     "/profile/:path*",
+    "/complete-profile",
     // So an already-signed-in user is not shown a sign-in form.
     "/signin",
     "/login",
