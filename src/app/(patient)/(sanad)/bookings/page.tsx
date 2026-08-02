@@ -1,8 +1,12 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { CalendarClock, MapPin, Check, X, Clock, Stethoscope, TestTubes, Building2, Activity } from 'lucide-react';
 import { FlexibleHeader } from '@/components/shared/flexible-header';
+import { useDashboardData } from '@/hooks/use-dashboard-data';
+import { apiFetch, useMutation } from '@/hooks/use-mutation';
+import { formatCurrency, formatDate } from '@/lib/format';
+import { SERVICE_TYPE_LABELS, labelOf } from '@/lib/labels';
 
 import {
   Drawer,
@@ -24,80 +28,28 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 
-// ─── Types ──────────────────────────────────────────────────────────────
-import type { Booking } from '@/types/patient';
-
-// ─── Mock Data ──────────────────────────────────────────────────────────
-const upcomingBookings: Booking[] = [
-  {
-    id: 1,
-    doctorName: 'د. سمير محمود',
-    specialty: 'أخصائي أمراض القلب',
-    date: 'غداً، 13 مايو 2026',
-    time: '10:30 صباحاً',
-    location: 'بغداد - المنصور',
-    clinic: 'مستشفى السلام - العيادة الاستشارية',
-    type: 'doctor',
-    status: 'confirmed',
-    price: '35,000 د.ع',
-    bookingRef: 'BK-2026-001',
-  },
-  {
-    id: 2,
-    doctorName: 'مختبرات الشفاء التخصصية',
-    specialty: 'باقة الفحص الشامل (VIP)',
-    date: 'الخميس، 15 مايو 2026',
-    time: '09:00 صباحاً',
-    location: 'بغداد - الكرادة',
-    clinic: 'المختبر الرئيسي - الطابق الثاني',
-    type: 'lab',
-    status: 'pending',
-    price: '85,000 د.ع',
-    bookingRef: 'BK-2026-002',
-  },
-  {
-    id: 3,
-    doctorName: 'د. نور الهدى',
-    specialty: 'أخصائية العلاج الطبيعي',
-    date: 'السبت، 17 مايو 2026',
-    time: '02:00 مساءً',
-    location: 'بغداد - زيونة',
-    clinic: 'مركز الحياة للعلاج الطبيعي',
-    type: 'physio',
-    status: 'confirmed',
-    price: '25,000 د.ع',
-    bookingRef: 'BK-2026-003',
-  },
-];
-
-const pastBookings: Booking[] = [
-  {
-    id: 10,
-    doctorName: 'د. سمير محمود',
-    specialty: 'أخصائي أمراض القلب',
-    date: '10 مايو 2026',
-    time: '09:00 صباحاً',
-    location: 'بغداد - المنصور',
-    clinic: 'مستشفى السلام',
-    type: 'doctor',
-    status: 'completed',
-    price: '35,000 د.ع',
-    bookingRef: 'BK-2026-000',
-  },
-  {
-    id: 11,
-    doctorName: 'مختبر النور للتحاليل',
-    specialty: 'فحص CBC + سكر صائم',
-    date: '5 مايو 2026',
-    time: '08:30 صباحاً',
-    location: 'بغداد - الكرادة',
-    clinic: 'الفرع الرئيسي',
-    type: 'lab',
-    status: 'completed',
-    price: '20,000 د.ع',
-    bookingRef: 'BK-2026-099',
-  },
-];
+/**
+ * حجوزاتي — real appointments and orders.
+ *
+ * Both lists were hardcoded, so every account saw the same five bookings and
+ * neither إلغاء nor إعادة جدولة did anything. The two kinds are merged
+ * server-side (see /api/v1/me/bookings) because "my bookings" is one list to
+ * the person reading it.
+ */
+type BookingCard = {
+  id: string;
+  kind: 'appointment' | 'order';
+  providerName: string;
+  subtitle: string;
+  date: string;
+  time: string | null;
+  location: string;
+  type: string;
+  status: 'confirmed' | 'pending' | 'completed' | 'cancelled';
+  price: number | null;
+  reference: string;
+  source: string | null;
+};
 
 const availableTimes = [
   { time: '09:00 ص', available: true },
@@ -115,7 +67,7 @@ const availableTimes = [
 ];
 
 // ─── Helpers ────────────────────────────────────────────────────────────
-function getStatusConfig(status: Booking['status']) {
+function getStatusConfig(status: BookingCard['status']) {
   switch (status) {
     case 'confirmed':
       return { label: 'مؤكد', bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-100', icon: <Check className="w-3 h-3" /> };
@@ -128,7 +80,7 @@ function getStatusConfig(status: Booking['status']) {
   }
 }
 
-function getTypeIcon(type: Booking['type']) {
+function getTypeIcon(type: string) {
   switch (type) {
     case 'doctor': return <Stethoscope className="w-4 h-4 text-primary" />;
     case 'lab': return <TestTubes className="w-4 h-4 text-purple-500" />;
@@ -136,7 +88,7 @@ function getTypeIcon(type: Booking['type']) {
   }
 }
 
-function getTypeCardIcon(type: Booking['type']) {
+function getTypeCardIcon(type: string) {
   switch (type) {
     case 'doctor': return <Stethoscope className="w-6 h-6 text-primary" />;
     case 'lab': return <TestTubes className="w-6 h-6 text-purple-500" />;
@@ -144,7 +96,7 @@ function getTypeCardIcon(type: Booking['type']) {
   }
 }
 
-function getTypeLabel(type: Booking['type']) {
+function getTypeLabel(type: string) {
   switch (type) {
     case 'doctor': return 'عيادة';
     case 'lab': return 'مختبر';
@@ -178,23 +130,23 @@ export default function BookingsPage() {
 
   // Drawer state (controlled)
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [rescheduleTarget, setRescheduleTarget] = useState<Booking | null>(null);
+  const [rescheduleTarget, setRescheduleTarget] = useState<BookingCard | null>(null);
   const [date, setDate] = useState<Date | undefined>(undefined);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
 
   // Dialog state (controlled)
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
-  const [cancelTarget, setCancelTarget] = useState<Booking | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<BookingCard | null>(null);
   const timeSectionRef = useRef<HTMLDivElement>(null);
 
-  const openReschedule = (booking: Booking) => {
+  const openReschedule = (booking: BookingCard) => {
     setRescheduleTarget(booking);
     setDate(undefined);
     setSelectedTime(null);
     setDrawerOpen(true);
   };
 
-  const openCancel = (booking: Booking) => {
+  const openCancel = (booking: BookingCard) => {
     setCancelTarget(booking);
     setCancelDialogOpen(true);
   };
@@ -202,13 +154,35 @@ export default function BookingsPage() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const bookings = activeTab === 'upcoming' ? upcomingBookings : pastBookings;
+  const { data, isLoading, error, refetch } = useDashboardData<{
+    upcoming: BookingCard[];
+    past: BookingCard[];
+  }>({ url: '/api/v1/me/bookings' });
+
+  const bookings = (activeTab === 'upcoming' ? data?.upcoming : data?.past) ?? [];
+
+  const { mutate: cancelBooking, isPending: cancelling } = useMutation(
+    async (id: string) =>
+      apiFetch(`/api/v1/me/bookings/${id}/cancel`, { method: 'POST' }),
+    { successMessage: 'تم إلغاء الحجز', onSuccess: () => void refetch() }
+  );
+
+  // Confirmed through the existing dialog, then closed on success — the button
+  // below used to only close the dialog, so "نعم، إلغاء الحجز" cancelled
+  // nothing at all.
+  const confirmCancel = useCallback(async () => {
+    if (!cancelTarget) return;
+    const result = await cancelBooking(cancelTarget.id);
+    // Left open on failure so the error toast is read against the booking it
+    // refers to, rather than dismissed along with its context.
+    if (result !== undefined) setCancelDialogOpen(false);
+  }, [cancelTarget, cancelBooking]);
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50/50 pb-24 font-sans">
       <FlexibleHeader 
         title="حجوزاتي" 
-        subtitle={`${upcomingBookings.length} حجوزات قادمة`} 
+        subtitle={`${data?.upcoming.length ?? 0} حجوزات قادمة`} 
         icon={<Activity className="w-6 h-6" />} 
         showWallet 
       />
@@ -223,7 +197,7 @@ export default function BookingsPage() {
                 : 'text-gray-500 hover:text-gray-700'
             }`}
           >
-            القادمة ({upcomingBookings.length})
+            القادمة ({data?.upcoming.length ?? 0})
           </button>
           <button
             onClick={() => setActiveTab('past')}
@@ -233,13 +207,30 @@ export default function BookingsPage() {
                 : 'text-gray-500 hover:text-gray-700'
             }`}
           >
-            السابقة ({pastBookings.length})
+            السابقة ({data?.past.length ?? 0})
           </button>
         </div>
 
         {/* Booking Cards */}
         <div className="space-y-4">
-          {bookings.length === 0 && (
+          {isLoading && (
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-56 rounded-3xl bg-white border border-gray-100 animate-pulse" />
+              ))}
+            </div>
+          )}
+
+          {!isLoading && error && (
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <p className="text-gray-500 font-medium">تعذّر تحميل الحجوزات</p>
+              <button onClick={() => void refetch()} className="text-sm text-primary font-bold">
+                إعادة المحاولة
+              </button>
+            </div>
+          )}
+
+          {!isLoading && !error && bookings.length === 0 && (
             <div className="text-center py-16">
               <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-2">
                 <CalendarClock className="w-8 h-8 text-gray-400" />
@@ -248,7 +239,7 @@ export default function BookingsPage() {
             </div>
           )}
 
-          {bookings.map((booking) => {
+          {!isLoading && !error && bookings.map((booking) => {
             const statusConfig = getStatusConfig(booking.status);
             const isUpcoming = activeTab === 'upcoming';
 
@@ -266,33 +257,46 @@ export default function BookingsPage() {
                       {getTypeCardIcon(booking.type)}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <h4 className="font-extrabold text-gray-800 text-base truncate">{booking.doctorName}</h4>
-                      <p className="text-sm text-gray-500 font-medium truncate">{booking.specialty}</p>
+                      <h4 className="font-extrabold text-gray-800 text-base truncate">{booking.providerName}</h4>
+                      <p className="text-sm text-gray-500 font-medium truncate">{booking.subtitle}</p>
                     </div>
                   </div>
-                  <span className={`${statusConfig.bg} ${statusConfig.text} border ${statusConfig.border} text-[11px] px-2.5 py-1.5 rounded-lg font-bold flex items-center gap-1 flex-shrink-0 mr-2`}>
+                </div>
+
+                {/* BELOW the title, not beside it: sharing the row forced the
+                    name to truncate — "مختبرات الشفاء التخ…" — and the longer
+                    the status label, the more of the provider disappeared. */}
+                <div className="flex flex-wrap items-center gap-2 mb-4">
+                  <span className={`${statusConfig.bg} ${statusConfig.text} border ${statusConfig.border} text-[11px] px-2.5 py-1.5 rounded-lg font-bold inline-flex items-center gap-1`}>
                     {statusConfig.icon} {statusConfig.label}
                   </span>
+                  {booking.source === 'SANAD' ? (
+                    <span className="bg-primary/10 text-primary text-[11px] px-2.5 py-1.5 rounded-lg font-bold">
+                      عبر سند
+                    </span>
+                  ) : null}
                 </div>
 
                 {/* Details Section */}
                 <div className="bg-gray-50/80 p-3.5 rounded-2xl mb-4 border border-gray-100 space-y-2.5">
                   <div className="flex items-center gap-2 text-sm text-gray-700 font-semibold">
                     <CalendarClock className="w-4 h-4 text-primary flex-shrink-0" />
-                    <span>{booking.date}، {booking.time}</span>
+                    <span>{formatDate(booking.date)}{booking.time ? `، ${booking.time}` : ''}</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm text-gray-700 font-semibold">
                     <MapPin className="w-4 h-4 text-primary flex-shrink-0" />
-                    <span className="truncate">{booking.clinic}</span>
+                    <span className="truncate">{booking.location || '—'}</span>
                   </div>
                   <div className="flex items-center justify-between pt-2 border-t border-gray-100">
                     <div className="flex items-center gap-1.5 text-xs text-gray-500 font-medium">
                       {getTypeIcon(booking.type)}
-                      <span>{getTypeLabel(booking.type)}</span>
+                      <span>{labelOf(SERVICE_TYPE_LABELS, booking.type)}</span>
                       <span className="mx-1 text-gray-300">|</span>
-                      <span className="text-gray-400">#{booking.bookingRef}</span>
+                      <span className="text-gray-400">#{booking.reference}</span>
                     </div>
-                    <span className="text-sm font-bold text-primary">{booking.price}</span>
+                    <span className="text-sm font-bold text-primary">
+                      {booking.price === null ? '—' : formatCurrency(booking.price)}
+                    </span>
                   </div>
                 </div>
 
@@ -342,9 +346,9 @@ export default function BookingsPage() {
               <DrawerDescription>
                 {rescheduleTarget && (
                   <span className="block text-right mt-1 text-base">
-                    <span className="font-bold text-gray-700">{rescheduleTarget.doctorName}</span>
+                    <span className="font-bold text-gray-700">{rescheduleTarget.providerName}</span>
                     <span className="text-gray-400 mx-1">·</span>
-                    {rescheduleTarget.specialty}
+                    {rescheduleTarget.subtitle}
                   </span>
                 )}
               </DrawerDescription>
@@ -473,21 +477,20 @@ export default function BookingsPage() {
             </DialogTitle>
             <DialogDescription className="text-center pt-2 text-gray-600">
               هل أنت متأكد من رغبتك في إلغاء حجزك مع{' '}
-              <span className="font-bold text-gray-800">{cancelTarget?.doctorName}</span>؟
+              <span className="font-bold text-gray-800">{cancelTarget?.providerName}</span>؟
               <br />
               <span className="text-red-500 text-xs font-medium mt-1 block">لا يمكن التراجع عن هذا الإجراء.</span>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex-row gap-2 sm:justify-center mt-2 border-none bg-transparent">
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => setCancelDialogOpen(false)}
-              onKeyDown={(e) => e.key === 'Enter' && setCancelDialogOpen(false)}
-              className="flex-1 bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-xl font-bold py-3.5 text-center cursor-pointer select-none text-sm transition-colors"
+            <button
+              type="button"
+              onClick={() => void confirmCancel()}
+              disabled={cancelling}
+              className="flex-1 bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-xl font-bold py-3.5 text-center cursor-pointer select-none text-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              نعم، إلغاء الحجز
-            </div>
+              {cancelling ? 'جاري الإلغاء...' : 'نعم، إلغاء الحجز'}
+            </button>
             <div
               role="button"
               tabIndex={0}
