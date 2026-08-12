@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
 import { ok } from "@/lib/api-response";
 import { decimalToNumber } from "@/lib/validation";
+import { startOfBaghdadDay } from "@/lib/time";
 
 // ─────────────────────────────────────────────────────────────
 // GET /api/dashboard/summary — Role-specific KPIs
@@ -13,21 +14,6 @@ import { decimalToNumber } from "@/lib/validation";
 // parameters the web client still sends are ignored.
 // ─────────────────────────────────────────────────────────────
 
-/** Asia/Baghdad is UTC+3 all year — Iraq has not observed DST since 2008. */
-const BAGHDAD_OFFSET_MS = 3 * 60 * 60 * 1000;
-
-/**
- * Midnight in Baghdad, as the UTC instant to compare timestamps against.
- *
- * The server runs in UTC, so `new Date().setHours(0,0,0,0)` produced a boundary
- * three hours late: between 00:00 and 03:00 Baghdad time every "today" KPI was
- * still counting yesterday.
- */
-function startOfBaghdadDay(at: Date = new Date()): Date {
-  const local = new Date(at.getTime() + BAGHDAD_OFFSET_MS);
-  local.setUTCHours(0, 0, 0, 0);
-  return new Date(local.getTime() - BAGHDAD_OFFSET_MS);
-}
 
 type Kpi = {
   key: string;
@@ -291,6 +277,82 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) 
         { key: "inImaging", label: "قيد التصوير", value: inImaging, change: null, color: "yellow", icon: "loader", href: "/dashboard/requests?status=imaging" },
         { key: "readyReports", label: "التقارير الجاهزة", value: readyReports, change: null, color: "green", icon: "check-circle", href: "/dashboard/reports" },
         { key: "radEarnings", label: "الأرباح", value: decimalToNumber(radEarnings._sum.amount), change: null, color: "purple", icon: "wallet", href: "/dashboard/finance", isCurrency: true },
+      ];
+      break;
+    }
+
+    // ─── OPERATIONS (req L286-298) — مؤشرات اليوم، ١٠ مؤشرات ──
+    //
+    // There was no OPERATIONS case at all, so the switch fell to `default` and
+    // returned `kpis: []`. The operations landing page reads ten named fields
+    // off that response, none of which were ever sent, so every counter on the
+    // employee's home screen showed ٠ permanently.
+    //
+    // Unlike the partner roles above, operations is not scoped to a partner —
+    // it sees the whole platform, which is the job.
+    case "SUPER_ADMIN":
+    case "OPERATIONS": {
+      // "قيد المعالجة" — accepted through to in-progress.
+      const IN_FLIGHT = ["ACCEPTED", "ASSIGNED", "IN_TRANSIT", "ARRIVED", "IN_PROGRESS"] as const;
+      const OPEN = [...IN_FLIGHT, "NEW", "DELAYED"] as const;
+
+      const [
+        newOrders,
+        processing,
+        completedToday,
+        cancelledToday,
+        critical,
+        fieldTasks,
+        onlineConsults,
+        bloodDraws,
+        labInProgress,
+        radiologyPending,
+        newYesterday,
+      ] = await Promise.all([
+        // Not date-scoped: an unaccepted order from yesterday is still sitting
+        // in today's queue, and hiding it at midnight would lose it.
+        prisma.order.count({ where: { status: "NEW" } }),
+        prisma.order.count({ where: { status: { in: [...IN_FLIGHT] } } }),
+        prisma.order.count({ where: { status: "COMPLETED", updatedAt: { gte: today } } }),
+        prisma.order.count({ where: { status: "CANCELLED", updatedAt: { gte: today } } }),
+        prisma.order.count({
+          where: { priority: "CRITICAL", status: { in: [...OPEN] } },
+        }),
+        // Someone is physically out on these — a nurse or a driver is assigned.
+        prisma.order.count({
+          where: {
+            status: { in: [...IN_FLIGHT] },
+            OR: [{ assignedNurseId: { not: null } }, { assignedDriverId: { not: null } }],
+          },
+        }),
+        prisma.sanadSession.count({
+          where: { status: { in: ["waiting", "calling", "in_session"] } },
+        }),
+        prisma.order.count({
+          where: { serviceType: "HOME_BLOOD_DRAW", status: { in: [...OPEN] } },
+        }),
+        prisma.labSample.count({
+          where: { status: { in: ["received", "in_lab", "testing"] } },
+        }),
+        prisma.radiologyRequest.count({
+          where: { status: { in: ["scheduled", "imaged"] } },
+        }),
+        prisma.order.count({
+          where: { status: "NEW", createdAt: { gte: yesterday, lt: today } },
+        }),
+      ]);
+
+      kpis = [
+        { key: "newOrders", label: "الطلبات الجديدة", value: newOrders, change: calcChange(newOrders, newYesterday), color: "blue", icon: "clipboard", href: "/operations/orders?status=NEW" },
+        { key: "processing", label: "قيد المعالجة", value: processing, change: null, color: "yellow", icon: "loader", href: "/operations/tracking" },
+        { key: "completed", label: "المنجزة اليوم", value: completedToday, change: null, color: "green", icon: "check-circle", href: "/operations/orders?status=COMPLETED" },
+        { key: "cancelled", label: "الملغاة اليوم", value: cancelledToday, change: null, color: "red", icon: "x-circle", href: "/operations/orders?status=CANCELLED" },
+        { key: "critical", label: "الحرجة", value: critical, change: null, color: "red", icon: "alert-triangle", href: "/operations/orders?priority=CRITICAL" },
+        { key: "fieldTasks", label: "المهام الميدانية", value: fieldTasks, change: null, color: "purple", icon: "map-pin", href: "/operations/dispatch" },
+        { key: "onlineConsults", label: "الاستشارات الأونلاين", value: onlineConsults, change: null, color: "purple", icon: "video", href: "/operations/sanad" },
+        { key: "bloodDraws", label: "سحب الدم المنزلي", value: bloodDraws, change: null, color: "red", icon: "droplets", href: "/operations/blood-bank" },
+        { key: "labInProgress", label: "التحاليل قيد الإنجاز", value: labInProgress, change: null, color: "blue", icon: "flask", href: "/operations/lab" },
+        { key: "radiologyPending", label: "الأشعة بانتظار التقرير", value: radiologyPending, change: null, color: "yellow", icon: "scan", href: "/operations/radiology" },
       ];
       break;
     }

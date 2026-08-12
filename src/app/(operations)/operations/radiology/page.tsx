@@ -1,89 +1,212 @@
 "use client";
 
+import { useCallback, useMemo, useState } from "react";
+import { FileText, ImageIcon, ScanLine } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
-import { StatusBadge } from "@/components/shared/status-badge";
-import { ScanLine, Calendar, Camera, FileText, Image, Send } from "lucide-react";
-import { formatDate } from "@/lib/format";
+import { useStageMutation } from "@/hooks/use-stage-mutation";
+import { DataTable, type Column } from "@/components/data/data-table";
+import { PageHeader } from "@/components/data/crud-kit";
+import {
+  PipelineStrip,
+  StageAdvance,
+  StagePill,
+  useStageCounts,
+  type Stage,
+} from "@/components/data/status-pipeline";
+import { formatDateTime } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
-// Section 11: الأشعة (req L465-472) — 5 items
-// الموعد, تم التصوير, التقرير الطبي, الصور المرفقة, إرسال للطبيب
+// الأشعة (req L465-472) — 5 مراحل
+//
+// The last stage was keyed "sent", but the stored value is "sent_to_doctor", so
+// that counter read 0 no matter how many reports had been sent. The table also
+// read `patientName`, `centerName`, `scheduledDate`, `hasReport` and `hasImages`
+// — the real columns are the joined order, `centerId`, `appointmentDate`,
+// `report` and the `images` array.
 // ─────────────────────────────────────────────────────────────
 
-interface RadiologyItem {
-  id: string;
-  patientName: string;
-  requestType: string;
-  scheduledDate: string;
-  status: string;
-  centerName: string;
-  hasReport: boolean;
-  hasImages: boolean;
-  sentToDoctor: boolean;
-}
-
-const radSteps = [
-  { key: "scheduled", label: "الموعد", icon: <Calendar size={16} />, color: "bg-blue-500" },
-  { key: "imaged", label: "تم التصوير", icon: <Camera size={16} />, color: "bg-cyan-500" },
-  { key: "report_ready", label: "التقرير الطبي", icon: <FileText size={16} />, color: "bg-emerald-500" },
-  { key: "images_attached", label: "الصور المرفقة", icon: <Image size={16} />, color: "bg-purple-500" },
-  { key: "sent", label: "إرسال للطبيب", icon: <Send size={16} />, color: "bg-indigo-500" },
+const STAGES: readonly Stage[] = [
+  { key: "scheduled", label: "الموعد", tone: "info" },
+  { key: "imaged", label: "تم التصوير", tone: "info" },
+  { key: "report_ready", label: "التقرير الطبي", tone: "warning" },
+  { key: "images_attached", label: "الصور المرفقة", tone: "positive" },
+  { key: "sent_to_doctor", label: "أُرسلت للطبيب", tone: "positive" },
 ];
 
-export default function RadiologyPage() {
-  const { data: requests, isLoading } = useDashboardData<RadiologyItem[]>({ url: "/api/radiology-requests", refreshInterval: 15000 });
+type RadiologyRequest = {
+  id: string;
+  centerId: string;
+  requestType: string;
+  equipmentType: string | null;
+  appointmentDate: string | null;
+  status: string;
+  report: string | null;
+  images: string[];
+  createdAt: string;
+  order: {
+    id: string;
+    orderNumber: string;
+    patientName: string;
+    patientPhone: string;
+  } | null;
+};
 
-  const countByStatus = (status: string) => (requests ?? []).filter(r => r.status === status).length;
+type Center = { id: string; name: string };
+
+const statusOf = (r: RadiologyRequest) => r.status;
+
+export default function RadiologyPage() {
+  const { data, isLoading, error, refetch } = useDashboardData<RadiologyRequest[]>({
+    url: "/api/radiology-requests",
+    params: { limit: "100" },
+    refreshInterval: 30_000,
+  });
+
+  const { data: centers } = useDashboardData<Center[]>({
+    url: "/api/partners",
+    params: { type: "RADIOLOGY", limit: "100" },
+  });
+
+  const centerNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of centers ?? []) map.set(c.id, c.name);
+    return map;
+  }, [centers]);
+
+  const [stage, setStage] = useState<string | null>(null);
+
+  const counts = useStageCounts(data, STAGES, statusOf);
+
+  const refresh = useCallback(() => void refetch(), [refetch]);
+  const { setStage: advance, isPending } = useStageMutation("/api/radiology-requests", refresh);
+
+  const rows = useMemo(
+    () => (stage ? (data ?? []).filter((r) => r.status === stage) : (data ?? [])),
+    [data, stage]
+  );
+
+  const columns: Column<RadiologyRequest>[] = useMemo(
+    () => [
+      {
+        key: "patient",
+        header: "المريض",
+        render: (r) =>
+          r.order ? (
+            <div className="min-w-0">
+              <p className="truncate font-medium text-foreground">{r.order.patientName}</p>
+              <p className="truncate font-mono text-xs text-muted-foreground" dir="ltr">
+                #{r.order.orderNumber.slice(-8)}
+              </p>
+            </div>
+          ) : (
+            <span className="text-xs text-muted-foreground">طلب بلا مريض مرتبط</span>
+          ),
+        sortValue: (r) => r.order?.patientName ?? "",
+      },
+      {
+        key: "requestType",
+        header: "نوع الأشعة",
+        render: (r) => (
+          <div className="min-w-0">
+            <p className="truncate text-foreground">{r.requestType}</p>
+            {r.equipmentType ? (
+              <p className="truncate text-xs text-muted-foreground">{r.equipmentType}</p>
+            ) : null}
+          </div>
+        ),
+        sortValue: (r) => r.requestType,
+      },
+      {
+        key: "center",
+        header: "المركز",
+        secondary: true,
+        render: (r) => (
+          <span className="text-xs text-muted-foreground">
+            {centerNames.get(r.centerId) ?? r.centerId.slice(-8)}
+          </span>
+        ),
+        sortValue: (r) => centerNames.get(r.centerId) ?? "",
+      },
+      {
+        key: "appointmentDate",
+        header: "الموعد",
+        render: (r) => (
+          <span className="whitespace-nowrap text-xs text-muted-foreground">
+            {r.appointmentDate ? formatDateTime(r.appointmentDate) : "بلا موعد"}
+          </span>
+        ),
+        sortValue: (r) => (r.appointmentDate ? new Date(r.appointmentDate).getTime() : 0),
+      },
+      {
+        key: "status",
+        header: "المرحلة",
+        render: (r) => <StagePill stages={STAGES} value={r.status} />,
+      },
+      {
+        key: "attachments",
+        header: "المرفقات",
+        secondary: true,
+        render: (r) => {
+          const imageCount = Array.isArray(r.images) ? r.images.length : 0;
+          const hasReport = Boolean(r.report && r.report.trim());
+          if (!hasReport && imageCount === 0) {
+            return <span className="text-xs text-muted-foreground">—</span>;
+          }
+          return (
+            <span className="flex items-center gap-2 text-xs text-muted-foreground">
+              {hasReport ? (
+                <span className="inline-flex items-center gap-1" title="التقرير الطبي جاهز">
+                  <FileText size={12} aria-hidden />
+                  تقرير
+                </span>
+              ) : null}
+              {imageCount > 0 ? (
+                <span className="inline-flex items-center gap-1" title={`${imageCount} صورة`}>
+                  <ImageIcon size={12} aria-hidden />
+                  {imageCount}
+                </span>
+              ) : null}
+            </span>
+          );
+        },
+      },
+    ],
+    [centerNames]
+  );
 
   return (
-    <div className="space-y-6" dir="rtl">
-      <div>
-        <h1 className="text-xl font-bold text-foreground flex items-center gap-2"><ScanLine size={22} className="text-primary" /> الأشعة</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">5 مراحل: الموعد → التصوير → التقرير → الصور → الإرسال</p>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="الأشعة"
+        subtitle="٥ مراحل — الموعد ثم التصوير ثم التقرير ثم الصور ثم الإرسال للطبيب"
+        icon={ScanLine}
+      />
 
-      {/* Step summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        {radSteps.map((step) => (
-          <div key={step.key} className="rounded-xl border border-border bg-card p-4 text-center hover:shadow-md transition-all">
-            <div className={`mx-auto flex h-10 w-10 items-center justify-center rounded-full text-white mb-2 ${step.color}`}>{step.icon}</div>
-            <span className="text-lg font-bold text-foreground block">{countByStatus(step.key)}</span>
-            <span className="text-[10px] text-muted-foreground">{step.label}</span>
-          </div>
-        ))}
-      </div>
+      <PipelineStrip stages={STAGES} counts={counts} active={stage} onSelect={setStage} />
 
-      {/* Requests table */}
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
-        {isLoading ? (
-          <div className="space-y-3 p-5">{[1,2,3].map(i => <div key={i} className="h-12 rounded bg-muted animate-pulse" />)}</div>
-        ) : (
-          <table className="w-full">
-            <thead><tr className="border-b border-border bg-muted/30">
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">المريض</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">نوع الأشعة</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">المركز</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">الموعد</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">الحالة</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">التقرير</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">الصور</th>
-            </tr></thead>
-            <tbody className="divide-y divide-border">
-              {(requests ?? []).map((r) => (
-                <tr key={r.id} className="hover:bg-muted/30 transition-colors">
-                  <td className="px-4 py-3 text-sm font-medium text-foreground">{r.patientName}</td>
-                  <td className="px-4 py-3 text-sm text-muted-foreground">{r.requestType}</td>
-                  <td className="px-4 py-3 text-sm text-muted-foreground">{r.centerName}</td>
-                  <td className="px-4 py-3 text-sm text-muted-foreground">{r.scheduledDate ? formatDate(r.scheduledDate) : "—"}</td>
-                  <td className="px-4 py-3"><StatusBadge status={r.status} size="sm" /></td>
-                  <td className="px-4 py-3">{r.hasReport ? <span className="text-emerald-600 text-xs">✓ جاهز</span> : <span className="text-muted-foreground text-xs">—</span>}</td>
-                  <td className="px-4 py-3">{r.hasImages ? <span className="text-emerald-600 text-xs">✓ مرفقة</span> : <span className="text-muted-foreground text-xs">—</span>}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <DataTable
+        rows={rows}
+        columns={columns}
+        isLoading={isLoading}
+        error={error}
+        onRetry={refetch}
+        searchable={(r) =>
+          `${r.requestType} ${r.equipmentType ?? ""} ${r.order?.patientName ?? ""} ${
+            r.order?.orderNumber ?? ""
+          }`
+        }
+        searchPlaceholder="بحث بنوع الأشعة أو المريض أو رقم الطلب..."
+        emptyMessage={stage ? "لا توجد طلبات في هذه المرحلة" : "لا توجد طلبات أشعة"}
+        actions={(r) => (
+          <StageAdvance
+            stages={STAGES}
+            current={r.status}
+            onAdvance={(next) => void advance(r.id, next)}
+            disabled={isPending}
+            label={`أشعة ${r.requestType}`}
+          />
         )}
-      </div>
+      />
     </div>
   );
 }

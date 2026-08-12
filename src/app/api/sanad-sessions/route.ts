@@ -41,11 +41,39 @@ export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
   // `keysetArgs` puts in `where` — is the whole clause.
   const rows = await prisma.sanadSession.findMany({
     ...keyset,
-    include: { doctor: { select: { userId: true } } },
+    // The screen is a waiting room: it has to name the doctor and the patient.
+    // It previously received `doctor.userId` and nothing else, so it displayed
+    // `doctorName` / `patientName` fields that were never in the response.
+    include: {
+      doctor: {
+        select: {
+          id: true,
+          userId: true,
+          user: { select: { name: true, phone: true } },
+          specialty: { select: { name: true } },
+        },
+      },
+    },
   });
 
   const { items, page } = toPage(rows, limit);
-  return okList(items, page, { requestId });
+
+  // `SanadSession.patientId` is a plain column with no relation, so the patient
+  // cannot be joined — one lookup for the page's ids rather than one per row.
+  const patientIds = [...new Set(items.map((s) => s.patientId))];
+  const patients = patientIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: patientIds } },
+        select: { id: true, name: true, phone: true },
+      })
+    : [];
+  const byId = new Map(patients.map((p) => [p.id, p]));
+
+  return okList(
+    items.map((s) => ({ ...s, patient: byId.get(s.patientId) ?? null })),
+    page,
+    { requestId }
+  );
 });
 
 // POST /api/sanad-sessions — Book a session.

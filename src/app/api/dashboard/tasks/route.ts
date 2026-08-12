@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
 import { ok } from "@/lib/api-response";
+import { startOfBaghdadDay } from "@/lib/time";
 
 // GET /api/dashboard/tasks — Current tasks per role (req L48-58 ⭐)
 //
@@ -9,8 +10,7 @@ import { ok } from "@/lib/api-response";
 // `?role=` parameter the web client still sends is ignored.
 export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = startOfBaghdadDay();
 
   // Fail closed. Taking the role from the session stopped role spoofing, but
   // left the DATA unscoped — every lab saw every other lab's samples. A

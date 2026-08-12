@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useState } from "react";
+import { STALE_TIME } from "@/lib/request-cache";
 import type { FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AlertCircle, Loader2, MapPin, Phone, User } from "lucide-react";
@@ -44,6 +45,7 @@ function CompleteProfile() {
   const { user, isLoading: loadingMe, refetch } = useMe();
   const { data: governorates } = useDashboardData<Governorate[]>({
     url: "/api/public/governorates",
+    staleTime: STALE_TIME.reference,
   });
 
   const [name, setName] = useState("");

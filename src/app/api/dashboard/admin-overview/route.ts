@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
 import { ok } from "@/lib/api-response";
+import { baghdadDayKey, startOfBaghdadDay } from "@/lib/time";
 
 /**
  * GET /api/dashboard/admin-overview — the Super Admin Command Center
@@ -19,12 +20,6 @@ import { ok } from "@/lib/api-response";
 const D = Prisma.Decimal;
 const TREND_DAYS = 7;
 
-function startOfDay(d: Date) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-
 /** Percent change, or null when there is no baseline to compare against. */
 function change(current: number, previous: number): number | null {
   if (previous === 0) return null;
@@ -34,7 +29,7 @@ function change(current: number, previous: number): number | null {
 export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
 
-  const today = startOfDay(new Date());
+  const today = startOfBaghdadDay(new Date());
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
   const trendStart = new Date(today);
@@ -120,7 +115,15 @@ export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
         user: { select: { name: true, role: true } },
       },
     }),
-    prisma.serviceConfig.groupBy({ by: ["status"], _count: { _all: true } }),
+    // Retiring a partner sets `deletedAt` but leaves their ServiceConfig and
+    // PartnerChannel rows behind, so both of these counted providers the
+    // platform no longer works with. The figures only drift upward, and they
+    // are what an operator reads to understand the platform's actual size.
+    prisma.serviceConfig.groupBy({
+      by: ["status"],
+      where: { partner: { deletedAt: null } },
+      _count: { _all: true },
+    }),
 
     // ── Added with the sales-channel model ──────────────────────────────────
     // Revenue and volume per storefront. سند discounts heavily, so the split
@@ -137,7 +140,9 @@ export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
     // boolean it replaced, so a partner in two channels is counted in both.
     prisma.partnerChannel.groupBy({
       by: ["channel"],
-      where: { status: { not: "SUSPENDED" } },
+      // `status` here is the CHANNEL's, not the partner's — a retired partner's
+      // channels stay ACTIVE, so filtering on it alone kept counting them.
+      where: { status: { not: "SUSPENDED" }, partner: { deletedAt: null } },
       _count: { _all: true },
     }),
     // Money the platform is holding on behalf of patients — a liability, not
@@ -162,15 +167,15 @@ export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
     ).map((p) => [p.id, p])
   );
 
-  // Bucket the trend by local day.
+  // Bucket the trend by BAGHDAD day — both the labels and the row keys, so an
+  // order placed at 01:00 Baghdad lands on the day the operator calls today.
   const byDay = new Map<string, { revenue: Prisma.Decimal; orders: number }>();
   for (let i = 0; i < TREND_DAYS; i++) {
-    const d = new Date(trendStart);
-    d.setDate(d.getDate() + i);
-    byDay.set(d.toISOString().slice(0, 10), { revenue: new D(0), orders: 0 });
+    const d = new Date(trendStart.getTime() + i * 24 * 60 * 60 * 1000);
+    byDay.set(baghdadDayKey(d), { revenue: new D(0), orders: 0 });
   }
   for (const row of trendRows) {
-    const key = startOfDay(row.createdAt).toISOString().slice(0, 10);
+    const key = baghdadDayKey(row.createdAt);
     const bucket = byDay.get(key);
     if (!bucket) continue;
     bucket.revenue = bucket.revenue.plus(row.totalAmount ?? 0);

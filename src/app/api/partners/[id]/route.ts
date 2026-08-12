@@ -57,7 +57,7 @@ export const PATCH = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params 
   const input = await parseBody(req, updatePartnerSchema);
 
   const partner = await prisma.$transaction(async (tx) => {
-    await tx.partner.update({
+    const updated = await tx.partner.update({
       where: { id },
       data: {
         name: input.name,
@@ -68,7 +68,21 @@ export const PATCH = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params 
         status: input.status,
         complexId: input.complexId,
       },
+      select: { userId: true, type: true },
     });
+
+    // A doctor's complex is stored TWICE — on `Partner` and on `DoctorProfile`
+    // — and only the first was written here. Onboarding sets both, so the two
+    // agreed until the first edit, at which point the doctor's profile kept
+    // pointing at the old complex while the partner row moved. Anything reading
+    // the profile (schedules, the doctor's own dashboard) would then disagree
+    // with dispatch about which complex the doctor belongs to.
+    if (input.complexId !== undefined && updated.type === "DOCTOR") {
+      await tx.doctorProfile.updateMany({
+        where: { userId: updated.userId },
+        data: { complexId: input.complexId },
+      });
+    }
 
     if (input.channels) {
       // Replace the set rather than diffing it: `deleteMany` + `createMany`

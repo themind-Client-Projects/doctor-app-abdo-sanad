@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { prisma, TX_OPTIONS } from "@/lib/prisma";
 import { creditWallet, ensureWallet } from "@/server/services/patient-wallet";
 import {
   MIN_AMOUNT_IQD,
@@ -137,20 +137,37 @@ export async function settleTopup(reference: string): Promise<{
     );
   }
 
-  // The claim: only the request that flips settledAt from null may credit.
-  // Two concurrent webhooks both reach here; exactly one updates a row.
-  const { count } = await prisma.paymentIntent.updateMany({
-    where: { id: intent.id, settledAt: null },
-    data: { settledAt: new Date(), status: "SETTLED", providerStatus: link.status },
-  });
-  if (count === 0) return { outcome: "already_settled", amount: intent.amount.toString() };
+  // The claim and the credit are ONE transaction.
+  //
+  // They used to be two. If the credit failed — a dropped connection, a
+  // transaction timeout, a redeploy mid-request — the intent was already
+  // flagged settled, so the money was never added AND every webhook retry
+  // returned "already_settled" without ever crediting. The patient paid real
+  // money and lost it, with nothing in the logs saying so.
+  //
+  // Only the request that flips settledAt from null may credit: two concurrent
+  // webhooks both reach here and exactly one updates a row. If the credit then
+  // throws, the flip rolls back with it and the next retry can try again.
+  const credited = await prisma.$transaction(async (tx) => {
+    const { count } = await tx.paymentIntent.updateMany({
+      where: { id: intent.id, settledAt: null },
+      data: { settledAt: new Date(), status: "SETTLED", providerStatus: link.status },
+    });
+    if (count === 0) return false;
 
-  await creditWallet({
-    userId: intent.wallet.userId,
-    amount: intent.amount,
-    reason: "TOPUP",
-    description: "شحن المحفظة عبر واصل",
-  });
+    await creditWallet(
+      {
+        userId: intent.wallet.userId,
+        amount: intent.amount,
+        reason: "TOPUP",
+        description: "شحن المحفظة عبر واصل",
+      },
+      tx
+    );
+    return true;
+  }, TX_OPTIONS);
+
+  if (!credited) return { outcome: "already_settled", amount: intent.amount.toString() };
 
   return { outcome: "credited", amount: intent.amount.toString() };
 }

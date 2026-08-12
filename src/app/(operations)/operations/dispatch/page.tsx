@@ -1,207 +1,444 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import {
+  Check,
+  FlaskConical,
+  HeartPulse,
+  Pill as PillIcon,
+  ScanLine,
+  Send,
+  Stethoscope,
+  Truck,
+} from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
-import { StatusBadge } from "@/components/shared/status-badge";
-import { HeartPulse, Truck, FlaskConical, ScanLine, Pill, Send, Star, Clock, MapPin } from "lucide-react";
+import { useOrderActions, type AssignTarget } from "@/hooks/use-order-actions";
+import { DataTable, type Column } from "@/components/data/data-table";
+import { PageHeader, Pill, toneForStatus } from "@/components/data/crud-kit";
+import {
+  ORDER_PRIORITY_LABELS,
+  PARTNER_STATUS_LABELS,
+  SERVICE_TYPE_LABELS,
+  labelOf,
+  optionsOf,
+} from "@/lib/labels";
+import { formatNumber } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
-// Section 4: مركز توزيع المهام (req L324-382) — 5 entity types
-// الممرضين (7 fields + btn), السائقين (6 fields + btn),
-// المختبرات (6 fields + btn), الأشعة (5 fields), الصيدليات (4 fields)
+// مركز توزيع المهام (req L324-382)
+//
+// Rewritten for two reasons.
+//
+// 1. The buttons did nothing. POST /api/orders/[id]/assign has always existed;
+//    "تعيين المهمة" was a `<button>` with no handler, so no order could be
+//    dispatched from the dispatch centre.
+//
+// 2. Assignment needs an ORDER. The screen listed providers with an assign
+//    button that had no order in hand — there was nothing it could have sent.
+//    So the order comes first: choose what to dispatch, then choose who.
+//
+// Columns are the ones Partner actually holds. The previous version read
+// `currentTasks`, `lastSeen`, `vehicleType`, `responseTime`, `workingHours`,
+// `equipmentType`, `nextSlot`, `reportTime`, `availability` and `hasDelivery`
+// off a `Record<string, unknown>` — not one of those is a field on Partner, so
+// every one of those columns printed "—" on every row. Of that list only the
+// workload is real, and it is now computed server-side as `activeOrders`.
 // ─────────────────────────────────────────────────────────────
 
-type EntityType = "nurses" | "drivers" | "labs" | "radiology" | "pharmacies";
+type Partner = {
+  id: string;
+  name: string;
+  phone: string;
+  type: string;
+  status: string;
+  rating: number;
+  totalTasks: number;
+  /** Open orders held right now — computed by the API under `?withLoad=1`. */
+  activeOrders: number;
+  address: string | null;
+  governorate: { id: string; name: string } | null;
+  complex: { id: string; name: string } | null;
+};
 
-const entityTabs: { key: EntityType; label: string; icon: React.ReactNode }[] = [
-  { key: "nurses", label: "الممرضين", icon: <HeartPulse size={16} /> },
-  { key: "drivers", label: "السائقين", icon: <Truck size={16} /> },
-  { key: "labs", label: "المختبرات", icon: <FlaskConical size={16} /> },
-  { key: "radiology", label: "مراكز الأشعة", icon: <ScanLine size={16} /> },
-  { key: "pharmacies", label: "الصيدليات", icon: <Pill size={16} /> },
+type DispatchOrder = {
+  id: string;
+  orderNumber: string;
+  patientName: string;
+  serviceType: string;
+  status: string;
+  priority: string;
+  area: string | null;
+  address: string | null;
+  governorate: { name: string } | null;
+  assignedNurseId: string | null;
+  assignedDriverId: string | null;
+  assignedLabId: string | null;
+  assignedPharmacyId: string | null;
+  assignedRadiologyId: string | null;
+  assignedDoctorId: string | null;
+};
+
+type Slot = {
+  key: AssignTarget;
+  /** Partner.type this slot accepts — the server rejects any mismatch. */
+  partnerType: string;
+  label: string;
+  action: string;
+  icon: typeof HeartPulse;
+  /** Which column on the order records this slot's assignment. */
+  field: keyof Pick<
+    DispatchOrder,
+    | "assignedNurseId"
+    | "assignedDriverId"
+    | "assignedLabId"
+    | "assignedPharmacyId"
+    | "assignedRadiologyId"
+    | "assignedDoctorId"
+  >;
+};
+
+const SLOTS: readonly Slot[] = [
+  {
+    key: "doctor",
+    partnerType: "DOCTOR",
+    label: "الأطباء",
+    action: "تعيين الطبيب",
+    icon: Stethoscope,
+    field: "assignedDoctorId",
+  },
+  {
+    key: "nurse",
+    partnerType: "NURSE",
+    label: "الممرضين",
+    action: "تعيين المهمة",
+    icon: HeartPulse,
+    field: "assignedNurseId",
+  },
+  {
+    key: "driver",
+    partnerType: "DRIVER",
+    label: "السائقين",
+    action: "إرسال المهمة",
+    icon: Truck,
+    field: "assignedDriverId",
+  },
+  {
+    key: "lab",
+    partnerType: "LAB",
+    label: "المختبرات",
+    action: "اعتماد المختبر",
+    icon: FlaskConical,
+    field: "assignedLabId",
+  },
+  {
+    key: "radiology",
+    partnerType: "RADIOLOGY",
+    label: "مراكز الأشعة",
+    action: "إحالة للأشعة",
+    icon: ScanLine,
+    field: "assignedRadiologyId",
+  },
+  {
+    key: "pharmacy",
+    partnerType: "PHARMACY",
+    label: "الصيدليات",
+    action: "إرسال للصيدلية",
+    icon: PillIcon,
+    field: "assignedPharmacyId",
+  },
 ];
 
+/** Statuses the server will accept an assignment for — mirrors `allowedActions`. */
+const DISPATCHABLE = "ACCEPTED,ASSIGNED,DELAYED";
+
 export default function DispatchPage() {
-  const [activeTab, setActiveTab] = useState<EntityType>("nurses");
+  const [slotKey, setSlotKey] = useState<AssignTarget>("nurse");
+  const [orderId, setOrderId] = useState("");
+
+  const slot = useMemo(() => SLOTS.find((s) => s.key === slotKey) ?? SLOTS[0], [slotKey]);
+
+  const {
+    data: orders,
+    isLoading: ordersLoading,
+    refetch: refetchOrders,
+  } = useDashboardData<DispatchOrder[]>({
+    url: "/api/orders",
+    params: { status: DISPATCHABLE, limit: "100" },
+    refreshInterval: 30_000,
+  });
+
+  // One request per tab, and only for the visible tab — the five provider
+  // tables are never on screen together.
+  const {
+    data: partners,
+    isLoading,
+    error,
+    refetch,
+  } = useDashboardData<Partner[]>({
+    url: "/api/partners",
+    params: { type: slot.partnerType, status: "ACTIVE", withLoad: "1", limit: "100" },
+  });
+
+  const selected = useMemo(
+    () => (orders ?? []).find((o) => o.id === orderId) ?? null,
+    [orders, orderId]
+  );
+
+  const afterAssign = useCallback(() => {
+    void refetchOrders();
+    void refetch();
+  }, [refetchOrders, refetch]);
+
+  const { assign, isPending } = useOrderActions(afterAssign);
+
+  // Who currently holds this slot on the selected order, so the table can mark
+  // them instead of offering the same assignment again.
+  const assignedId = selected ? selected[slot.field] : null;
+
+  const columns: Column<Partner>[] = useMemo(
+    () => [
+      {
+        key: "name",
+        header: "الاسم",
+        render: (r) => (
+          <div className="min-w-0">
+            <p className="truncate font-medium text-foreground">{r.name}</p>
+            <p className="truncate text-xs text-muted-foreground" dir="ltr">
+              {r.phone}
+            </p>
+          </div>
+        ),
+        sortValue: (r) => r.name,
+      },
+      {
+        key: "location",
+        header: "الموقع",
+        render: (r) => (
+          <span className="text-xs text-muted-foreground">
+            {[r.governorate?.name, r.address].filter(Boolean).join(" - ") || "—"}
+          </span>
+        ),
+        sortValue: (r) => r.governorate?.name ?? "",
+      },
+      {
+        key: "complex",
+        header: "المجمع",
+        secondary: true,
+        render: (r) => (
+          <span className="text-xs text-muted-foreground">{r.complex?.name ?? "—"}</span>
+        ),
+      },
+      {
+        key: "activeOrders",
+        header: "المهام الحالية",
+        align: "end",
+        render: (r) => (
+          <span
+            className={`tabular-nums ${
+              r.activeOrders === 0
+                ? "text-emerald-600 dark:text-emerald-400"
+                : r.activeOrders >= 5
+                  ? "text-amber-600 dark:text-amber-400"
+                  : "text-foreground"
+            }`}
+          >
+            {formatNumber(r.activeOrders)}
+          </span>
+        ),
+        sortValue: (r) => r.activeOrders,
+      },
+      {
+        key: "totalTasks",
+        header: "إجمالي المهام",
+        secondary: true,
+        align: "end",
+        render: (r) => formatNumber(r.totalTasks),
+        sortValue: (r) => r.totalTasks,
+      },
+      {
+        key: "rating",
+        header: "التقييم",
+        render: (r) =>
+          // A partner with no completed work has rating 0, which is not a bad
+          // score — it is no score. Saying "0.0 ★" would libel a new nurse.
+          r.rating > 0 ? (
+            <span className="tabular-nums text-foreground">{r.rating.toFixed(1)} ★</span>
+          ) : (
+            <span className="text-xs text-muted-foreground">لا تقييم بعد</span>
+          ),
+        sortValue: (r) => r.rating,
+      },
+      {
+        key: "status",
+        header: "الحالة",
+        render: (r) => (
+          <Pill tone={toneForStatus(r.status)}>{labelOf(PARTNER_STATUS_LABELS, r.status)}</Pill>
+        ),
+      },
+    ],
+    []
+  );
 
   return (
-    <div className="space-y-6" dir="rtl">
-      <div>
-        <h1 className="text-xl font-bold text-foreground">مركز توزيع المهام</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">5 فئات — الممرضين، السائقين، المختبرات، الأشعة، الصيدليات</p>
+    <div className="space-y-5">
+      <PageHeader
+        title="مركز توزيع المهام"
+        subtitle="اختر الطلب أولاً، ثم عيّن المنفّذ — الممرضين، السائقين، المختبرات، الأشعة، الصيدليات"
+        icon={Send}
+      />
+
+      <OrderPicker
+        orders={orders ?? []}
+        isLoading={ordersLoading}
+        value={orderId}
+        onChange={setOrderId}
+        selected={selected}
+      />
+
+      <div className="flex gap-1 overflow-x-auto pb-1 hide-scrollbar" role="tablist">
+        {SLOTS.map((s) => {
+          const Icon = s.icon;
+          const active = s.key === slotKey;
+          const filled = selected ? selected[s.field] !== null : false;
+          return (
+            <button
+              key={s.key}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setSlotKey(s.key)}
+              className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
+                active
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
+              }`}
+            >
+              <Icon size={16} />
+              {s.label}
+              {/* A tick on the tab, so a multi-party order shows at a glance
+                  which slots are still open. */}
+              {filled ? <Check size={13} className={active ? "" : "text-emerald-500"} /> : null}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Entity tabs */}
-      <div className="flex gap-1 overflow-x-auto pb-1 hide-scrollbar">
-        {entityTabs.map((tab) => (
-          <button key={tab.key} onClick={() => setActiveTab(tab.key)} className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors ${activeTab === tab.key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground"}`}>
-            {tab.icon} {tab.label}
-          </button>
+      <DataTable
+        rows={partners}
+        columns={columns}
+        isLoading={isLoading}
+        error={error}
+        onRetry={refetch}
+        searchable={(r) => `${r.name} ${r.phone} ${r.governorate?.name ?? ""} ${r.complex?.name ?? ""}`}
+        searchPlaceholder="بحث بالاسم أو الهاتف أو المحافظة..."
+        filters={[
+          {
+            key: "load",
+            label: "كل الأحمال",
+            options: [
+              { value: "free", label: "متاح الآن" },
+              { value: "busy", label: "لديه مهام" },
+            ],
+            match: (r, v) => (v === "free" ? r.activeOrders === 0 : r.activeOrders > 0),
+          },
+          {
+            key: "status",
+            label: "كل الحالات",
+            options: optionsOf(PARTNER_STATUS_LABELS),
+            match: (r, v) => r.status === v,
+          },
+        ]}
+        emptyMessage={`لا يوجد ${slot.label} مفعّلون`}
+        actions={(r) =>
+          r.id === assignedId ? (
+            <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-emerald-500/10 px-2.5 py-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+              <Check size={12} />
+              معيَّن لهذا الطلب
+            </span>
+          ) : (
+            <button
+              type="button"
+              // Disabled rather than hidden with no order: the employee needs to
+              // see that dispatch is possible and what is missing.
+              disabled={!selected || isPending}
+              onClick={() => selected && void assign(selected.id, slot.key, r.id)}
+              aria-label={`${slot.action} — ${r.name}`}
+              title={selected ? undefined : "اختر طلباً أولاً"}
+              className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Send size={12} />
+              {slot.action}
+            </button>
+          )
+        }
+      />
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+
+function OrderPicker({
+  orders,
+  isLoading,
+  value,
+  onChange,
+  selected,
+}: {
+  orders: DispatchOrder[];
+  isLoading: boolean;
+  value: string;
+  onChange: (id: string) => void;
+  selected: DispatchOrder | null;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-4">
+      <label
+        htmlFor="dispatch-order"
+        className="mb-1.5 block text-sm font-medium text-foreground"
+      >
+        الطلب المراد توزيعه
+      </label>
+
+      <select
+        id="dispatch-order"
+        value={value}
+        disabled={isLoading}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-11 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none transition-colors focus:border-[hsl(var(--primary))] disabled:opacity-60"
+      >
+        <option value="">
+          {isLoading
+            ? "جارِ التحميل..."
+            : orders.length === 0
+              ? "لا توجد طلبات بانتظار التوزيع"
+              : "— اختر طلباً —"}
+        </option>
+        {orders.map((o) => (
+          <option key={o.id} value={o.id}>
+            #{o.orderNumber.slice(-8)} · {o.patientName} ·{" "}
+            {labelOf(SERVICE_TYPE_LABELS, o.serviceType)}
+          </option>
         ))}
-      </div>
+      </select>
 
-      {/* Content */}
-      {activeTab === "nurses" && <NursesPanel />}
-      {activeTab === "drivers" && <DriversPanel />}
-      {activeTab === "labs" && <LabsPanel />}
-      {activeTab === "radiology" && <RadiologyPanel />}
-      {activeTab === "pharmacies" && <PharmaciesPanel />}
-    </div>
-  );
-}
-
-// ─── الممرضين (L329-339) — 7 fields + button ───
-function NursesPanel() {
-  const { data, isLoading } = useDashboardData<Record<string, unknown>[]>({ url: "/api/partners", params: { type: "NURSE" } });
-  return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
-      {isLoading ? <Loading /> : (
-        <table className="w-full">
-          <thead><tr className="border-b border-border bg-muted/30">
-            <Th>الاسم</Th><Th>التقييم</Th><Th>المهام الحالية</Th><Th>آخر ظهور</Th><Th>المحافظة</Th><Th>المنطقة</Th><Th>الحالة</Th><Th>إجراء</Th>
-          </tr></thead>
-          <tbody className="divide-y divide-border">
-            {(data ?? []).map((n, i) => (
-              <tr key={i} className="hover:bg-muted/30 transition-colors">
-                <Td bold>{String(n.name ?? "—")}</Td>
-                <Td>⭐ {String(n.rating ?? "—")}</Td>
-                <Td>{String(n.currentTasks ?? 0)}</Td>
-                <Td>{String(n.lastSeen ?? "—")}</Td>
-                <Td>{String(n.governorate ?? "—")}</Td>
-                <Td>{String(n.area ?? "—")}</Td>
-                <Td><StatusBadge status={String(n.status ?? "AVAILABLE")} size="sm" /></Td>
-                <Td><ActionBtn label="تعيين المهمة" /></Td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {selected ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+          <Pill tone={selected.priority === "NORMAL" ? "neutral" : "danger"}>
+            {labelOf(ORDER_PRIORITY_LABELS, selected.priority)}
+          </Pill>
+          <span className="text-sm text-foreground">{selected.patientName}</span>
+          <span className="text-xs text-muted-foreground">
+            {[selected.governorate?.name, selected.area, selected.address]
+              .filter(Boolean)
+              .join(" - ") || "لا يوجد عنوان"}
+          </span>
+        </div>
+      ) : (
+        <p className="mt-2 text-xs text-muted-foreground">
+          يُعرض هنا الطلبات المقبولة والمُسندة والمعلّقة فقط — غيرها لا يقبل التعيين.
+        </p>
       )}
     </div>
   );
-}
-
-// ─── السائقين (L341-351) — 6 fields + button ───
-function DriversPanel() {
-  const { data, isLoading } = useDashboardData<Record<string, unknown>[]>({ url: "/api/partners", params: { type: "DRIVER" } });
-  return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
-      {isLoading ? <Loading /> : (
-        <table className="w-full">
-          <thead><tr className="border-b border-border bg-muted/30">
-            <Th>الاسم</Th><Th>السيارة</Th><Th>المنطقة</Th><Th>التقييم</Th><Th>متاح الآن</Th><Th>المهام</Th><Th>إجراء</Th>
-          </tr></thead>
-          <tbody className="divide-y divide-border">
-            {(data ?? []).map((d, i) => (
-              <tr key={i} className="hover:bg-muted/30 transition-colors">
-                <Td bold>{String(d.name ?? "—")}</Td>
-                <Td>{String(d.vehicleType ?? "—")}</Td>
-                <Td>{String(d.area ?? "—")}</Td>
-                <Td>⭐ {String(d.rating ?? "—")}</Td>
-                <Td>{String(d.status) === "AVAILABLE" ? <span className="text-emerald-600">✓ متاح</span> : <span className="text-red-600">✗ مشغول</span>}</Td>
-                <Td>{String(d.currentTasks ?? 0)}</Td>
-                <Td><ActionBtn label="إرسال المهمة" /></Td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
-  );
-}
-
-// ─── المختبرات (L354-364) — 6 fields + button ───
-function LabsPanel() {
-  const { data, isLoading } = useDashboardData<Record<string, unknown>[]>({ url: "/api/partners", params: { type: "LAB" } });
-  return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
-      {isLoading ? <Loading /> : (
-        <table className="w-full">
-          <thead><tr className="border-b border-border bg-muted/30">
-            <Th>اسم المختبر</Th><Th>وقت الاستجابة</Th><Th>الطلبات الحالية</Th><Th>تقييم الجودة</Th><Th>ساعات العمل</Th><Th>المحافظة</Th><Th>إجراء</Th>
-          </tr></thead>
-          <tbody className="divide-y divide-border">
-            {(data ?? []).map((l, i) => (
-              <tr key={i} className="hover:bg-muted/30 transition-colors">
-                <Td bold>{String(l.name ?? "—")}</Td>
-                <Td>{String(l.responseTime ?? "—")}</Td>
-                <Td>{String(l.currentTasks ?? 0)}</Td>
-                <Td>⭐ {String(l.rating ?? "—")}</Td>
-                <Td>{String(l.workingHours ?? "—")}</Td>
-                <Td>{String(l.governorate ?? "—")}</Td>
-                <Td><ActionBtn label="اعتماد المختبر" /></Td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
-  );
-}
-
-// ─── مراكز الأشعة (L367-374) — 5 fields, NO button ───
-function RadiologyPanel() {
-  const { data, isLoading } = useDashboardData<Record<string, unknown>[]>({ url: "/api/partners", params: { type: "RADIOLOGY" } });
-  return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
-      {isLoading ? <Loading /> : (
-        <table className="w-full">
-          <thead><tr className="border-b border-border bg-muted/30">
-            <Th>اسم المركز</Th><Th>نوع الأجهزة</Th><Th>أقرب موعد</Th><Th>وقت التقرير</Th><Th>التقييم</Th>
-          </tr></thead>
-          <tbody className="divide-y divide-border">
-            {(data ?? []).map((r, i) => (
-              <tr key={i} className="hover:bg-muted/30 transition-colors">
-                <Td bold>{String(r.name ?? "—")}</Td>
-                <Td>{String(r.equipmentType ?? "—")}</Td>
-                <Td>{String(r.nextSlot ?? "—")}</Td>
-                <Td>{String(r.reportTime ?? "—")}</Td>
-                <Td>⭐ {String(r.rating ?? "—")}</Td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
-  );
-}
-
-// ─── الصيدليات (L376-382) — 4 fields, NO button ───
-function PharmaciesPanel() {
-  const { data, isLoading } = useDashboardData<Record<string, unknown>[]>({ url: "/api/partners", params: { type: "PHARMACY" } });
-  return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
-      {isLoading ? <Loading /> : (
-        <table className="w-full">
-          <thead><tr className="border-b border-border bg-muted/30">
-            <Th>الصيدلية</Th><Th>توفر الدواء</Th><Th>التوصيل</Th><Th>ساعات العمل</Th><Th>التقييم</Th>
-          </tr></thead>
-          <tbody className="divide-y divide-border">
-            {(data ?? []).map((p, i) => (
-              <tr key={i} className="hover:bg-muted/30 transition-colors">
-                <Td bold>{String(p.name ?? "—")}</Td>
-                <Td>{String(p.availability ?? "—")}</Td>
-                <Td>{String(p.hasDelivery) === "true" ? <span className="text-emerald-600">✓</span> : <span className="text-red-500">✗</span>}</Td>
-                <Td>{String(p.workingHours ?? "—")}</Td>
-                <Td>⭐ {String(p.rating ?? "—")}</Td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
-  );
-}
-
-// Shared helpers
-function Th({ children }: { children: React.ReactNode }) {
-  return <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">{children}</th>;
-}
-function Td({ children, bold }: { children: React.ReactNode; bold?: boolean }) {
-  return <td className={`px-4 py-3 text-sm ${bold ? "font-medium text-foreground" : "text-muted-foreground"}`}>{children}</td>;
-}
-function ActionBtn({ label }: { label: string }) {
-  return <button className="inline-flex items-center gap-1 rounded-lg bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 transition-colors"><Send size={12} />{label}</button>;
-}
-function Loading() {
-  return <div className="space-y-3 p-5">{[1,2,3].map(i => <div key={i} className="h-12 rounded bg-muted animate-pulse" />)}</div>;
 }

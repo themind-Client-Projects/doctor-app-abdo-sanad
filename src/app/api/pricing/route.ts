@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
-import { ok } from "@/lib/api-response";
+import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { amount, parseBody, serviceTypeSchema } from "@/lib/validation";
 
 const createPricingSchema = z
@@ -31,6 +31,22 @@ export const GET = withAuth({ roles: ROLES.ADMIN }, async (req) => {
 export const POST = withAuth({ roles: ROLES.ADMIN }, async (req) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
   const input = await parseBody(req, createPricingSchema);
+
+  // One row per service, enforced by @unique. Checked here so the answer names
+  // the actual problem — "this service already has a price, edit it" — instead
+  // of surfacing a constraint violation the admin cannot act on.
+  const existing = await prisma.priceConfig.findUnique({
+    where: { serviceType: input.serviceType },
+    select: { id: true },
+  });
+  if (existing) {
+    return fail(
+      ErrorCode.DUPLICATE_RESOURCE,
+      409,
+      "هذه الخدمة لديها سعر بالفعل — عدّله بدلاً من إضافة سعر جديد",
+      { requestId }
+    );
+  }
 
   const data = await prisma.priceConfig.create({
     // Explicit allow-list — never spread the request body into Prisma.

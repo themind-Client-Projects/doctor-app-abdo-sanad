@@ -20,7 +20,7 @@ const listQuerySchema = z.object({
   partnerId: z.string().trim().min(1).optional(),
   serviceType: serviceTypeSchema.optional(),
   status: serviceStatus.optional(),
-  limit: z.coerce.number().int().min(1).max(200).default(100),
+  limit: z.coerce.number().int().min(1).max(100).default(100),
 });
 
 const createSchema = z

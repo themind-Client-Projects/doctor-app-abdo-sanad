@@ -16,6 +16,8 @@ import {
 import { useLocationStore } from '@/stores/patient/location.store';
 import { CitySelectorDrawer } from '@/components/features/patient/city-selector-drawer';
 import Image from 'next/image';
+import Link from 'next/link';
+import { offerPath } from '@/lib/channel-routes';
 import { useMemo, useDeferredValue } from 'react';
 import { useDashboardData } from '@/hooks/use-dashboard-data';
 import { formatNumber } from '@/lib/format';
@@ -42,7 +44,19 @@ type Offer = {
   newPrice: number | null;
   discountPercent: number | null;
   expiresInDays: number;
+  serviceType: string | null;
+  partnerType: string | null;
+  doctorProfileId: string | null;
 };
+
+/** How the list can be ordered. The funnel button opens this. */
+type SortKey = 'discount' | 'price' | 'ending';
+
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: 'discount', label: 'الأكبر خصماً' },
+  { key: 'price', label: 'الأقل سعراً' },
+  { key: 'ending', label: 'ينتهي قريباً' },
+];
 
 /** The server sends a day count; turning it into Arabic is the client's job. */
 function expiresLabel(days: number): string {
@@ -66,6 +80,8 @@ export default function OffersPage() {
   const { selectedCity, openCitySelector } = useLocationStore();
   const [activeCategory, setActiveCategory] = useState('الكل');
   const [query, setQuery] = useState('');
+  const [sort, setSort] = useState<SortKey>('discount');
+  const [sortOpen, setSortOpen] = useState(false);
   // Keeps typing responsive; the filter pass runs against the settled value.
   const deferredQuery = useDeferredValue(query);
 
@@ -95,6 +111,21 @@ export default function OffersPage() {
       return matchesCategory && matchesQuery;
     });
   }, [offers, activeCategory, deferredQuery]);
+
+  const visibleOffers = useMemo(() => {
+    // Copy before sorting: `filteredOffers` is memoised and sorting in place
+    // would mutate the cached array, so the order would depend on how many
+    // times the component happened to render.
+    const list = [...filteredOffers];
+    switch (sort) {
+      case 'price':
+        return list.sort((a, b) => (a.newPrice ?? Infinity) - (b.newPrice ?? Infinity));
+      case 'ending':
+        return list.sort((a, b) => a.expiresInDays - b.expiresInDays);
+      default:
+        return list.sort((a, b) => (b.discountPercent ?? 0) - (a.discountPercent ?? 0));
+    }
+  }, [filteredOffers, sort]);
 
   return (
     <div className="flex flex-col min-h-screen bg-[#F8FAFC] pb-24 font-sans" dir="rtl">
@@ -136,10 +167,45 @@ export default function OffersPage() {
               placeholder="ابحث عن العروض، العيادات..."
             />
           </div>
-          <button className="w-12 h-[50px] rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-100 transition-colors active:scale-95 shrink-0">
+          {/* This carried a funnel icon and no handler — it looked like a
+              control and answered nothing. It now opens the sort options. */}
+          <button
+            type="button"
+            onClick={() => setSortOpen((o) => !o)}
+            aria-expanded={sortOpen}
+            aria-label="ترتيب العروض"
+            className={`w-12 h-[50px] rounded-2xl border flex items-center justify-center transition-colors active:scale-95 shrink-0 ${
+              sortOpen || sort !== 'discount'
+                ? 'bg-primary text-white border-primary'
+                : 'bg-gray-50 text-gray-600 border-gray-100 hover:bg-gray-100'
+            }`}
+          >
             <Filter className="w-5 h-5" />
           </button>
         </div>
+
+        {sortOpen ? (
+          <div className="px-5 pb-4 flex flex-wrap gap-2">
+            {SORT_OPTIONS.map((o) => (
+              <button
+                key={o.key}
+                type="button"
+                aria-pressed={sort === o.key}
+                onClick={() => {
+                  setSort(o.key);
+                  setSortOpen(false);
+                }}
+                className={`px-4 py-2 rounded-full text-sm font-bold transition-colors ${
+                  sort === o.key
+                    ? 'bg-primary text-white'
+                    : 'bg-white text-gray-600 border border-gray-200'
+                }`}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </header>
 
       <main className="mt-4">
@@ -189,7 +255,7 @@ export default function OffersPage() {
         <section className="px-5 pb-8">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-extrabold text-gray-900">أحدث العروض</h2>
-            <span className="text-sm font-bold text-primary">{filteredOffers.length} عروض</span>
+            <span className="text-sm font-bold text-primary">{visibleOffers.length} عروض</span>
           </div>
 
           {error ? (
@@ -205,8 +271,15 @@ export default function OffersPage() {
             </div>
           ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredOffers.map((offer, i) => (
-              <div key={offer.id} className="bg-white rounded-3xl p-3 border border-gray-100 shadow-[0_2px_15px_-4px_rgba(0,0,0,0.05)] flex flex-col group cursor-pointer hover:border-primary/30 transition-colors">
+            {visibleOffers.map((offer, i) => (
+              // Was a `<div>` carrying `cursor-pointer` and no destination: it
+              // invited a tap and did nothing. It now leads to the provider the
+              // offer belongs to, or to the browse page for the service.
+              <Link
+                key={offer.id}
+                href={offerPath('DIRECT', offer)}
+                aria-label={`عرض: ${offer.title}`}
+                className="bg-white rounded-3xl p-3 border border-gray-100 shadow-[0_2px_15px_-4px_rgba(0,0,0,0.05)] flex flex-col group cursor-pointer hover:border-primary/30 transition-colors">
                 
                 {/* Card Image Area */}
                 <div className="relative w-full h-44 rounded-2xl overflow-hidden mb-3 bg-gray-100">
@@ -259,18 +332,20 @@ export default function OffersPage() {
                         <span className="font-bold text-xs">د.ع</span>
                       </div>
                     </div>
-                    <button className="bg-emerald-50 text-primary group-hover:bg-primary group-hover:text-white transition-colors w-10 h-10 rounded-xl flex items-center justify-center active:scale-95 shrink-0">
+                    {/* Decorative: the whole card is the link, so this must
+                        not be a nested interactive element. */}
+                    <span aria-hidden className="bg-emerald-50 text-primary group-hover:bg-primary group-hover:text-white transition-colors w-10 h-10 rounded-xl flex items-center justify-center shrink-0">
                       <ChevronLeft className="w-5 h-5" />
-                    </button>
+                    </span>
                   </div>
                 </div>
 
-              </div>
+              </Link>
             ))}
           </div>
           )}
 
-          {!isLoading && !error && filteredOffers.length === 0 && (
+          {!isLoading && !error && visibleOffers.length === 0 && (
             <div className="text-center py-12">
               <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
                 <Search className="w-6 h-6 text-gray-400" />

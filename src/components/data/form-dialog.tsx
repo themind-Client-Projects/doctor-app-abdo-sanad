@@ -24,6 +24,7 @@ export function FormDialog({
   submitLabel = "حفظ",
   submitTone = "primary",
   isPending,
+  submitDisabled,
   children,
 }: {
   open: boolean;
@@ -34,6 +35,14 @@ export function FormDialog({
   submitLabel?: string;
   submitTone?: "primary" | "danger";
   isPending?: boolean;
+  /**
+   * Blocks submit while the form is not yet valid.
+   *
+   * For rules the server will reject outright — a commission split that does
+   * not total 100%, say — refusing here is kinder than sending a request whose
+   * only possible answer is an error toast.
+   */
+  submitDisabled?: boolean;
   children?: React.ReactNode;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -132,7 +141,7 @@ export function FormDialog({
           <div className="mt-6 flex gap-2">
             <button
               type="submit"
-              disabled={isPending}
+              disabled={isPending || submitDisabled}
               className={`flex h-11 flex-1 items-center justify-center gap-2 rounded-xl text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                 submitTone === "danger"
                   ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"

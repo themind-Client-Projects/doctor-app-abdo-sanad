@@ -2,25 +2,34 @@ import { z } from "zod";
 import type { Prisma, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
+import { PROVIDER_SLOT } from "@/lib/order-slots";
 import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-/** Assignment slot → the order column it writes and the partner type it needs. */
+/**
+ * Assignment slot → the order column it writes and the partner type it needs.
+ *
+ * The column comes from `PROVIDER_SLOT`, the single definition shared with
+ * booking, the workload count and the seed — four hand-written copies of this
+ * mapping is what let the seed put doctors in the nurse column.
+ */
 const SLOTS = {
-  nurse: { column: "assignedNurseId", partnerType: "NURSE" },
-  driver: { column: "assignedDriverId", partnerType: "DRIVER" },
-  lab: { column: "assignedLabId", partnerType: "LAB" },
-  pharmacy: { column: "assignedPharmacyId", partnerType: "PHARMACY" },
-  radiology: { column: "assignedRadiologyId", partnerType: "RADIOLOGY" },
+  /// The doctor PERFORMING the order — a consultation's provider.
+  doctor: { column: PROVIDER_SLOT.DOCTOR, partnerType: "DOCTOR" },
+  nurse: { column: PROVIDER_SLOT.NURSE, partnerType: "NURSE" },
+  driver: { column: PROVIDER_SLOT.DRIVER, partnerType: "DRIVER" },
+  lab: { column: PROVIDER_SLOT.LAB, partnerType: "LAB" },
+  pharmacy: { column: PROVIDER_SLOT.PHARMACY, partnerType: "PHARMACY" },
+  radiology: { column: PROVIDER_SLOT.RADIOLOGY, partnerType: "RADIOLOGY" },
 } as const satisfies Record<string, { column: string; partnerType: UserRole }>;
 
 // The five assignee slots — anything else is a 400, not a Prisma crash.
 // `.strict()` so an unexpected key (e.g. a `status`) cannot ride along.
 const assignOrderSchema = z
   .object({
-    type: z.enum(["nurse", "driver", "lab", "pharmacy", "radiology"], {
+    type: z.enum(["doctor", "nurse", "driver", "lab", "pharmacy", "radiology"], {
       message: "نوع غير صالح",
     }),
     partnerId: z

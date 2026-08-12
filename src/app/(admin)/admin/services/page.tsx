@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { STALE_TIME } from "@/lib/request-cache";
 import { FileText } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { apiFetch, useMutation } from "@/hooks/use-mutation";
-import { DataTable, type Column } from "@/components/admin/data-table";
-import { Field, FormDialog, fieldClass } from "@/components/admin/form-dialog";
-import { PageHeader, Pill, RowActions, toneForStatus } from "@/components/admin/crud-kit";
+import { DataTable, type Column } from "@/components/data/data-table";
+import { Field, FormDialog, fieldClass } from "@/components/data/form-dialog";
+import { PageHeader, Pill, RowActions, toneForStatus } from "@/components/data/crud-kit";
 import {
   SERVICE_STATUS_LABELS,
   SERVICE_TYPE_KEYS,
@@ -93,6 +94,7 @@ export default function ServicesPage() {
   });
   const { data: governorates } = useDashboardData<Governorate[]>({
     url: "/api/governorates",
+    staleTime: STALE_TIME.reference,
     params: { activeOnly: "true" },
   });
 

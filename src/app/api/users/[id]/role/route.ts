@@ -15,19 +15,25 @@ type Ctx = { params: Promise<{ id: string }> };
  * and its own audit entry.
  */
 
-const roleSchema = z.object({
-  role: z.enum([
-    "SUPER_ADMIN",
-    "OPERATIONS",
-    "DOCTOR",
-    "LAB",
-    "PHARMACY",
-    "NURSE",
-    "DRIVER",
-    "RADIOLOGY",
-    "PATIENT",
-  ]),
-});
+// `.strict()` like every other write schema here. Nothing but `role` is read,
+// so an extra key was never writable — but on the one endpoint that changes
+// privileges, a request carrying keys the server ignores should be refused
+// rather than half-honoured.
+const roleSchema = z
+  .object({
+    role: z.enum([
+      "SUPER_ADMIN",
+      "OPERATIONS",
+      "DOCTOR",
+      "LAB",
+      "PHARMACY",
+      "NURSE",
+      "DRIVER",
+      "RADIOLOGY",
+      "PATIENT",
+    ]),
+  })
+  .strict();
 
 export const PUT = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }, identity) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;

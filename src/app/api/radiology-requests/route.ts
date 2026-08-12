@@ -93,6 +93,15 @@ export const GET = withAuth({ roles: RADIOLOGY_ROLES }, async (req, _ctx, identi
   // centre's studies. A referring-doctor view needs an order-based scope.
   Object.assign(where, partnerScope(identity, "centerId"));
 
+  // The worklist has to say WHO the sample belongs to. Without this join the
+  // screen has an order id and nothing else, which is why it displayed invented
+  // `patientName` / `testType` fields that the model does not have.
+  const include = {
+    order: {
+      select: { id: true, orderNumber: true, patientName: true, patientPhone: true },
+    },
+  } as const;
+
   // Keyset paging — preferred. Offset paging over `createdAt desc` duplicates
   // and skips rows as new requests arrive between requests.
   if (cursor !== undefined || limit !== undefined) {
@@ -102,6 +111,7 @@ export const GET = withAuth({ roles: RADIOLOGY_ROLES }, async (req, _ctx, identi
 
     const rows = await prisma.radiologyRequest.findMany({
       ...keyset,
+      include,
       where: cursorWhere ? { AND: [where, cursorWhere] } : where,
     });
 
@@ -113,6 +123,7 @@ export const GET = withAuth({ roles: RADIOLOGY_ROLES }, async (req, _ctx, identi
   const [data, total] = await Promise.all([
     prisma.radiologyRequest.findMany({
       where,
+      include,
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,

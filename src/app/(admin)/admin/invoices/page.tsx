@@ -4,15 +4,15 @@ import { useCallback, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Receipt } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { apiFetch, useMutation } from "@/hooks/use-mutation";
-import { DataTable, type Column } from "@/components/admin/data-table";
-import { Field, FormDialog, fieldClass } from "@/components/admin/form-dialog";
+import { DataTable, type Column } from "@/components/data/data-table";
+import { Field, FormDialog, fieldClass } from "@/components/data/form-dialog";
 import {
   PageHeader,
   Pill,
   RowActions,
   StatTile,
   toneForStatus,
-} from "@/components/admin/crud-kit";
+} from "@/components/data/crud-kit";
 import { INVOICE_STATUS_LABELS, PARTNER_TYPE_LABELS, labelOf, optionsOf } from "@/lib/labels";
 import { formatCurrency, formatDate } from "@/lib/format";
 

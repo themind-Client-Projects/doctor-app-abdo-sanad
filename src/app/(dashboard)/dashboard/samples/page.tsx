@@ -1,142 +1,156 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { FlaskConical } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
-import { StatusBadge } from "@/components/shared/status-badge";
-import { Search, FlaskConical, Upload, Eye } from "lucide-react";
+import { useStageMutation } from "@/hooks/use-stage-mutation";
+import { DataTable, type Column } from "@/components/data/data-table";
+import { PageHeader } from "@/components/data/crud-kit";
+import {
+  PipelineStrip,
+  StageAdvance,
+  StagePill,
+  useStageCounts,
+  type Stage,
+} from "@/components/data/status-pipeline";
+import { formatDateTime } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
-// Lab: Samples List (req L54 "المختبر يرى العينات")
+// عينات المختبر — the lab's own worklist.
+//
+// This called `/api/dashboard/samples`, a route that was never built, so the
+// page showed a permanent skeleton. `/api/lab-samples` has existed all along
+// and is already scoped to the caller's lab by `partnerScope`, which is exactly
+// what this screen needs — a lab must see its own samples and no one else's.
+//
+// It also read `patientName` straight off the sample. `LabSample` has no such
+// column; the patient is on the joined order.
 // ─────────────────────────────────────────────────────────────
 
-interface LabSample {
+const STAGES: readonly Stage[] = [
+  { key: "received", label: "استلمت", tone: "info" },
+  { key: "in_lab", label: "وصلت المختبر", tone: "info" },
+  { key: "testing", label: "قيد الفحص", tone: "warning" },
+  { key: "ready", label: "النتيجة جاهزة", tone: "positive" },
+  { key: "sent_to_doctor", label: "أُرسلت للطبيب", tone: "positive" },
+  { key: "sent_to_patient", label: "أُرسلت للمريض", tone: "positive" },
+];
+
+type Sample = {
   id: string;
   sampleType: string;
-  patientName: string;
-  orderId: string;
   status: string;
   createdAt: string;
-}
-
-const statusLabels: Record<string, string> = {
-  received: "استلمت",
-  in_lab: "وصلت المختبر",
-  testing: "قيد الفحص",
-  ready: "النتيجة جاهزة",
-  sent_to_doctor: "أرسلت للطبيب",
-  sent_to_patient: "أرسلت للمريض",
+  order: {
+    id: string;
+    orderNumber: string;
+    patientName: string;
+    patientPhone: string;
+  } | null;
 };
 
-export default function SamplesPage() {
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+const statusOf = (s: Sample) => s.status;
 
-  const { data: samples } = useDashboardData<LabSample[]>({
-    url: "/api/dashboard/samples",
+export default function LabSamplesPage() {
+  const { data, isLoading, error, refetch } = useDashboardData<Sample[]>({
+    url: "/api/lab-samples",
+    params: { limit: "100" },
+    refreshInterval: 30_000,
   });
 
-  const filtered = (samples || []).filter((s) => {
-    const matchSearch = s.sampleType.includes(search) || s.patientName.includes(search);
-    const matchStatus = statusFilter === "all" || s.status === statusFilter;
-    return matchSearch && matchStatus;
-  });
+  const [stage, setStage] = useState<string | null>(null);
+  const counts = useStageCounts(data, STAGES, statusOf);
+
+  const refresh = useCallback(() => void refetch(), [refetch]);
+  const { setStage: advance, isPending } = useStageMutation("/api/lab-samples", refresh);
+
+  const rows = useMemo(
+    () => (stage ? (data ?? []).filter((s) => s.status === stage) : (data ?? [])),
+    [data, stage]
+  );
+
+  const columns: Column<Sample>[] = useMemo(
+    () => [
+      {
+        key: "sample",
+        header: "العينة",
+        render: (r) => (
+          <div className="min-w-0">
+            <p className="truncate font-medium text-foreground">{r.sampleType}</p>
+            <p className="truncate font-mono text-xs text-muted-foreground" dir="ltr">
+              {r.id.slice(-8)}
+            </p>
+          </div>
+        ),
+        sortValue: (r) => r.sampleType,
+      },
+      {
+        key: "patient",
+        header: "المريض",
+        render: (r) =>
+          r.order ? (
+            <div className="min-w-0">
+              <p className="truncate text-foreground">{r.order.patientName}</p>
+              <p className="truncate text-xs text-muted-foreground" dir="ltr">
+                #{r.order.orderNumber.slice(-8)}
+              </p>
+            </div>
+          ) : (
+            <span className="text-xs text-muted-foreground">عينة بلا طلب</span>
+          ),
+        sortValue: (r) => r.order?.patientName ?? "",
+      },
+      {
+        key: "status",
+        header: "المرحلة",
+        render: (r) => <StagePill stages={STAGES} value={r.status} />,
+      },
+      {
+        key: "createdAt",
+        header: "الاستلام",
+        secondary: true,
+        render: (r) => (
+          <span className="whitespace-nowrap text-xs text-muted-foreground">
+            {formatDateTime(r.createdAt)}
+          </span>
+        ),
+        sortValue: (r) => new Date(r.createdAt).getTime(),
+      },
+    ],
+    []
+  );
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-foreground">العينات</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            إدارة العينات المختبرية — {filtered.length} عينة
-          </p>
-        </div>
-        <button className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
-          <FlaskConical size={16} />
-          استلام عينة
-        </button>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="عينات المختبر"
+        subtitle="عيناتك أنت — من الاستلام حتى إرسال النتيجة"
+        icon={FlaskConical}
+      />
 
-      {/* Filters */}
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="بحث بنوع التحليل أو اسم المريض..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border border-border bg-background pr-10 pl-4 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+      <PipelineStrip stages={STAGES} counts={counts} active={stage} onSelect={setStage} />
+
+      <DataTable
+        rows={rows}
+        columns={columns}
+        isLoading={isLoading}
+        error={error}
+        onRetry={refetch}
+        searchable={(r) =>
+          `${r.sampleType} ${r.order?.patientName ?? ""} ${r.order?.orderNumber ?? ""}`
+        }
+        searchPlaceholder="بحث بنوع العينة أو المريض..."
+        emptyMessage={stage ? "لا عينات في هذه المرحلة" : "لا عينات بعد"}
+        actions={(r) => (
+          <StageAdvance
+            stages={STAGES}
+            current={r.status}
+            onAdvance={(next) => void advance(r.id, next)}
+            disabled={isPending}
+            label={`عينة ${r.sampleType}`}
           />
-        </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-        >
-          <option value="all">كل الحالات</option>
-          {Object.entries(statusLabels).map(([key, label]) => (
-            <option key={key} value={key}>{label}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* 6-Status Pipeline */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        {Object.entries(statusLabels).map(([key, label]) => {
-          const count = (samples || []).filter((s) => s.status === key).length;
-          return (
-            <button
-              key={key}
-              onClick={() => setStatusFilter(statusFilter === key ? "all" : key)}
-              className={`rounded-xl border p-3 text-center transition-all ${
-                statusFilter === key
-                  ? "border-primary bg-primary/5 ring-1 ring-primary/20"
-                  : "border-border bg-card hover:bg-muted/50"
-              }`}
-            >
-              <p className="text-lg font-bold text-foreground">{count}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Table */}
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-muted/50">
-              <th className="text-right px-4 py-3 font-medium text-muted-foreground">نوع التحليل</th>
-              <th className="text-right px-4 py-3 font-medium text-muted-foreground">المريض</th>
-              <th className="text-right px-4 py-3 font-medium text-muted-foreground">رقم الطلب</th>
-              <th className="text-right px-4 py-3 font-medium text-muted-foreground">الحالة</th>
-              <th className="text-right px-4 py-3 font-medium text-muted-foreground">التاريخ</th>
-              <th className="text-right px-4 py-3 font-medium text-muted-foreground">الإجراءات</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr><td colSpan={6} className="text-center py-12 text-muted-foreground">لا توجد عينات</td></tr>
-            ) : (
-              filtered.map((sample) => (
-                <tr key={sample.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
-                  <td className="px-4 py-3 font-medium text-foreground">{sample.sampleType}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{sample.patientName}</td>
-                  <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{sample.orderId}</td>
-                  <td className="px-4 py-3"><StatusBadge status={statusLabels[sample.status] || sample.status} size="sm" /></td>
-                  <td className="px-4 py-3 text-muted-foreground">{sample.createdAt}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1">
-                      <button className="p-1.5 rounded-md hover:bg-accent transition-colors" title="عرض"><Eye size={14} className="text-muted-foreground" /></button>
-                      <button className="p-1.5 rounded-md hover:bg-accent transition-colors" title="رفع النتيجة"><Upload size={14} className="text-muted-foreground" /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+        )}
+      />
     </div>
   );
 }

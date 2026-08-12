@@ -84,6 +84,29 @@ const UNSETTLEABLE: { serviceType: ServiceType; provider: keyof SeedPartners }[]
 
 const OPEN_STATUSES: OrderStatus[] = ["NEW", "ACCEPTED", "ASSIGNED", "IN_PROGRESS", "DELAYED"];
 
+/**
+ * Which order column each seeded provider belongs in.
+ *
+ * Derived from WHO the provider is, never from the service. The old mapping
+ * switched on `serviceType` with a `default:` of `assignedNurseId`, so every
+ * consultation and home visit — all provided by doctors — was written into the
+ * nurse slot: 44 orders in which a DOCTOR sat in `assignedNurseId`. The assign
+ * endpoint refuses that combination outright (`partner.type !== slot.partnerType`),
+ * so the seed was creating data the API itself would reject.
+ */
+const PROVIDER_COLUMN = {
+  doctor1: "assignedDoctorId",
+  doctor2: "assignedDoctorId",
+  complexOwner: "assignedDoctorId",
+  lab: "assignedLabId",
+  pharmacy: "assignedPharmacyId",
+  radiology: "assignedRadiologyId",
+  nurse1: "assignedNurseId",
+  nurse2: "assignedNurseId",
+  driver1: "assignedDriverId",
+  driver2: "assignedDriverId",
+} as const satisfies Record<keyof SeedPartners, string>;
+
 export async function seedOperationalData(
   prisma: PrismaClient,
   ctx: { partners: SeedPartners; patientIds: string[]; governorateId: string; adminUserId: string }
@@ -120,6 +143,7 @@ export async function seedOperationalData(
     status: OrderStatus;
     total: Prisma.Decimal;
     providerId: string;
+    providerColumn: (typeof PROVIDER_COLUMN)[keyof SeedPartners];
     nurseId?: string;
     driverId?: string;
     settle: boolean;
@@ -163,6 +187,7 @@ export async function seedOperationalData(
         status,
         total,
         providerId: ctx.partners[spec.provider as keyof SeedPartners],
+        providerColumn: PROVIDER_COLUMN[spec.provider as keyof SeedPartners],
         nurseId: "nurse" in spec && spec.nurse ? ctx.partners[spec.nurse as keyof SeedPartners] : undefined,
         driverId: "driver" in spec && spec.driver ? ctx.partners[spec.driver as keyof SeedPartners] : undefined,
         settle: status === "COMPLETED",
@@ -171,19 +196,7 @@ export async function seedOperationalData(
   }
 
   // ── orders ──────────────────────────────────────────────────────────────
-  const providerColumn = (b: Built) => {
-    switch (b.serviceType) {
-      case "HOME_LAB_TEST":
-      case "HOME_BLOOD_DRAW":
-        return { assignedLabId: b.providerId };
-      case "MEDICINE_DELIVERY":
-        return { assignedPharmacyId: b.providerId };
-      case "RADIOLOGY":
-        return { assignedRadiologyId: b.providerId };
-      default:
-        return { assignedNurseId: b.providerId };
-    }
-  };
+  const providerColumn = (b: Built) => ({ [b.providerColumn]: b.providerId });
 
   await prisma.order.createMany({
     data: built.map((b, idx) => ({
@@ -329,12 +342,25 @@ export async function seedOperationalData(
   await prisma.settlementShare.createMany({ data: shareRows, skipDuplicates: true });
   await prisma.transaction.createMany({ data: txRows, skipDuplicates: true });
 
-  // Balances are derived, not invented — set them to the sum of the credits we
-  // just wrote, so wallet totals reconcile against the ledger.
-  for (const [walletId, total] of Array.from(walletTotals.entries())) {
+  // Balances are derived from the LEDGER, not from the credits this function
+  // happens to have written.
+  //
+  // Setting `balance` to the sum of our own credits ignored everything else in
+  // the wallet: an opening entry, and — the case that actually broke — the
+  // DEBIT rows a settlement reversal writes. Five wallets ended up holding more
+  // than their transactions could account for, overstated by exactly the sum of
+  // the reversals. `balance == sum(transactions)` is the invariant the whole
+  // money model rests on, so it is computed from the transactions.
+  for (const walletId of Array.from(walletTotals.keys())) {
+    const [credits, debits] = await Promise.all([
+      prisma.transaction.aggregate({ where: { walletId, type: "CREDIT" }, _sum: { amount: true } }),
+      prisma.transaction.aggregate({ where: { walletId, type: "DEBIT" }, _sum: { amount: true } }),
+    ]);
+    const balance = new D(credits._sum.amount ?? 0).minus(new D(debits._sum.amount ?? 0));
     await prisma.wallet.update({
       where: { id: walletId },
-      data: { balance: total, totalEarnings: total },
+      // `totalEarnings` is lifetime gross — reversals do not un-earn it.
+      data: { balance, totalEarnings: new D(credits._sum.amount ?? 0) },
     });
   }
 

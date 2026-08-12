@@ -14,6 +14,12 @@ export default defineConfig({
     environment: "node",
     // Money tests share rows; running files in parallel makes them flaky.
     fileParallelism: false,
-    testTimeout: 30_000,
+    // Generous because these tests talk to a REMOTE database, not a local one.
+    // A single round-trip to the pooler has been measured between 259ms and
+    // 4.3s, and the order-lifecycle tests make twenty or more per case — so a
+    // 30s budget failed on latency alone, with no defect involved. Better a
+    // slow suite than one that cries wolf.
+    testTimeout: 120_000,
+    hookTimeout: 120_000,
   },
 });

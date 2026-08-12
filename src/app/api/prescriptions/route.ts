@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { AuthError, isPlatformRole, partnerScope, withAuth } from "@/lib/api-auth";
 import { keysetArgs, ok, okList, toPage } from "@/lib/api-response";
 import { nonEmpty, paginationSchema, parseBody, parseQuery } from "@/lib/validation";
+import { medicationSchema, prescriptionExpiry } from "@/server/services/referral-forms";
 
 // A prescription concerns exactly two partners: the doctor who wrote it and the
 // pharmacy dispensing it. LAB / NURSE / RADIOLOGY were in ROLES.CLINICAL and so
@@ -21,10 +22,18 @@ const prescriptionStatus = z.enum(["new", "preparing", "ready", "delivered", "re
   message: "حالة غير صالحة",
 });
 
-/** `medications` is the core clinical payload: a JSON array of objects. */
+/**
+ * `medications` is the core clinical payload — and it is now a table, not a bag.
+ *
+ * This was `z.array(z.record(z.string(), z.unknown()))`: ANY array of objects.
+ * A prescription with no dose and no duration was accepted, stored, and handed
+ * to a pharmacy that then had to telephone the doctor to learn what to dispense.
+ * The client's printed form has a column for each of these, so each is required.
+ */
 const medications = z
-  .array(z.record(z.string(), z.unknown()), { message: "الأدوية غير صالحة" })
-  .min(1, { message: "الأدوية غير صالحة" });
+  .array(medicationSchema, { message: "الأدوية غير صالحة" })
+  .min(1, { message: "أضف دواءً واحداً على الأقل" })
+  .max(30);
 
 /** `?status=` with no value means "no filter", as it did before. */
 const emptyToUndefined = (value: unknown) => (value === "" ? undefined : value);
@@ -83,6 +92,15 @@ export const GET = withAuth({ roles: PRESCRIPTION_ROLES }, async (req, _ctx, ide
     where.id = "";
   }
 
+  // The worklist has to say WHO the sample belongs to. Without this join the
+  // screen has an order id and nothing else, which is why it displayed invented
+  // `patientName` / `testType` fields that the model does not have.
+  const include = {
+    order: {
+      select: { id: true, orderNumber: true, patientName: true, patientPhone: true },
+    },
+  } as const;
+
   // Keyset paging — preferred. Offset paging over `createdAt desc` duplicates
   // and skips rows as new prescriptions are written between requests.
   if (cursor !== undefined || limit !== undefined) {
@@ -92,6 +110,7 @@ export const GET = withAuth({ roles: PRESCRIPTION_ROLES }, async (req, _ctx, ide
 
     const rows = await prisma.prescription.findMany({
       ...keyset,
+      include,
       where: cursorWhere ? { AND: [where, cursorWhere] } : where,
     });
 
@@ -103,6 +122,7 @@ export const GET = withAuth({ roles: PRESCRIPTION_ROLES }, async (req, _ctx, ide
   const [data, total] = await Promise.all([
     prisma.prescription.findMany({
       where,
+      include,
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -141,8 +161,20 @@ export const POST = withAuth({ roles: PRESCRIPTION_ROLES }, async (req, _ctx, id
       medications: input.medications as Prisma.InputJsonValue,
       status: input.status,
       notes: input.notes ?? null,
+      // "صالحة لمدة 30 يوماً من تاريخ الإصدار" — printed on the form, and
+      // enforced when a pharmacy tries to mark it dispensed.
+      expiresAt: prescriptionExpiry(),
     },
   });
 
   return ok(data, { status: 201, requestId });
 });
+
+/**
+ * Re-exported for `scripts/generate-openapi.ts`.
+ *
+ * The published OpenAPI schema for this endpoint is derived from THIS object via
+ * `z.toJSONSchema`, so the contract handed to the mobile team and the validation
+ * the server actually runs cannot drift apart.
+ */
+export { createPrescriptionSchema };

@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
+import { STALE_TIME } from "@/lib/request-cache";
 import { MapPin, Phone, Star } from 'lucide-react';
 import { FlexibleHeader } from '@/components/shared/flexible-header';
 import { BrowseToolbar, useBrowseState, type Facet } from '@/components/shared/browse/browse-toolbar';
@@ -62,6 +63,7 @@ export function ProviderBrowse({
   // off in إعدادات النظام stops being offered here without a deploy.
   const { data: governorates } = useDashboardData<Governorate[]>({
     url: '/api/public/governorates',
+    staleTime: STALE_TIME.reference,
   });
 
   const facets = useMemo<Facet[]>(

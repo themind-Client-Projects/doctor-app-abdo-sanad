@@ -46,6 +46,20 @@ export const POST = withAuth<Ctx>({ roles: ROLES.OPERATIONS }, async (req, { par
   const { id } = await params;
   const input = await parseBody(req, advanceSchema);
 
+  // COMPLETED is reachable here in principle — it is the 11th rung — but this
+  // route only records the step and moves the status. `completeOrder` is what
+  // distributes the revenue, and COMPLETED is terminal, so an order finished
+  // through this door could never be settled afterwards: the partner would
+  // simply never be paid. The ladder stops at step 10 from outside.
+  if (input.step === "COMPLETED") {
+    return fail(
+      ErrorCode.BUSINESS_RULE_VIOLATION,
+      422,
+      "أكمل الطلب عبر إجراء الإكمال ليتم توزيع الإيراد",
+      { requestId }
+    );
+  }
+
   try {
     const order = await advanceOrder({
       orderId: id,

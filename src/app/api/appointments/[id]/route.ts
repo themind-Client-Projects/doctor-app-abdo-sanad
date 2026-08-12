@@ -1,10 +1,27 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { AuthError, ROLES, withAuth } from "@/lib/api-auth";
+import { APPOINTMENT_ROLES, AuthError, isPlatformRole, withAuth } from "@/lib/api-auth";
+import type { Identity } from "@/lib/api-auth";
 import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { nonEmpty, parseBody } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
+
+/**
+ * Is this caller a party to this appointment?
+ *
+ * The parties are its patient, its doctor, and the platform roles who dispatch.
+ * Only the patient half was checked, so any doctor could read, edit and delete
+ * any other doctor's appointment by id — including rescheduling it.
+ */
+function isPartyTo(
+  appointment: { patientId: string; doctorId: string },
+  identity: Identity
+): boolean {
+  if (isPlatformRole(identity.role)) return true;
+  if (identity.role === "PATIENT") return appointment.patientId === identity.userId;
+  return Boolean(identity.doctorProfileId) && appointment.doctorId === identity.doctorProfileId;
+}
 
 const appointmentStatus = z.enum(["scheduled", "completed", "cancelled", "no_show"], {
   message: "حالة غير صالحة",
@@ -12,8 +29,6 @@ const appointmentStatus = z.enum(["scheduled", "completed", "cancelled", "no_sho
 const appointmentType = z.enum(["IN_PERSON", "ONLINE", "HOME_VISIT", "SURGERY"], {
   message: "نوع الموعد غير صالح",
 });
-
-const PATIENT_ROLES = [...ROLES.CLINICAL, "PATIENT"] as const;
 
 // The body was spread into update, so the client could set `price` (and
 // doctorId / patientId). All three are deliberately absent: `price` is
@@ -34,7 +49,7 @@ const updateAppointmentSchema = z
   .strict();
 
 // GET /api/appointments/[id]
-export const GET = withAuth<Ctx>({ roles: PATIENT_ROLES }, async (req, { params }, identity) => {
+export const GET = withAuth<Ctx>({ roles: APPOINTMENT_ROLES }, async (req, { params }, identity) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
 
@@ -46,8 +61,9 @@ export const GET = withAuth<Ctx>({ roles: PATIENT_ROLES }, async (req, { params 
     return fail(ErrorCode.NOT_FOUND, 404, "الموعد غير موجود", { requestId });
   }
 
-  // Authentication alone would let any signed-up patient read every booking.
-  if (identity.role === "PATIENT" && appointment.patientId !== identity.userId) {
+  // Authentication alone would let any signed-up patient read every booking —
+  // and, before `appointmentScope`, let any doctor read another doctor's.
+  if (!isPartyTo(appointment, identity)) {
     throw new AuthError(403, "ليس لديك صلاحية");
   }
 
@@ -55,7 +71,7 @@ export const GET = withAuth<Ctx>({ roles: PATIENT_ROLES }, async (req, { params 
 });
 
 // PATCH /api/appointments/[id] — Update an appointment.
-export const PATCH = withAuth<Ctx>({ roles: PATIENT_ROLES }, async (req, { params }, identity) => {
+export const PATCH = withAuth<Ctx>({ roles: APPOINTMENT_ROLES }, async (req, { params }, identity) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
 
@@ -63,12 +79,12 @@ export const PATCH = withAuth<Ctx>({ roles: PATIENT_ROLES }, async (req, { param
 
   const existing = await prisma.appointment.findUnique({
     where: { id },
-    select: { id: true, patientId: true },
+    select: { id: true, patientId: true, doctorId: true },
   });
   if (!existing) {
     return fail(ErrorCode.NOT_FOUND, 404, "الموعد غير موجود", { requestId });
   }
-  if (identity.role === "PATIENT" && existing.patientId !== identity.userId) {
+  if (!isPartyTo(existing, identity)) {
     throw new AuthError(403, "ليس لديك صلاحية");
   }
 
@@ -90,21 +106,21 @@ export const PATCH = withAuth<Ctx>({ roles: PATIENT_ROLES }, async (req, { param
 
 // DELETE /api/appointments/[id] — Cancel an appointment.
 export const DELETE = withAuth<Ctx>(
-  { roles: PATIENT_ROLES },
+  { roles: APPOINTMENT_ROLES },
   async (req, { params }, identity) => {
     const requestId = req.headers.get("x-request-id") ?? undefined;
     const { id } = await params;
 
     const existing = await prisma.appointment.findUnique({
       where: { id },
-      select: { id: true, patientId: true },
+      select: { id: true, patientId: true, doctorId: true },
     });
     if (!existing) {
       return fail(ErrorCode.NOT_FOUND, 404, "الموعد غير موجود", { requestId });
     }
-    // A patient may only cancel their own booking — this route previously
-    // deleted any appointment by id, with no authentication at all.
-    if (identity.role === "PATIENT" && existing.patientId !== identity.userId) {
+    // This route once deleted any appointment by id with no authentication at
+    // all. Both parties are checked now, not just the patient.
+    if (!isPartyTo(existing, identity)) {
       throw new AuthError(403, "ليس لديك صلاحية");
     }
 

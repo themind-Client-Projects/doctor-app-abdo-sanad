@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Tags } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { apiFetch, useMutation } from "@/hooks/use-mutation";
-import { DataTable, type Column } from "@/components/admin/data-table";
-import { Field, FormDialog, fieldClass } from "@/components/admin/form-dialog";
-import { PageHeader, Pill, RowActions } from "@/components/admin/crud-kit";
+import { DataTable, type Column } from "@/components/data/data-table";
+import { Field, FormDialog, fieldClass } from "@/components/data/form-dialog";
+import { PageHeader, Pill, RowActions } from "@/components/data/crud-kit";
 import { SERVICE_TYPE_KEYS, SERVICE_TYPE_LABELS, labelOf } from "@/lib/labels";
 import { formatCurrency, formatNumber } from "@/lib/format";
 
@@ -56,6 +56,15 @@ export default function PricingPage() {
   const { data, isLoading, error, refetch } = useDashboardData<PriceConfig[]>({
     url: "/api/pricing",
   });
+
+  // `serviceType` is @unique, so a type that already has a row cannot get a
+  // second one. Offering all 14 in the "سعر جديد" dropdown meant that once every
+  // service was priced — which is the normal, fully-configured state — every
+  // option led to a duplicate error and the form could only fail.
+  const available = useMemo(() => {
+    const taken = new Set((data ?? []).map((r) => r.serviceType));
+    return SERVICE_TYPES.filter((t) => !taken.has(t));
+  }, [data]);
 
   const [editing, setEditing] = useState<PriceConfig | null>(null);
   const [creating, setCreating] = useState(false);
@@ -160,15 +169,27 @@ export default function PricingPage() {
     <div className="space-y-5">
       <PageHeader
         title="إدارة الأسعار"
-        subtitle="السعر الأساسي، سعر سند، سعر المجمع والخصومات لكل خدمة"
+        subtitle={
+          available.length > 0
+            ? "السعر الأساسي، سعر سند، سعر المجمع والخصومات لكل خدمة"
+            : // Say why the "سعر جديد" button is absent, rather than letting it
+              // vanish and leave the admin wondering.
+              "السعر الأساسي، سعر سند، سعر المجمع والخصومات لكل خدمة — كل الخدمات مُسعّرة، عدّل أي سطر لتغيير أسعاره"
+        }
         icon={Tags}
-        action={{
-          label: "سعر جديد",
-          onClick: () => {
-            setForm(EMPTY);
-            setCreating(true);
-          },
-        }}
+        action={
+          // Nothing left to add once every service is priced — the button would
+          // open a form with an empty dropdown.
+          available.length > 0
+            ? {
+                label: "سعر جديد",
+                onClick: () => {
+                  setForm(EMPTY);
+                  setCreating(true);
+                },
+              }
+            : undefined
+        }
       />
 
       <DataTable
@@ -221,9 +242,12 @@ export default function PricingPage() {
             onChange={(e) => setForm((f) => ({ ...f, serviceType: e.target.value }))}
           >
             <option value="">— اختر —</option>
-            {SERVICE_TYPES.map((t) => (
+            {/* While editing, the row's own type must stay visible even though
+                it is taken — the field is disabled, but an empty select would
+                render as blank. */}
+            {(editing ? [editing.serviceType] : available).map((t) => (
               <option key={t} value={t}>
-                {SERVICE_LABELS[t]}
+                {SERVICE_LABELS[t] ?? t}
               </option>
             ))}
           </select>

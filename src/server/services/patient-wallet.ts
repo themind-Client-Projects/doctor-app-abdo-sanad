@@ -52,21 +52,38 @@ export async function ensureWallet(userId: string, tx: Prisma.TransactionClient 
   }
 }
 
-/**
- * Add money to a patient's wallet — the admin top-up ("admin can add money to
- * wallet"), and also how a refund lands.
- */
-export async function creditWallet(params: {
+export type CreditParams = {
   userId: string;
   amount: number | Prisma.Decimal;
   reason: Extract<WalletReason, "TOPUP" | "REFUND" | "REWARD">;
   description?: string;
   orderId?: string | null;
-}) {
+};
+
+/**
+ * Add money to a patient's wallet — the admin top-up ("admin can add money to
+ * wallet"), and also how a refund lands.
+ *
+ * Pass `tx` to join a caller's transaction. A payment settlement has to mark
+ * the intent settled and credit the balance atomically: done separately, a
+ * failure between them leaves the intent flagged as paid with no money added,
+ * and every webhook retry short-circuits on "already settled" — so the patient
+ * pays and silently receives nothing.
+ */
+export async function creditWallet(params: CreditParams, tx?: Prisma.TransactionClient) {
   const amount = new D(params.amount);
   if (amount.lte(0)) throw new Error("المبلغ يجب أن يكون أكبر من صفر");
 
-  return prisma.$transaction(async (tx) => {
+  if (tx) return creditIn(tx, params, amount);
+  return prisma.$transaction((inner) => creditIn(inner, params, amount), TX_OPTIONS);
+}
+
+async function creditIn(
+  tx: Prisma.TransactionClient,
+  params: CreditParams,
+  amount: Prisma.Decimal
+) {
+  {
     const wallet = await ensureWallet(params.userId, tx);
 
     await tx.patientTransaction.create({
@@ -86,7 +103,7 @@ export async function creditWallet(params: {
       where: { id: wallet.id },
       data: { balance: { increment: amount } },
     });
-  }, TX_OPTIONS);
+  }
 }
 
 /**

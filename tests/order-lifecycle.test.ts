@@ -43,11 +43,24 @@ async function makeOrder(status: Prisma.OrderCreateInput["status"] = "NEW") {
 }
 
 beforeAll(async () => {
+  // Deterministic on purpose.
+  //
+  // Rules are versioned now, so a contract can hold several rows for the same
+  // service and only the one with no `effectiveTo` is in force. An unfiltered
+  // `findFirst` could bind these tests to a CLOSED version — or to a partner
+  // created and removed by something else — and settlement would then fail for
+  // a reason that has nothing to do with what is being tested. Both filters
+  // matter: in force, and belonging to a live contract.
   const rule = await prisma.commissionRule.findFirst({
-    where: { serviceType: "HOME_LAB_TEST" },
+    where: {
+      serviceType: "HOME_LAB_TEST",
+      effectiveTo: null,
+      contract: { isActive: true, partner: { deletedAt: null } },
+    },
+    orderBy: { effectiveFrom: "asc" },
     include: { contract: { select: { partnerId: true } } },
   });
-  if (!rule) throw new Error("seed missing a HOME_LAB_TEST commission rule");
+  if (!rule) throw new Error("seed missing a live HOME_LAB_TEST commission rule");
   labId = rule.contract.partnerId;
 
   const nurse = await prisma.partner.findFirst({ where: { type: "NURSE" }, select: { id: true } });
@@ -58,10 +71,41 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Which wallets these tests moved money into — captured BEFORE the rows go.
+  const touched = await prisma.transaction.findMany({
+    where: { orderId: { in: createdOrderIds } },
+    select: { walletId: true },
+    distinct: ["walletId"],
+  });
+
   await prisma.transaction.deleteMany({ where: { orderId: { in: createdOrderIds } } });
   await prisma.orderSettlement.deleteMany({ where: { orderId: { in: createdOrderIds } } });
   await prisma.couponRedemption.deleteMany({ where: { orderId: { in: createdOrderIds } } });
   await prisma.order.deleteMany({ where: { id: { in: createdOrderIds } } });
+
+  // Settling credited `Wallet.balance` AND wrote a transaction, atomically.
+  // Deleting only the transaction left the balance holding money nothing
+  // accounted for, so every full test run inflated the seeded partner wallets a
+  // little further and broke `balance == sum(transactions)` for the whole app.
+  //
+  // Recomputed from the remaining ledger rather than decremented by a
+  // remembered amount: the ledger is the source of truth, so this is correct
+  // even if a test settled and reversed the same order.
+  for (const { walletId } of touched) {
+    const [credits, debits] = await Promise.all([
+      prisma.transaction.aggregate({ where: { walletId, type: "CREDIT" }, _sum: { amount: true } }),
+      prisma.transaction.aggregate({ where: { walletId, type: "DEBIT" }, _sum: { amount: true } }),
+    ]);
+    await prisma.wallet.update({
+      where: { id: walletId },
+      data: {
+        balance: new Prisma.Decimal(credits._sum.amount ?? 0).minus(
+          new Prisma.Decimal(debits._sum.amount ?? 0)
+        ),
+      },
+    });
+  }
+
   await prisma.$disconnect();
 });
 

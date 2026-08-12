@@ -7,7 +7,11 @@ import { ok } from "@/lib/api-response";
 // A two-character query sweeps orders (patient names + phone numbers), users
 // (name / email / phone / role) and partners, so this is staff-only — a patient
 // must never be able to enumerate the platform's directory.
-export const GET = withAuth({ roles: ROLES.STAFF }, async (req) => {
+// Platform roles only. This is a directory of every patient's name and phone
+// number, every order and every partner — under ROLES.STAFF a delivery driver
+// could look up any patient on the platform by name. Nothing narrower would do:
+// the whole point of the operations header search is that it crosses tenants.
+export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
   const q = req.nextUrl.searchParams.get("q");
   // Too short to search — an empty result set, not an error. Status unchanged.

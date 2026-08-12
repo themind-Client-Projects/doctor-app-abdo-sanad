@@ -5,6 +5,11 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
 import { normalizePhone } from "./phone";
+import {
+  checkLoginAllowed,
+  clearLoginFailures,
+  recordLoginFailure,
+} from "@/server/services/login-throttle";
 
 /** Re-read role/partner/isActive from the DB if the token is older than this. */
 const TOKEN_REFRESH_SECONDS = 5 * 60;
@@ -56,10 +61,20 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         const email = typeof credentials?.email === "string" ? credentials.email.trim().toLowerCase() : "";
         const password = typeof credentials?.password === "string" ? credentials.password : "";
         if (!email || !password) return null;
+
+        // Same throttle as the bearer-token grant. Both doors open the same
+        // staff accounts, so limiting one and not the other limits neither.
+        const ip =
+          request?.headers?.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+        const verdict = await checkLoginAllowed(email, ip);
+        // NextAuth's authorize contract is "credentials or nothing" — there is
+        // no way to surface a 429 from here, so a throttled attempt is simply
+        // indistinguishable from a wrong password. The limit still holds.
+        if (!verdict.allowed) return null;
 
         const user = await prisma.user.findUnique({ where: { email } });
 
@@ -68,8 +83,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const hash = user?.passwordHash ?? DUMMY_PASSWORD_HASH;
         const passwordMatches = await bcrypt.compare(password, hash);
 
-        if (!user || !user.passwordHash || !passwordMatches) return null;
-        if (!user.isActive) return null;
+        if (!user || !user.passwordHash || !passwordMatches || !user.isActive) {
+          await recordLoginFailure(email, ip);
+          return null;
+        }
+
+        await clearLoginFailures(email);
 
         return {
           id: user.id,

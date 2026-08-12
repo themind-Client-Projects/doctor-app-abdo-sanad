@@ -14,7 +14,14 @@ import {
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { DonutChart, DonutLegend, TrendChart } from "@/components/charts/chart-primitives";
 import { formatCurrency, formatNumber, formatRelative } from "@/lib/format";
-import { CHANNEL_LABELS, labelOf } from "@/lib/labels";
+import {
+  CHANNEL_LABELS,
+  ORDER_STATUS_LABELS,
+  PARTNER_STATUS_LABELS,
+  PARTNER_TYPE_LABELS,
+  SERVICE_TYPE_LABELS,
+  labelOf,
+} from "@/lib/labels";
 import Link from "next/link";
 
 // ─────────────────────────────────────────────────────────────
@@ -23,51 +30,6 @@ import Link from "next/link";
 // Every figure is an aggregate over real rows. /api/dashboard/summary had no
 // SUPER_ADMIN branch, so this page previously rendered zeros throughout.
 // ─────────────────────────────────────────────────────────────
-
-const SERVICE_LABELS: Record<string, string> = {
-  IN_PERSON_CONSULT: "استشارة حضورية",
-  ONLINE_CONSULT: "استشارة أونلاين",
-  HOME_VISIT: "زيارة منزلية",
-  HOME_BLOOD_DRAW: "سحب دم منزلي",
-  HOME_LAB_TEST: "تحليل منزلي",
-  LAB_TEST: "تحاليل مختبرية",
-  RADIOLOGY: "أشعة",
-  PHARMACY_DISPENSE: "صرف وصفات",
-  MEDICINE_DELIVERY: "دواء مع توصيل",
-  NURSING: "تمريض",
-  PHYSIOTHERAPY: "علاج طبيعي",
-  SURGERY: "عمليات",
-  BLOOD_BANK: "بنك الدم",
-  TAXI: "نقل",
-};
-
-const ORDER_STATUS_LABELS: Record<string, string> = {
-  NEW: "جديدة",
-  ACCEPTED: "مقبولة",
-  ASSIGNED: "معيّنة",
-  IN_TRANSIT: "في الطريق",
-  ARRIVED: "تم الوصول",
-  IN_PROGRESS: "قيد التنفيذ",
-  COMPLETED: "مكتملة",
-  CANCELLED: "ملغاة",
-  DELAYED: "متأخرة",
-};
-
-const PARTNER_STATUS_LABELS: Record<string, string> = {
-  ACTIVE: "نشط",
-  PENDING: "بانتظار الاعتماد",
-  PAUSED: "متوقف مؤقتاً",
-  SUSPENDED: "معلّق",
-};
-
-const PARTNER_TYPE_LABELS: Record<string, string> = {
-  DOCTOR: "طبيب",
-  LAB: "مختبر",
-  PHARMACY: "صيدلية",
-  NURSE: "تمريض",
-  DRIVER: "نقل",
-  RADIOLOGY: "أشعة",
-};
 
 type Metric = { value: number | null; change: number | null; count?: number };
 
@@ -127,11 +89,11 @@ export default function AdminCommandCenter() {
   const k = data?.kpis;
 
   const orderSlices = (data?.ordersByStatus ?? []).map((s) => ({
-    label: ORDER_STATUS_LABELS[s.status] ?? s.status,
+    label: labelOf(ORDER_STATUS_LABELS, s.status),
     value: s.count,
   }));
   const serviceSlices = (data?.revenueByService ?? []).map((s) => ({
-    label: SERVICE_LABELS[s.serviceType] ?? s.serviceType,
+    label: labelOf(SERVICE_TYPE_LABELS, s.serviceType),
     value: s.revenue,
   }));
 
@@ -248,7 +210,7 @@ export default function AdminCommandCenter() {
                       {p.name}
                     </span>
                     <span className="block text-xs text-muted-foreground">
-                      {p.type ? (PARTNER_TYPE_LABELS[p.type] ?? p.type) : "—"}
+                      {labelOf(PARTNER_TYPE_LABELS, p.type)}
                     </span>
                   </span>
                   <span className="shrink-0 text-sm font-semibold text-foreground">
@@ -269,7 +231,7 @@ export default function AdminCommandCenter() {
                 <li key={s.status} className="flex items-center gap-3 py-2.5">
                   <StatusDot status={s.status} />
                   <span className="flex-1 text-sm text-muted-foreground">
-                    {PARTNER_STATUS_LABELS[s.status] ?? s.status}
+                    {labelOf(PARTNER_STATUS_LABELS, s.status)}
                   </span>
                   <span className="text-sm font-semibold text-foreground">
                     {formatNumber(s.count)}

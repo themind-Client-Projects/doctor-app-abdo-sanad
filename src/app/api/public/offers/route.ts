@@ -25,7 +25,7 @@ const querySchema = z.object({
   /** A `ServiceType` member — the category chips filter on this. */
   service: z.string().trim().optional(),
   governorate: z.string().trim().optional(),
-  limit: z.coerce.number().int().min(1).max(60).default(40),
+  limit: z.coerce.number().int().min(1).max(100).default(40),
 });
 
 /** The channel decides the "before" price, exactly as `quoteService` does. */
@@ -75,10 +75,14 @@ export const GET = withPublic(async (req) => {
           select: {
             id: true,
             name: true,
+            type: true,
             rating: true,
             totalTasks: true,
             address: true,
             governorate: { select: { name: true } },
+            // A doctor's public profile is keyed by DoctorProfile.id, not by
+            // the Partner id — without it an offer card has nowhere to lead.
+            user: { select: { doctorProfile: { select: { id: true } } } },
           },
         },
       },
@@ -121,6 +125,12 @@ export const GET = withPublic(async (req) => {
         description: c.description,
         image: c.imageUrl,
         clinic: c.partner?.name ?? null,
+        // Identity of the provider behind the offer. The card was a dead
+        // `<div>` — it carried `cursor-pointer` and led nowhere — because the
+        // response named the clinic but never said which one it was.
+        partnerId: c.partner?.id ?? null,
+        partnerType: c.partner?.type ?? null,
+        doctorProfileId: c.partner?.user?.doctorProfile?.id ?? null,
         location: c.partner?.governorate?.name ?? c.partner?.address ?? null,
         rating: c.partner?.rating ?? null,
         reviews: c.partner?.totalTasks ?? null,

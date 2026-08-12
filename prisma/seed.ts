@@ -9,6 +9,7 @@ import { PrismaClient, UserRole, OrderStatus, Priority, OrderSource, PaymentMeth
 import { PrismaPg } from "@prisma/adapter-pg";
 import pg from "pg";
 import { seedOperationalData } from "./seed-operations";
+import { normalizePhone } from "../src/lib/phone";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -142,13 +143,35 @@ async function main() {
     [p.radiology.id, 890_000, 250_000, 7_600_000],
   ];
   for (const [partnerId, balance, pendingAmount, totalEarnings] of walletEntries) {
-    await prisma.wallet.upsert({
-      where: { partnerId },
-      update: {},
-      create: { partnerId, balance, pendingAmount, totalEarnings },
+    // A wallet may already exist because `settleOrder` created one when it paid
+    // this partner. In that case its balance is REAL — the sum of actual
+    // settlements — and the demo figure below must not touch it.
+    const existing = await prisma.wallet.findUnique({ where: { partnerId }, select: { id: true } });
+    if (existing) continue;
+
+    const wallet = await prisma.wallet.create({
+      data: { partnerId, balance, pendingAmount, totalEarnings },
+    });
+
+    // The opening balance is fabricated for the demo, so it is written as a
+    // real ledger entry rather than as a bare number on the wallet.
+    //
+    // Every wallet here rests on `balance == sum(transactions)`. Seeding
+    // `balance` alone broke it: the admin wallets screen showed 980,000 د.ع
+    // while the transfers screen — which lists the transactions — explained
+    // none of it, and later settlements incremented on top of a figure nothing
+    // accounted for.
+    await prisma.transaction.create({
+      data: {
+        id: `seed-open-${partnerId}`,
+        walletId: wallet.id,
+        amount: balance,
+        type: "CREDIT",
+        description: "رصيد افتتاحي",
+      },
     });
   }
-  console.log("✅ 9 محافظ مالية");
+  console.log("✅ محافظ الشركاء + قيد افتتاحي لكل محفظة جديدة");
 
   // ═══════════════════════════════════════════════════════════
   // 7. العقود + قواعد النسب ⭐
@@ -211,6 +234,92 @@ async function main() {
   // دواء مع توصيل: صيدلية 82%, سائق 8%, وريد 10%
   await upsertCommission(contractPharmacy.id, "MEDICINE_DELIVERY", 82, 0, 10, 0, 8);
   console.log("✅ 3 عقود + 4 قواعد نسب");
+
+  // ── تغطية بقية الشركاء ─────────────────────────────────────
+  //
+  // The three contracts above are hand-tuned demonstrations. Every OTHER
+  // partner had none, and settlement refuses a provider without an active
+  // contract carrying a rule for the order's service — so completing an order
+  // assigned to any of them succeeded while the revenue split silently failed
+  // and nobody was paid. 2 of 35 partners were settleable.
+  //
+  // These fill-in rules deliberately allocate to the provider and the platform
+  // ONLY. A rule that reserves a percentage for a nurse, driver or complex
+  // throws PARTY_UNASSIGNED whenever that party is not on the order, so a
+  // blanket rule with those shares would trade one failure for another. The
+  // percentages are a starting point — the admin contract screen edits them.
+  const FILL_IN_SERVICES: Record<string, { services: ServiceType[]; partnerShare: number }> = {
+    LAB: { services: ["LAB_TEST", "HOME_LAB_TEST", "HOME_BLOOD_DRAW"], partnerShare: 75 },
+    PHARMACY: { services: ["PHARMACY_DISPENSE", "MEDICINE_DELIVERY"], partnerShare: 80 },
+    RADIOLOGY: { services: ["RADIOLOGY"], partnerShare: 75 },
+    NURSE: {
+      services: ["NURSING", "HOME_VISIT", "HOME_BLOOD_DRAW", "PHYSIOTHERAPY", "IN_PERSON_CONSULT", "ONLINE_CONSULT"],
+      partnerShare: 70,
+    },
+    DRIVER: { services: ["TAXI", "MEDICINE_DELIVERY"], partnerShare: 80 },
+    DOCTOR: { services: ["IN_PERSON_CONSULT", "ONLINE_CONSULT", "HOME_VISIT"], partnerShare: 75 },
+  };
+
+  const allPartners = await prisma.partner.findMany({
+    where: { deletedAt: null },
+    select: { id: true, type: true, contract: { select: { id: true } } },
+  });
+
+  let filledContracts = 0;
+  let filledRules = 0;
+  for (const partner of allPartners) {
+    const plan = FILL_IN_SERVICES[partner.type];
+    if (!plan) continue;
+
+    // Leave the three hand-tuned contracts exactly as they are.
+    let contractId = partner.contract?.id;
+    if (!contractId) {
+      const created = await prisma.contract.create({
+        data: {
+          partnerId: partner.id,
+          startDate: new Date("2025-01-01"),
+          endDate: new Date("2027-12-31"),
+          services: plan.services,
+          governorates: [],
+          workHours: { start: "08:00", end: "22:00" },
+          minPrices: {},
+          terms: "عقد قياسي — النسب قابلة للتعديل من لوحة الإدارة",
+          isActive: true,
+        },
+        select: { id: true },
+      });
+      contractId = created.id;
+      filledContracts += 1;
+    }
+
+    for (const serviceType of plan.services) {
+      // `upsertCommission` does not overwrite, so an existing hand-tuned rule
+      // survives and only the gaps are filled.
+      const before = await prisma.commissionRule.count({
+        where: { contractId, serviceType },
+      });
+      await upsertCommission(contractId, serviceType, plan.partnerShare, 0, 100 - plan.partnerShare, 0, 0);
+      if (before === 0) filledRules += 1;
+    }
+  }
+  console.log(`✅ ${filledContracts} عقد إضافي + ${filledRules} قاعدة نسب لتغطية كل الشركاء`);
+
+  // ── العقود المنتهية ────────────────────────────────────────
+  //
+  // The three demonstration contracts above carry fixed end dates, and
+  // `upsert(..., update: {})` never revisits a row once created — so they rot.
+  // صيدلية الرازي's contract ended 2026-05-31 and settlement had begun refusing
+  // it with "عقد الشريك منتهي الصلاحية", which reads like a bug in the split
+  // rather than a stale seed.
+  //
+  // Pushing only the already-expired ones forward keeps this idempotent and
+  // leaves any deliberate end date in the future untouched.
+  const revived = await prisma.contract.updateMany({
+    where: { endDate: { lt: new Date() } },
+    // `today` is declared further down this function — use the clock directly.
+    data: { endDate: new Date(Date.now() + 730 * 86400000) },
+  });
+  if (revived.count > 0) console.log(`✅ ${revived.count} عقد منتهي تم تمديده`);
 
   // ═══════════════════════════════════════════════════════════
   // 8. إعدادات الخدمات
@@ -303,17 +412,26 @@ async function main() {
   // 12. المواعيد — اليوم لد. علي (doctorId → DoctorProfile)
   // ═══════════════════════════════════════════════════════════
   const aptData: [(typeof patients)[number], string, AppointmentType, string][] = [
+    // Statuses must come from the API's own vocabulary —
+    // `scheduled | completed | cancelled | no_show` (see api/appointments).
+    // This seeded "confirmed" and "in_progress", neither of which exists, so
+    // the doctor's "المواعيد القادمة" KPI — which counts `scheduled` — read ٠
+    // with twenty appointments in the table, and PATCHing one of these rows
+    // through the API would have been a 400.
     [patients[0], "09:00", "IN_PERSON", "completed"],
     [patients[1], "10:30", "IN_PERSON", "completed"],
-    [patients[2], "12:00", "ONLINE", "in_progress"],
-    [patients[3], "14:00", "IN_PERSON", "confirmed"],
-    [patients[4], "16:00", "ONLINE", "confirmed"],
+    [patients[2], "12:00", "ONLINE", "scheduled"],
+    [patients[3], "14:00", "IN_PERSON", "scheduled"],
+    [patients[4], "16:00", "ONLINE", "scheduled"],
   ];
   for (const [aptIndex, [patient, time, type, status]] of aptData.entries()) {
     const date = new Date(today); const [h, m] = time.split(":").map(Number); date.setHours(h, m, 0, 0);
     await prisma.appointment.upsert({
       where: { id: `seed-apt-${aptIndex}` },
-      update: {},
+      // Re-anchored to today on every run. With `update: {}` these kept the
+      // date of whichever day the seed first ran, so "مواعيد اليوم" was empty
+      // on every dashboard from the second day onwards.
+      update: { date, time, status },
       create: { id: `seed-apt-${aptIndex}`, doctorId: dp1.id, patientId: patient.id, date, time, type, status },
     });
   }
@@ -526,10 +644,19 @@ async function main() {
 // ─── Helpers ──────────────────────────────────────────────
 
 async function upsertUser(email: string, name: string, phone: string, role: UserRole, governorateId: string) {
+  // Canonical form, because `User.phone` is the OTP sign-in credential: the
+  // login path normalises the number it was given and looks it up verbatim.
+  // Seeded as "07801000001" it never matched the "9647801000001" that sign-in
+  // searches for, so every seeded patient signing in by phone was handed a
+  // NEW empty account instead of their own.
+  const canonical = normalizePhone(phone);
+  if (!canonical) throw new Error(`seed: "${phone}" is not a valid Iraqi mobile (${email})`);
+
   return prisma.user.upsert({
     where: { email },
-    update: {},
-    create: { email, name, phone, role, isActive: true, governorateId },
+    // Re-anchored, so an existing row seeded in local format is corrected.
+    update: { phone: canonical },
+    create: { email, name, phone: canonical, role, isActive: true, governorateId },
   });
 }
 
@@ -579,15 +706,38 @@ async function upsertOrder(
   });
 }
 
+/**
+ * Ensure an OPEN commission rule exists for this contract + service.
+ *
+ * No longer an upsert on @@unique([contractId, serviceType]): a contract now
+ * holds many historical versions per service and only the one with no
+ * `effectiveTo` is in force. Seeding must never close or duplicate a live
+ * version, so it looks for an open one and creates it only when absent.
+ *
+ * `effectiveFrom` is the contract's start date, not now(): a rule dated today
+ * would fail to price any order placed before today.
+ */
 async function upsertCommission(
   contractId: string, serviceType: ServiceType,
   partnerShare: number, complexShare: number, waridShare: number,
   nurseShare: number, driverShare: number
 ) {
-  return prisma.commissionRule.upsert({
-    where: { contractId_serviceType: { contractId, serviceType } },
-    update: {},
-    create: { contractId, serviceType, partnerShare, complexShare, waridShare, nurseShare, driverShare },
+  const open = await prisma.commissionRule.findFirst({
+    where: { contractId, serviceType, effectiveTo: null },
+    select: { id: true },
+  });
+  if (open) return open;
+
+  const contract = await prisma.contract.findUniqueOrThrow({
+    where: { id: contractId },
+    select: { startDate: true },
+  });
+
+  return prisma.commissionRule.create({
+    data: {
+      contractId, serviceType, partnerShare, complexShare, waridShare, nurseShare, driverShare,
+      effectiveFrom: contract.startDate,
+    },
   });
 }
 

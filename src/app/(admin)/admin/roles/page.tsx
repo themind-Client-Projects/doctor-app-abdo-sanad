@@ -4,9 +4,9 @@ import { useCallback, useMemo, useState } from "react";
 import { Check, Minus, ShieldCheck } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { apiFetch, useMutation } from "@/hooks/use-mutation";
-import { DataTable, type Column } from "@/components/admin/data-table";
-import { Field, FormDialog, fieldClass } from "@/components/admin/form-dialog";
-import { PageHeader, Pill } from "@/components/admin/crud-kit";
+import { DataTable, type Column } from "@/components/data/data-table";
+import { Field, FormDialog, fieldClass } from "@/components/data/form-dialog";
+import { PageHeader, Pill } from "@/components/data/crud-kit";
 import { USER_ROLE_KEYS, USER_ROLE_LABELS, labelOf, optionsOf } from "@/lib/labels";
 import { formatNumber } from "@/lib/format";
 

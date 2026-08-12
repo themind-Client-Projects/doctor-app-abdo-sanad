@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
+import { prisma, TX_OPTIONS } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
 import { ErrorCode, fail, ok } from "@/lib/api-response";
-import { parseBody } from "@/lib/validation";
+import { parseBody, serviceTypeSchema } from "@/lib/validation";
 
 /**
  * Onboard a service provider — "إضافة طبيب / مجمع / مختبر…" (req L128-182).
@@ -28,6 +28,9 @@ import { parseBody } from "@/lib/validation";
 const partnerType = z.enum(["DOCTOR", "LAB", "PHARMACY", "NURSE", "DRIVER", "RADIOLOGY"], {
   message: "نوع الشريك غير صالح",
 });
+
+/** Contract term. Long and open-ended beats a date that silently lapses. */
+const FIVE_YEARS_MS = 5 * 365 * 24 * 60 * 60 * 1000;
 
 const onboardSchema = z
   .object({
@@ -66,6 +69,20 @@ const onboardSchema = z
 
     /** Present when this partner also owns a medical complex. */
     complexName: z.string().trim().min(2).max(120).optional(),
+
+    /**
+     * نسبة الشريك من ١٠٠ — the cut this provider keeps of every order they
+     * serve. The remainder goes to the platform.
+     *
+     * Not a decorative field: it becomes a real `CommissionRule` on a real
+     * `Contract`. Settlement refuses a provider with neither, so a partner
+     * onboarded without this could never be paid — which is exactly what used
+     * to happen, silently, to every partner added through this endpoint.
+     */
+    partnerShare: z.number().finite().min(1).max(100).default(70),
+
+    /** Services this provider offers. Drives `ServiceConfig` and the contract. */
+    services: z.array(serviceTypeSchema).min(1, { message: "اختر خدمة واحدة على الأقل" }),
   })
   .strict();
 
@@ -93,7 +110,7 @@ export const POST = withAuth({ roles: ROLES.ADMIN }, async (req, _ctx, identity)
     );
   }
 
-  const data = await prisma.$transaction(async (tx) => {
+  const partnerId = await prisma.$transaction(async (tx) => {
     const user = await tx.user.create({
       data: {
         name: input.name,
@@ -155,27 +172,103 @@ export const POST = withAuth({ roles: ROLES.ADMIN }, async (req, _ctx, identity)
       });
     }
 
+    // ── The contract, without which the partner can never be paid ──────────
+    //
+    // A wallet alone is not enough: `settleOrder` resolves the provider's
+    // contract and the commission rule in force at the order's date, and throws
+    // NO_CONTRACT when either is missing. Onboarding created the wallet and
+    // stopped there, so every partner added here was unsettleable from birth —
+    // 33 of 35 at the time this was found.
+    //
+    // Dated from today and open-ended: the audit ran into contracts whose fixed
+    // end date had quietly passed, turning settlement failures into a mystery.
+    const contract = await tx.contract.create({
+      data: {
+        partnerId: partner.id,
+        startDate: new Date(),
+        endDate: new Date(Date.now() + FIVE_YEARS_MS),
+        services: input.services,
+        governorates: input.governorateId ? [input.governorateId] : [],
+        terms: "عقد قياسي — النسب قابلة للتعديل من محرك النسب",
+        isActive: true,
+      },
+    });
+
+    // One rule per service, all on the same share. Per-service percentages are
+    // refined afterwards on the commission screen; asking for fourteen numbers
+    // in an onboarding form would be answered with fourteen guesses.
+    const waridShare = 100 - input.partnerShare;
+    await tx.commissionRule.createMany({
+      data: input.services.map((serviceType) => ({
+        contractId: contract.id,
+        serviceType,
+        partnerShare: input.partnerShare,
+        complexShare: 0,
+        waridShare,
+        nurseShare: 0,
+        driverShare: 0,
+        referralShare: 0,
+        // Matches the contract, so an order placed today already resolves.
+        effectiveFrom: contract.startDate,
+      })),
+    });
+
+    // ── Service configuration ─────────────────────────────────────────────
+    //
+    // The storefront reads `ServiceConfig.status` to decide whether a provider
+    // is bookable. With no row it reads as undefined, so a partner created here
+    // appeared to patients as permanently "غير متاح".
+    await tx.serviceConfig.createMany({
+      data: input.services.map((serviceType) => ({
+        partnerId: partner.id,
+        serviceType,
+        status: input.status === "ACTIVE" ? "ACTIVE" : "PAUSED",
+      })),
+    });
+
     await tx.activityLog.create({
       data: {
         userId: identity.userId,
         action: `إضافة شريك جديد: ${input.name}`,
         entityType: "partner",
         entityId: partner.id,
-        details: { type: input.type, status: input.status, channels },
+        details: {
+          type: input.type,
+          status: input.status,
+          channels,
+          partnerShare: input.partnerShare,
+          services: input.services,
+        },
       },
     });
 
-    return tx.partner.findUniqueOrThrow({
-      where: { id: partner.id },
-      include: {
-        user: { select: { id: true, name: true, email: true, phone: true, role: true } },
-        governorate: { select: { id: true, name: true } },
-        complex: { select: { id: true, name: true } },
-        ownedComplex: { select: { id: true, name: true } },
-        channels: { select: { channel: true, status: true } },
-        wallet: { select: { id: true, balance: true } },
+    return partner.id;
+  }, TX_OPTIONS);
+
+  // Read the finished graph OUTSIDE the transaction.
+  //
+  // Onboarding writes eleven rows across as many round-trips to a remote
+  // pooler, and this projection — six includes — was the most expensive call of
+  // the lot. Held inside, it pushed the whole thing past Prisma's 5s default and
+  // every onboarding failed with P2028 after ~10s. Nothing here needs to be
+  // atomic: the writes already committed, and this only reads them back.
+  const data = await prisma.partner.findUniqueOrThrow({
+    where: { id: partnerId },
+    include: {
+      user: { select: { id: true, name: true, email: true, phone: true, role: true } },
+      governorate: { select: { id: true, name: true } },
+      complex: { select: { id: true, name: true } },
+      ownedComplex: { select: { id: true, name: true } },
+      channels: { select: { channel: true, status: true } },
+      wallet: { select: { id: true, balance: true } },
+      contract: {
+        select: {
+          id: true,
+          endDate: true,
+          commissionRules: { select: { serviceType: true, partnerShare: true } },
+        },
       },
-    });
+    },
   });
 
   return ok(data, { status: 201, requestId });

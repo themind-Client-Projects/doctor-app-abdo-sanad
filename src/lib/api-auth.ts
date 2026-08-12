@@ -5,6 +5,7 @@ import { auth } from "./auth";
 import { ErrorCode, fail } from "./api-response";
 import { ValidationError } from "./validation";
 import { verifyAccessToken } from "./tokens";
+import { isPlatformRole } from "./roles";
 
 /**
  * The authenticated caller, resolved once per request.
@@ -388,10 +389,10 @@ export function assertPartnerScope(identity: Identity, partnerId: string | null)
   }
 }
 
-/** Roles that see the whole platform rather than one partner's slice. */
-export function isPlatformRole(role: UserRole): boolean {
-  return role === "SUPER_ADMIN" || role === "OPERATIONS";
-}
+// `isPlatformRole` moved to `./roles`, which carries no NextAuth import, so a
+// scoping rule can be tested without booting an auth runtime. Re-exported here
+// because eighteen files already import it from this module.
+export { isPlatformRole };
 
 /**
  * A `where` fragment that limits a query to the caller's own partner.
@@ -412,3 +413,41 @@ export function partnerScope(
   if (isPlatformRole(identity.role)) return {};
   return { [field]: identity.partnerId ?? "" };
 }
+
+/**
+ * Limit an appointment query to what this caller is party to.
+ *
+ * An appointment is a consultation between a patient and a DOCTOR. The parties
+ * are those two, plus the platform roles who dispatch. It is not
+ * `partnerScope`: `Appointment.doctorId` references `DoctorProfile.id`, not
+ * `Partner.id`, so scoping on `partnerId` would match nothing and read to the
+ * doctor as "you have no appointments".
+ *
+ * `/api/appointments/today` already did this. The list and detail routes did
+ * not, so any clinical role could page the whole platform's appointment book —
+ * every patient's name, notes and doctor — and a doctor could read another
+ * doctor's by passing their id. Sharing the fragment is what stops the three
+ * from disagreeing again.
+ *
+ * Fails closed: anyone who is neither a patient, a doctor with a profile, nor a
+ * platform role matches nothing.
+ */
+export function appointmentScope(identity: Identity): Record<string, string> {
+  if (isPlatformRole(identity.role)) return {};
+  if (identity.role === "PATIENT") return { patientId: identity.userId };
+  return { doctorId: identity.doctorProfileId ?? "" };
+}
+
+/**
+ * Who may touch an appointment at all.
+ *
+ * `ROLES.CLINICAL` was used, which includes LAB, PHARMACY and RADIOLOGY —
+ * none of whom are a party to a consultation. Same correction already made on
+ * `/api/prescriptions`, which concerns only its doctor and its pharmacy.
+ */
+export const APPOINTMENT_ROLES = [
+  "SUPER_ADMIN",
+  "OPERATIONS",
+  "DOCTOR",
+  "PATIENT",
+] as const satisfies readonly UserRole[];

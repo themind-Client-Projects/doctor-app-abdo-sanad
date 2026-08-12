@@ -15,6 +15,11 @@ import {
   ClipboardList,
   Truck,
   ScanLine,
+  XCircle,
+  AlertTriangle,
+  MapPin,
+  Video,
+  Droplets,
 } from "lucide-react";
 import { formatNumber } from "@/lib/format";
 
@@ -37,6 +42,8 @@ interface KPICardsProps {
   kpis: KPICardData[];
   isLoading?: boolean;
   currency?: string;
+  /** Widest breakpoint's column count. Operations shows 10 cards, not 4. */
+  columns?: 4 | 5;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -55,6 +62,12 @@ const iconMap: Record<string, React.ReactNode> = {
   clipboard: <ClipboardList size={22} />,
   truck: <Truck size={22} />,
   scan: <ScanLine size={22} />,
+  // Operations KPIs — without these the ten cards fall through to no icon.
+  "x-circle": <XCircle size={22} />,
+  "alert-triangle": <AlertTriangle size={22} />,
+  "map-pin": <MapPin size={22} />,
+  video: <Video size={22} />,
+  droplets: <Droplets size={22} />,
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -93,12 +106,20 @@ const cardStyles: Record<string, { card: string; icon: string; value: string }> 
 // Component
 // ─────────────────────────────────────────────────────────────
 
-export function KPICards({ kpis, isLoading, currency = "د.ع" }: KPICardsProps) {
-  // Loading skeleton
+export function KPICards({ kpis, isLoading, currency = "د.ع", columns = 4 }: KPICardsProps) {
+  // Written out rather than interpolated — Tailwind only ships classes it can
+  // see as literals in the source.
+  const gridClass =
+    columns === 5
+      ? "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4"
+      : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4";
+
+  // Loading skeleton — as many placeholders as the row actually holds, so the
+  // layout does not jump when the data lands.
   if (isLoading) {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" dir="rtl">
-        {[1, 2, 3, 4].map((i) => (
+      <div className={gridClass} dir="rtl">
+        {Array.from({ length: columns === 5 ? 10 : 4 }, (_, i) => i).map((i) => (
           <div key={i} className="rounded-xl border border-border bg-card p-5 animate-pulse">
             <div className="flex items-center justify-between mb-4">
               <div className="h-4 w-20 rounded bg-muted" />
@@ -121,7 +142,7 @@ export function KPICards({ kpis, isLoading, currency = "د.ع" }: KPICardsProps)
   };
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" dir="rtl">
+    <div className={gridClass} dir="rtl">
       {kpis.map((kpi) => {
         const style = cardStyles[kpi.color] || cardStyles.blue;
 

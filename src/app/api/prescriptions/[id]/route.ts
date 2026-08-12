@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { AuthError, type Identity, isPlatformRole, withAuth } from "@/lib/api-auth";
 import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { nonEmpty, parseBody } from "@/lib/validation";
+import { medicationSchema } from "@/server/services/referral-forms";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -44,10 +45,18 @@ const prescriptionStatus = z.enum(["new", "preparing", "ready", "delivered", "re
   message: "حالة غير صالحة",
 });
 
-/** `medications` is the core clinical payload: a JSON array of objects. */
+/**
+ * The same table the create route enforces — not a looser copy.
+ *
+ * This was `z.array(z.record(z.string(), z.unknown()))`: any object at all. The
+ * create route was tightened and this one was missed, which left the hole open
+ * on the path that matters MORE — a prescription can be edited after a pharmacy
+ * has seen it, so a dose could be removed from a live one.
+ */
 const medications = z
-  .array(z.record(z.string(), z.unknown()), { message: "الأدوية غير صالحة" })
-  .min(1, { message: "الأدوية غير صالحة" });
+  .array(medicationSchema, { message: "الأدوية غير صالحة" })
+  .min(1, { message: "أضف دواءً واحداً على الأقل" })
+  .max(30);
 
 // The body was spread into update, so anyone could rewrite `medications` — a
 // forged dosage on a dispensed prescription is a patient-safety issue, not just
@@ -60,6 +69,12 @@ const updatePrescriptionSchema = z
     pharmacyId: nonEmpty.optional(),
     orderId: nonEmpty.optional(),
     notes: z.string().optional(),
+    /**
+     * اسم الصيدلي — "تم صرف الأدوية" on the form is a box somebody signs.
+     * `dispensedAt` is stamped server-side from the status, never sent: a
+     * client-supplied dispensing time could disagree with the record it dates.
+     */
+    pharmacistName: z.string().trim().min(2).max(120).optional(),
   })
   .strict();
 
@@ -86,7 +101,7 @@ export const PATCH = withAuth<Ctx>({ roles: PRESCRIPTION_ROLES }, async (req, { 
 
   const existing = await prisma.prescription.findUnique({
     where: { id },
-    select: { id: true, doctorId: true, pharmacyId: true },
+    select: { id: true, doctorId: true, pharmacyId: true, status: true, expiresAt: true },
   });
   if (!existing) {
     return fail(ErrorCode.NOT_FOUND, 404, "غير موجود", { requestId });
@@ -100,6 +115,27 @@ export const PATCH = withAuth<Ctx>({ roles: PRESCRIPTION_ROLES }, async (req, { 
   // the platform. A pharmacy must not be able to reassign the work it holds.
   const mayRoute = isPlatformRole(identity.role) || identity.role === "DOCTOR";
 
+  // "صالحة لمدة 30 يوماً" is printed on the paper, so dispensing against an
+  // expired one has to be refused rather than merely discouraged.
+  const expired = existing.expiresAt !== null && existing.expiresAt.getTime() < Date.now();
+  if (expired && input.status === "delivered") {
+    return fail(
+      ErrorCode.BUSINESS_RULE_VIOLATION,
+      422,
+      "انتهت صلاحية الوصفة — يلزم إصدار وصفة جديدة",
+      { requestId }
+    );
+  }
+
+  // Naming the pharmacist is the pharmacy's act, not the doctor's.
+  if (input.pharmacistName !== undefined && identity.role === "DOCTOR") {
+    return fail(ErrorCode.FORBIDDEN, 403, "اسم الصيدلي يُسجّل من الصيدلية", { requestId });
+  }
+
+  // Stamped here, from the status — the moment the record says it was handed
+  // over is the moment it changed, not a time the client chose.
+  const dispensing = input.status === "delivered" && existing.status !== "delivered";
+
   // `undefined` leaves a column untouched in Prisma.
   const data = await prisma.prescription.update({
     where: { id },
@@ -109,6 +145,8 @@ export const PATCH = withAuth<Ctx>({ roles: PRESCRIPTION_ROLES }, async (req, { 
       pharmacyId: mayRoute ? input.pharmacyId : undefined,
       orderId: input.orderId,
       notes: input.notes,
+      pharmacistName: input.pharmacistName,
+      ...(dispensing ? { dispensedAt: new Date(), dispensedById: identity.userId } : {}),
     },
   });
 

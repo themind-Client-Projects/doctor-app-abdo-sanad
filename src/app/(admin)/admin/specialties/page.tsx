@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { STALE_TIME } from "@/lib/request-cache";
 import { Stethoscope } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { apiFetch, useMutation } from "@/hooks/use-mutation";
-import { DataTable, type Column } from "@/components/admin/data-table";
-import { Field, FormDialog, fieldClass } from "@/components/admin/form-dialog";
-import { PageHeader, Pill, RowActions } from "@/components/admin/crud-kit";
+import { DataTable, type Column } from "@/components/data/data-table";
+import { Field, FormDialog, fieldClass } from "@/components/data/form-dialog";
+import { PageHeader, Pill, RowActions } from "@/components/data/crud-kit";
 import { formatNumber } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
@@ -52,6 +53,7 @@ const EMPTY: FormState = {
 export default function SpecialtiesPage() {
   const { data, isLoading, error, refetch } = useDashboardData<Specialty[]>({
     url: "/api/specialties",
+    staleTime: STALE_TIME.reference,
   });
 
   const [editing, setEditing] = useState<Specialty | null>(null);

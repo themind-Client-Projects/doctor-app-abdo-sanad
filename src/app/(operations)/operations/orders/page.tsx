@@ -1,153 +1,397 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
+import { ArrowLeftRight, Check, Eye, Pause, X } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
-import { StatusBadge } from "@/components/shared/status-badge";
-import { Check, X, Pause, ArrowLeftRight, Eye, Search, Filter } from "lucide-react";
-import { formatDateTime } from "@/lib/format";
+import { allowedActions, useOrderActions } from "@/hooks/use-order-actions";
+import { DataTable, type Column } from "@/components/data/data-table";
+import { Field, FormDialog, fieldClass } from "@/components/data/form-dialog";
+import { PageHeader, Pill, toneForStatus } from "@/components/data/crud-kit";
+import {
+  CHANNEL_LABELS,
+  ORDER_PRIORITY_LABELS,
+  ORDER_STATUS_LABELS,
+  PAYMENT_METHOD_LABELS,
+  SERVICE_TYPE_LABELS,
+  labelOf,
+  optionsOf,
+} from "@/lib/labels";
+import { formatCurrency, formatRelative } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
-// Section 3: الطلبات الجديدة (req L300-322) — 12 fields + 5 buttons
+// الطلبات (req L300-322) — 12 حقلاً و5 أزرار.
+//
+// The screen listed orders and could do NOTHING to them: قبول، رفض، تعليق and
+// تحويل all existed as endpoints and none had a button, so an employee could
+// watch the queue grow without touching it.
+//
+// It also carried its own `serviceLabels` keyed on ONLINE / IN_PERSON / X_RAY —
+// none of which are members of the `ServiceType` enum — so every row rendered
+// its raw key. Same defect as the admin services screen, same fix: import the
+// one map.
 // ─────────────────────────────────────────────────────────────
 
-interface Order {
+type Order = {
   id: string;
   orderNumber: string;
   patientName: string;
-  phone: string;
-  governorate: string;
-  area: string;
-  address: string;
+  patientPhone: string;
   serviceType: string;
+  status: string;
   priority: string;
-  createdAt: string;
+  source: string;
+  area: string | null;
+  address: string | null;
+  /** Prisma `Decimal` — arrives over JSON as a string, never a number. */
+  totalAmount: number | string | null;
   paymentMethod: string;
   paymentStatus: string;
-  notes: string;
-  status: string;
-}
-
-const serviceLabels: Record<string, string> = {
-  HOME_VISIT: "زيارة منزلية", ONLINE: "أونلاين", IN_PERSON: "حضوري",
-  BLOOD_DRAW: "سحب دم", HOME_TEST: "تحليل منزلي", DELIVERY: "توصيل دواء",
-  X_RAY: "أشعة", SURGERY: "عملية",
+  notes: string | null;
+  createdAt: string;
+  governorate: { name: string } | null;
 };
 
-const priorityStyles: Record<string, string> = {
-  NORMAL: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
-  URGENT: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
-  CRITICAL: "bg-red-200 text-red-800 dark:bg-red-900/40 dark:text-red-200 animate-pulse",
-};
+type Employee = { id: string; name: string | null; role: string };
 
-export default function OrdersPage() {
-  const [search, setSearch] = useState("");
-  const [filterPriority, setFilterPriority] = useState<string | null>(null);
+/** Critical first — the point of a priority column is that it sorts. */
+const PRIORITY_RANK: Record<string, number> = { CRITICAL: 0, URGENT: 1, NORMAL: 2 };
 
-  const { data: orders, isLoading, refetch } = useDashboardData<Order[]>({
+export default function OperationsOrdersPage() {
+  const { data, isLoading, error, refetch } = useDashboardData<Order[]>({
     url: "/api/orders",
-    params: { status: "NEW" },
-    refreshInterval: 10000,
+    params: { limit: "100" },
+    // A live queue: a new order matters within a minute, and the employee
+    // should not have to reload to see it.
+    refreshInterval: 30_000,
   });
 
-  const handleAction = async (orderId: string, action: string) => {
-    await fetch(`/api/orders/${orderId}/${action}`, { method: "POST" });
-    refetch();
-  };
+  // Staff a request can be handed to. Loaded once, not per row — a dropdown
+  // rebuilt on every row render would fetch as many times as there are orders.
+  const { data: employees } = useDashboardData<Employee[]>({ url: "/api/users/staff" });
 
-  const filtered = (orders ?? []).filter((o) => {
-    if (search && !o.patientName.includes(search) && !o.orderNumber.includes(search)) return false;
-    if (filterPriority && o.priority !== filterPriority) return false;
-    return true;
-  });
+  const [rejecting, setRejecting] = useState<Order | null>(null);
+  const [reason, setReason] = useState("");
+  const [transferring, setTransferring] = useState<Order | null>(null);
+  const [targetEmployee, setTargetEmployee] = useState("");
+
+  const close = useCallback(() => {
+    setRejecting(null);
+    setTransferring(null);
+    setReason("");
+    setTargetEmployee("");
+  }, []);
+
+  const refresh = useCallback(() => void refetch(), [refetch]);
+  const actions = useOrderActions(refresh);
+
+  const orders = useMemo(() => data ?? [], [data]);
+
+  const columns: Column<Order>[] = useMemo(
+    () => [
+      {
+        key: "orderNumber",
+        header: "الطلب",
+        render: (r) => (
+          <div className="min-w-0">
+            <p className="truncate font-medium text-foreground" dir="ltr">
+              #{r.orderNumber.slice(-8)}
+            </p>
+            <p className="truncate text-xs text-muted-foreground">
+              {labelOf(SERVICE_TYPE_LABELS, r.serviceType)}
+            </p>
+          </div>
+        ),
+        sortValue: (r) => r.orderNumber,
+      },
+      {
+        key: "patient",
+        header: "المريض",
+        render: (r) => (
+          <div className="min-w-0">
+            <p className="truncate font-medium text-foreground">{r.patientName}</p>
+            <p className="truncate text-xs text-muted-foreground" dir="ltr">
+              {r.patientPhone}
+            </p>
+          </div>
+        ),
+        sortValue: (r) => r.patientName,
+      },
+      {
+        key: "location",
+        header: "الموقع",
+        secondary: true,
+        render: (r) => (
+          <span className="text-xs text-muted-foreground">
+            {[r.governorate?.name, r.area, r.address].filter(Boolean).join(" - ") || "—"}
+          </span>
+        ),
+      },
+      {
+        key: "priority",
+        header: "الأولوية",
+        render: (r) => (
+          <Pill
+            tone={
+              r.priority === "CRITICAL" ? "danger" : r.priority === "URGENT" ? "warning" : "neutral"
+            }
+          >
+            {labelOf(ORDER_PRIORITY_LABELS, r.priority)}
+          </Pill>
+        ),
+        sortValue: (r) => PRIORITY_RANK[r.priority] ?? 3,
+      },
+      {
+        key: "status",
+        header: "الحالة",
+        render: (r) => (
+          <div className="flex flex-wrap gap-1">
+            <Pill tone={toneForStatus(r.status === "NEW" ? "PENDING" : r.status)}>
+              {labelOf(ORDER_STATUS_LABELS, r.status)}
+            </Pill>
+            {r.source !== "DIRECT" ? (
+              <Pill tone="info">{labelOf(CHANNEL_LABELS, r.source)}</Pill>
+            ) : null}
+          </div>
+        ),
+      },
+      {
+        key: "payment",
+        header: "الدفع",
+        secondary: true,
+        render: (r) => (
+          <div className="min-w-0">
+            <p className="text-xs text-foreground">
+              {r.totalAmount === null ? "لم يُسعّر" : formatCurrency(r.totalAmount)}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {labelOf(PAYMENT_METHOD_LABELS, r.paymentMethod)} ·{" "}
+              {r.paymentStatus === "PAID" ? "مدفوع" : "غير مدفوع"}
+            </p>
+          </div>
+        ),
+        // Coerced: the Decimal is a string, and sorting strings would put
+        // "9,000" above "25,000".
+        sortValue: (r) => (r.totalAmount === null ? -1 : Number(r.totalAmount)),
+      },
+      {
+        key: "createdAt",
+        header: "منذ",
+        render: (r) => (
+          <span className="whitespace-nowrap text-xs text-muted-foreground">
+            {formatRelative(r.createdAt)}
+          </span>
+        ),
+        sortValue: (r) => new Date(r.createdAt).getTime(),
+      },
+    ],
+    []
+  );
 
   return (
-    <div className="space-y-6" dir="rtl">
-      <div>
-        <h1 className="text-xl font-bold text-foreground">الطلبات الجديدة</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">12 حقل لكل طلب + 5 أزرار (قبول، رفض، تعليق، تحويل، تفاصيل)</p>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="الطلبات"
+        subtitle="قبول الطلبات ورفضها وتعليقها وتحويلها — تُحدَّث تلقائياً كل 30 ثانية"
+      />
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1 max-w-md">
-          <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input type="text" placeholder="بحث برقم الطلب أو اسم المريض..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full h-10 rounded-lg border border-input bg-background pr-9 pl-4 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-        </div>
-        <div className="flex gap-1">
-          {["NORMAL", "URGENT", "CRITICAL"].map((p) => (
-            <button key={p} onClick={() => setFilterPriority(filterPriority === p ? null : p)} className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${filterPriority === p ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent"}`}>
-              {p === "NORMAL" ? "عادي" : p === "URGENT" ? "عاجل" : "حرج"}
-            </button>
-          ))}
-        </div>
-      </div>
+      <DataTable
+        rows={orders}
+        columns={columns}
+        isLoading={isLoading}
+        error={error}
+        onRetry={refetch}
+        searchable={(r) =>
+          `${r.orderNumber} ${r.patientName} ${r.patientPhone} ${r.governorate?.name ?? ""} ${r.area ?? ""}`
+        }
+        searchPlaceholder="بحث برقم الطلب أو المريض أو الهاتف..."
+        filters={[
+          {
+            key: "status",
+            label: "كل الحالات",
+            options: optionsOf(ORDER_STATUS_LABELS),
+            match: (r, v) => r.status === v,
+          },
+          {
+            key: "priority",
+            label: "كل الأولويات",
+            options: optionsOf(ORDER_PRIORITY_LABELS),
+            match: (r, v) => r.priority === v,
+          },
+          {
+            key: "serviceType",
+            label: "كل الخدمات",
+            options: optionsOf(SERVICE_TYPE_LABELS),
+            match: (r, v) => r.serviceType === v,
+          },
+          {
+            key: "source",
+            label: "كل الواجهات",
+            options: optionsOf(CHANNEL_LABELS),
+            match: (r, v) => r.source === v,
+          },
+        ]}
+        emptyMessage="لا توجد طلبات"
+        actions={(r) => {
+          // Derived from the order's own status, so a button never offers a
+          // transition the server rejects with a 409 nobody can interpret.
+          const can = allowedActions(r.status);
+          return (
+            <div className="flex items-center justify-end gap-0.5">
+              {can.canAccept ? (
+                <IconAction
+                  label={`قبول الطلب ${r.orderNumber.slice(-8)}`}
+                  tone="positive"
+                  disabled={actions.isPending}
+                  onClick={() => void actions.accept(r.id)}
+                >
+                  <Check size={15} />
+                </IconAction>
+              ) : null}
 
-      {/* Orders cards */}
-      {isLoading ? (
-        <div className="space-y-4">{[1,2,3].map(i => <div key={i} className="h-40 rounded-xl bg-muted animate-pulse" />)}</div>
-      ) : filtered.length === 0 ? (
-        <div className="py-16 text-center text-muted-foreground">لا توجد طلبات جديدة</div>
-      ) : (
-        <div className="space-y-4">
-          {filtered.map((order) => (
-            <div key={order.id} className="rounded-xl border border-border bg-card p-5 hover:shadow-md transition-shadow">
-              {/* Header row */}
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-mono font-bold text-primary">#{order.orderNumber}</span>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${priorityStyles[order.priority] || priorityStyles.NORMAL}`}>
-                    {order.priority === "NORMAL" ? "عادي" : order.priority === "URGENT" ? "عاجل" : "حرج"}
-                  </span>
-                  <StatusBadge status={order.status} size="sm" />
-                </div>
-                <span className="text-xs text-muted-foreground">{formatDateTime(order.createdAt)}</span>
-              </div>
+              {can.canReject ? (
+                <IconAction
+                  label={`رفض الطلب ${r.orderNumber.slice(-8)}`}
+                  tone="danger"
+                  disabled={actions.isPending}
+                  onClick={() => {
+                    setRejecting(r);
+                    setReason("");
+                  }}
+                >
+                  <X size={15} />
+                </IconAction>
+              ) : null}
 
-              {/* 12 fields grid (L304-316 minus map) */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-4">
-                <Field label="اسم المريض" value={order.patientName} />
-                <Field label="رقم الهاتف" value={order.phone} dir="ltr" />
-                <Field label="المحافظة" value={order.governorate} />
-                <Field label="المنطقة" value={order.area} />
-                <Field label="العنوان" value={order.address} />
-                <Field label="نوع الخدمة" value={serviceLabels[order.serviceType] || order.serviceType} />
-                <Field label="طريقة الدفع" value={order.paymentMethod === "CASH" ? "نقداً" : order.paymentMethod === "CARD" ? "بطاقة" : "محفظة"} />
-                <Field label="حالة الدفع" value={order.paymentStatus} />
-                {order.notes && <Field label="ملاحظات" value={order.notes} className="col-span-2" />}
-              </div>
+              {can.canHold ? (
+                <IconAction
+                  label={`تعليق الطلب ${r.orderNumber.slice(-8)}`}
+                  tone="warning"
+                  disabled={actions.isPending}
+                  onClick={() => void actions.hold(r.id)}
+                >
+                  <Pause size={15} />
+                </IconAction>
+              ) : null}
 
-              {/* 5 Action buttons (L318-322) */}
-              <div className="flex items-center gap-2 pt-3 border-t border-border">
-                <button onClick={() => handleAction(order.id, "accept")} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 px-3 py-2 text-xs font-medium text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900/50 transition-colors">
-                  <Check size={14} /> قبول
-                </button>
-                <button onClick={() => handleAction(order.id, "reject")} className="inline-flex items-center gap-1.5 rounded-lg bg-red-100 dark:bg-red-900/30 px-3 py-2 text-xs font-medium text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors">
-                  <X size={14} /> رفض
-                </button>
-                <button onClick={() => handleAction(order.id, "hold")} className="inline-flex items-center gap-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/30 px-3 py-2 text-xs font-medium text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-colors">
-                  <Pause size={14} /> تعليق
-                </button>
-                <button className="inline-flex items-center gap-1.5 rounded-lg bg-blue-100 dark:bg-blue-900/30 px-3 py-2 text-xs font-medium text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors">
-                  <ArrowLeftRight size={14} /> تحويل
-                </button>
-                <Link href={`/operations/orders/${order.id}`} className="inline-flex items-center gap-1.5 rounded-lg bg-muted px-3 py-2 text-xs font-medium text-foreground hover:bg-accent transition-colors">
-                  <Eye size={14} /> التفاصيل
-                </Link>
-              </div>
+              <IconAction
+                label={`تحويل الطلب ${r.orderNumber.slice(-8)}`}
+                disabled={actions.isPending}
+                onClick={() => {
+                  setTransferring(r);
+                  setTargetEmployee("");
+                }}
+              >
+                <ArrowLeftRight size={15} />
+              </IconAction>
+
+              <Link
+                href={`/operations/tracking?order=${r.id}`}
+                aria-label={`تفاصيل الطلب ${r.orderNumber.slice(-8)}`}
+                className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <Eye size={15} />
+              </Link>
             </div>
-          ))}
-        </div>
-      )}
+          );
+        }}
+      />
+
+      <FormDialog
+        open={rejecting !== null}
+        title="رفض الطلب"
+        description={
+          rejecting ? `#${rejecting.orderNumber.slice(-8)} · ${rejecting.patientName}` : undefined
+        }
+        submitLabel="رفض الطلب"
+        submitTone="danger"
+        onClose={close}
+        onSubmit={() => {
+          if (!rejecting) return;
+          void actions.reject(rejecting.id, reason.trim() || undefined);
+          close();
+        }}
+      >
+        <Field label="سبب الرفض" htmlFor="reason" hint="اختياري — يُحفظ في سجل الطلب">
+          <input
+            id="reason"
+            className={fieldClass}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="لا يوجد مزوّد متاح في المنطقة"
+          />
+        </Field>
+      </FormDialog>
+
+      <FormDialog
+        open={transferring !== null}
+        title="تحويل الطلب"
+        description={
+          transferring
+            ? `#${transferring.orderNumber.slice(-8)} · ${transferring.patientName}`
+            : undefined
+        }
+        submitLabel="تحويل"
+        onClose={close}
+        onSubmit={() => {
+          if (!transferring || !targetEmployee) return;
+          void actions.transfer(transferring.id, targetEmployee);
+          close();
+        }}
+      >
+        <Field label="الموظف المستلم" htmlFor="target">
+          <select
+            id="target"
+            className={fieldClass}
+            value={targetEmployee}
+            onChange={(e) => setTargetEmployee(e.target.value)}
+          >
+            <option value="">— اختر —</option>
+            {(employees ?? []).map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.name ?? e.id}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </FormDialog>
     </div>
   );
 }
 
-function Field({ label, value, dir, className }: { label: string; value: string; dir?: string; className?: string }) {
+/* -------------------------------------------------------------------------- */
+
+const TONES = {
+  positive: "text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400",
+  danger: "text-red-600 hover:bg-red-500/10 dark:text-red-400",
+  warning: "text-amber-600 hover:bg-amber-500/10 dark:text-amber-400",
+  neutral: "text-muted-foreground hover:bg-accent hover:text-foreground",
+} as const;
+
+function IconAction({
+  label,
+  tone = "neutral",
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string;
+  tone?: keyof typeof TONES;
+  disabled?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
   return (
-    <div className={className}>
-      <span className="text-[10px] text-muted-foreground block">{label}</span>
-      <span className="text-sm text-foreground" dir={dir}>{value || "—"}</span>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      // Names the ORDER, not just the verb — a screen reader hearing "قبول"
+      // eleven times cannot tell which row it is on.
+      aria-label={label}
+      className={`rounded-lg p-2 transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${TONES[tone]}`}
+    >
+      {children}
+    </button>
   );
 }

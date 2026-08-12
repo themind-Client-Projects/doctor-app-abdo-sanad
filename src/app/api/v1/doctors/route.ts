@@ -22,7 +22,7 @@ const listQuerySchema = z.object({
   channel: z.enum(["DIRECT", "SANAD", "COMPLEX"]).optional(),
   q: z.string().trim().min(1).max(80).optional(),
   cursor: z.string().optional(),
-  limit: z.coerce.number().int().min(1).max(50).default(20),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
 export const GET = withAuth({}, async (req) => {

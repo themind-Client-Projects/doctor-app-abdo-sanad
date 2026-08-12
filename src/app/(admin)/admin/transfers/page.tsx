@@ -3,8 +3,8 @@
 import { useMemo } from "react";
 import { ArrowLeftRight, TrendingDown, TrendingUp, Wallet } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
-import { DataTable, type Column } from "@/components/admin/data-table";
-import { PageHeader, Pill, StatTile } from "@/components/admin/crud-kit";
+import { DataTable, type Column } from "@/components/data/data-table";
+import { PageHeader, Pill, StatTile } from "@/components/data/crud-kit";
 import {
   PARTNER_TYPE_LABELS,
   SERVICE_TYPE_LABELS,

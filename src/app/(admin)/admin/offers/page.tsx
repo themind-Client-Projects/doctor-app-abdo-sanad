@@ -4,9 +4,9 @@ import { useCallback, useState } from "react";
 import { PercentSquare } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { apiFetch, useMutation } from "@/hooks/use-mutation";
-import { DataTable, type Column } from "@/components/admin/data-table";
-import { Field, FormDialog, fieldClass } from "@/components/admin/form-dialog";
-import { PageHeader, Pill, RowActions } from "@/components/admin/crud-kit";
+import { DataTable, type Column } from "@/components/data/data-table";
+import { Field, FormDialog, fieldClass } from "@/components/data/form-dialog";
+import { PageHeader, Pill, RowActions } from "@/components/data/crud-kit";
 import {
   CHANNEL_LABELS,
   SERVICE_TYPE_KEYS,

@@ -84,7 +84,19 @@ export function resolveHomePath(
   const home = role ? roleHomePath[role] : "/";
 
   if (!callbackUrl) return home;
-  // Reject protocol-relative and absolute URLs — open-redirect guard.
+
+  // Open-redirect guard.
+  //
+  // A backslash is the hole a "starts with / but not //" check leaves open:
+  // browsers normalise `\` to `/` while parsing, so `/\evil.example` is
+  // fetched as `//evil.example` — an off-site hop the moment the user signs in,
+  // which is exactly the phishing shape a sign-in redirect must not have.
+  // Control characters get the same treatment: they can be stripped during
+  // parsing and reveal a scheme this check never saw.
+  if (callbackUrl.includes("\\")) return home;
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f]/.test(callbackUrl)) return home;
+  // Reject protocol-relative and absolute URLs.
   if (!callbackUrl.startsWith("/") || callbackUrl.startsWith("//")) return home;
 
   // Authorise the PATH, not the query string: `/doctors?category=cardiology`
@@ -94,4 +106,17 @@ export function resolveHomePath(
   if (role && !canAccess(role, path)) return home;
 
   return callbackUrl;
+}
+
+/**
+ * Roles that see the whole platform rather than one partner's slice.
+ *
+ * Lives here rather than in `api-auth` because it is a pure predicate over a
+ * role, with no request and no session behind it — while `api-auth` imports
+ * NextAuth. Every tenancy helper needs this one function, so having it there
+ * meant a scoping rule could not be unit-tested without an auth runtime.
+ * `api-auth` re-exports it, so existing imports are unaffected.
+ */
+export function isPlatformRole(role: UserRole): boolean {
+  return role === "SUPER_ADMIN" || role === "OPERATIONS";
 }

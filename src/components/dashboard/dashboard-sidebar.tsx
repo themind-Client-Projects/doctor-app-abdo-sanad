@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import {
@@ -18,7 +18,9 @@ import {
   Truck,
   Stethoscope,
   ScanLine,
+  Share2,
 } from "lucide-react";
+import { usePartnerMe } from "@/hooks/use-partner-me";
 
 interface SidebarProps {
   role: string;
@@ -40,16 +42,14 @@ const roleMenus: Record<string, { label: string; icon: React.ReactNode; href: st
   LAB: [
     { label: "الرئيسية", icon: <LayoutDashboard size={20} />, href: "/dashboard" },
     { label: "العينات", icon: <FlaskConical size={20} />, href: "/dashboard/samples" },
-    { label: "النتائج", icon: <ClipboardList size={20} />, href: "/dashboard/results" },
-    { label: "المالية", icon: <Wallet size={20} />, href: "/dashboard/finance" },
+        { label: "المالية", icon: <Wallet size={20} />, href: "/dashboard/finance" },
     { label: "الإشعارات", icon: <Bell size={20} />, href: "/dashboard/notifications" },
     { label: "الإعدادات", icon: <Settings size={20} />, href: "/dashboard/settings" },
   ],
   PHARMACY: [
     { label: "الرئيسية", icon: <LayoutDashboard size={20} />, href: "/dashboard" },
     { label: "الوصفات", icon: <Pill size={20} />, href: "/dashboard/prescriptions" },
-    { label: "المخزون", icon: <ClipboardList size={20} />, href: "/dashboard/inventory" },
-    { label: "المالية", icon: <Wallet size={20} />, href: "/dashboard/finance" },
+        { label: "المالية", icon: <Wallet size={20} />, href: "/dashboard/finance" },
     { label: "الإشعارات", icon: <Bell size={20} />, href: "/dashboard/notifications" },
     { label: "الإعدادات", icon: <Settings size={20} />, href: "/dashboard/settings" },
   ],
@@ -69,18 +69,39 @@ const roleMenus: Record<string, { label: string; icon: React.ReactNode; href: st
   ],
   RADIOLOGY: [
     { label: "الرئيسية", icon: <LayoutDashboard size={20} />, href: "/dashboard" },
-    { label: "الطلبات", icon: <ScanLine size={20} />, href: "/dashboard/requests" },
-    { label: "التقارير", icon: <ClipboardList size={20} />, href: "/dashboard/reports" },
+    { label: "طلبات الأشعة", icon: <ScanLine size={20} />, href: "/dashboard/imaging" },
     { label: "المالية", icon: <Wallet size={20} />, href: "/dashboard/finance" },
     { label: "الإشعارات", icon: <Bell size={20} />, href: "/dashboard/notifications" },
     { label: "الإعدادات", icon: <Settings size={20} />, href: "/dashboard/settings" },
   ],
 };
 
+/**
+ * الإحالات is offered only to partners who are actually in a complex.
+ *
+ * The item is not in `roleMenus` because membership is a property of the
+ * PARTNER, not of the role: two doctors have the same role and only one of them
+ * can refer. Adding it unconditionally would give most providers a link whose
+ * destination explains that the link does not apply to them.
+ */
+const REFERRALS_ITEM = {
+  label: "الإحالات",
+  icon: <Share2 size={20} />,
+  href: "/dashboard/referrals",
+};
+
 export function DashboardSidebar({ role, userName, entityName, avatarUrl }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const pathname = usePathname();
-  const menu = roleMenus[role] || roleMenus.DOCTOR;
+  const { isComplexMember } = usePartnerMe();
+
+  const menu = useMemo(() => {
+    const base = roleMenus[role] || roleMenus.DOCTOR;
+    if (!isComplexMember) return base;
+    // Second from last, above الإعدادات — a working list, not a setting.
+    const at = Math.max(base.length - 2, 1);
+    return [...base.slice(0, at), REFERRALS_ITEM, ...base.slice(at)];
+  }, [role, isComplexMember]);
 
   return (
     <aside

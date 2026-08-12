@@ -15,7 +15,7 @@ import { parseQuery } from "@/lib/validation";
 const listQuerySchema = z.object({
   scope: z.enum(["upcoming", "past", "all"]).default("all"),
   cursor: z.string().optional(),
-  limit: z.coerce.number().int().min(1).max(50).default(20),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
 export const GET = withAuth({}, async (req, _ctx, identity) => {

@@ -157,6 +157,7 @@ export async function priceOrder(params: {
       serviceType: true,
       source: true,
       patientId: true,
+      assignedDoctorId: true,
       assignedLabId: true,
       assignedPharmacyId: true,
       assignedRadiologyId: true,
@@ -180,7 +181,12 @@ export async function priceOrder(params: {
     );
   }
 
+  // Same precedence as `settleOrder` — the two must agree on who the provider
+  // is, or a consultation would price against one contract and pay another.
+  // `assignedDoctorId` was missing here after doctors became providers, so
+  // every consultation failed with "يجب تعيين مقدم الخدمة قبل التسعير".
   const providerId =
+    order.assignedDoctorId ??
     order.assignedLabId ??
     order.assignedPharmacyId ??
     order.assignedRadiologyId ??

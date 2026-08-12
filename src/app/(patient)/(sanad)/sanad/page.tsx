@@ -3,6 +3,10 @@
 import { Search, MapPin, Wallet, Calendar, Stethoscope, Microscope, Pill, Syringe, Activity, Bell } from 'lucide-react';
 import Link from 'next/link';
 import { FlexibleHeader } from '@/components/shared/flexible-header';
+import { storefrontCategories } from '@/lib/channel-routes';
+
+/** Every category here stays inside سند — see `channel-routes`. */
+const SANAD_ROUTES = storefrontCategories('SANAD');
 
 export default function HomePage() {
   return (
@@ -47,11 +51,11 @@ export default function HomePage() {
           </div>
           <div className="flex gap-4 overflow-x-auto hide-scrollbar pb-2 pt-1">
             {[
-              { id: 1, name: 'الأطباء', icon: <Stethoscope className="w-8 h-8" />, color: 'bg-blue-100 text-blue-600 shadow-blue-100', href: '/doctors' },
-              { id: 2, name: 'المختبرات', icon: <Microscope className="w-8 h-8" />, color: 'bg-purple-100 text-purple-600 shadow-purple-100', href: '/labs' },
-              { id: 3, name: 'الصيدليات', icon: <Pill className="w-8 h-8" />, color: 'bg-emerald-100 text-emerald-600 shadow-emerald-100', href: '/pharmacies' },
-              { id: 4, name: 'التمريض', icon: <Syringe className="w-8 h-8" />, color: 'bg-rose-100 text-rose-600 shadow-rose-100', href: '/nursing' },
-              { id: 5, name: 'أخرى', icon: <Activity className="w-8 h-8" />, color: 'bg-amber-100 text-amber-600 shadow-amber-100', href: '/physiotherapy' },
+              { id: 1, name: 'الأطباء', icon: <Stethoscope className="w-8 h-8" />, color: 'bg-blue-100 text-blue-600 shadow-blue-100', href: SANAD_ROUTES.doctors },
+              { id: 2, name: 'المختبرات', icon: <Microscope className="w-8 h-8" />, color: 'bg-purple-100 text-purple-600 shadow-purple-100', href: SANAD_ROUTES.labs },
+              { id: 3, name: 'الصيدليات', icon: <Pill className="w-8 h-8" />, color: 'bg-emerald-100 text-emerald-600 shadow-emerald-100', href: SANAD_ROUTES.pharmacies },
+              { id: 4, name: 'التمريض', icon: <Syringe className="w-8 h-8" />, color: 'bg-rose-100 text-rose-600 shadow-rose-100', href: SANAD_ROUTES.nursing },
+              { id: 5, name: 'أخرى', icon: <Activity className="w-8 h-8" />, color: 'bg-amber-100 text-amber-600 shadow-amber-100', href: SANAD_ROUTES.physiotherapy },
             ].map((cat) => (
               <Link key={cat.id} href={cat.href} className="flex flex-col items-center gap-3 min-w-[80px] transition-transform active:scale-95 group">
                 <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform ${cat.color}`}>

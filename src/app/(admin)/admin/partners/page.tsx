@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { STALE_TIME } from "@/lib/request-cache";
 import Link from "next/link";
 import {
   FlaskConical,
@@ -14,10 +15,18 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { apiFetch, useMutation } from "@/hooks/use-mutation";
-import { DataTable, type Column } from "@/components/admin/data-table";
-import { Field, FormDialog, fieldClass } from "@/components/admin/form-dialog";
-import { PageHeader, Pill, RowActions, toneForStatus } from "@/components/admin/crud-kit";
-import { PARTNER_STATUS_LABELS, PARTNER_TYPE_LABELS, labelOf, optionsOf } from "@/lib/labels";
+import { DataTable, type Column } from "@/components/data/data-table";
+import { Field, FormDialog, fieldClass } from "@/components/data/form-dialog";
+import { SearchableSelect, type SelectOption } from "@/components/data/searchable-select";
+import { PageHeader, Pill, RowActions, toneForStatus } from "@/components/data/crud-kit";
+import {
+  PARTNER_STATUS_LABELS,
+  PARTNER_TYPE_LABELS,
+  SERVICE_TYPE_KEYS,
+  SERVICE_TYPE_LABELS,
+  labelOf,
+  optionsOf,
+} from "@/lib/labels";
 import { formatNumber } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
@@ -87,6 +96,10 @@ type FormState = {
   gender: string;
   ownsComplex: boolean;
   complexName: string;
+  /** نسبة الشريك من ١٠٠ — becomes his CommissionRule on a real contract. */
+  partnerShare: string;
+  /** Services he offers — one commission rule and one ServiceConfig each. */
+  services: string[];
 };
 
 const EMPTY: FormState = {
@@ -104,6 +117,8 @@ const EMPTY: FormState = {
   gender: "",
   ownsComplex: false,
   complexName: "",
+  partnerShare: "70",
+  services: [],
 };
 
 /**
@@ -143,13 +158,22 @@ export default function PartnersPage() {
   });
   const { data: governorates } = useDashboardData<Governorate[]>({
     url: "/api/governorates",
+    staleTime: STALE_TIME.reference,
     params: { activeOnly: "true" },
   });
   const { data: complexes } = useDashboardData<Complex[]>({
     url: "/api/complexes",
     params: { limit: "100" },
   });
-  const { data: specialties } = useDashboardData<Specialty[]>({ url: "/api/v1/specialties" });
+  const { data: specialties } = useDashboardData<Specialty[]>({
+    url: "/api/v1/specialties",
+    staleTime: STALE_TIME.reference,
+  });
+
+  const complexOptions = useMemo<SelectOption[]>(
+    () => (complexes ?? []).map((c) => ({ value: c.id, label: c.name })),
+    [complexes]
+  );
 
   const [editing, setEditing] = useState<Partner | null>(null);
   const [creating, setCreating] = useState(false);
@@ -207,6 +231,8 @@ export default function PartnersPage() {
                 gender: opt(form.gender),
               }
             : {}),
+          partnerShare: Number(form.partnerShare),
+          services: form.services,
           ...(form.ownsComplex && form.complexName.trim()
             ? { complexName: form.complexName.trim() }
             : {}),
@@ -247,6 +273,11 @@ export default function PartnersPage() {
       gender: "",
       ownsComplex: false,
       complexName: "",
+      // Not edited here: the contract's percentages are versioned, so they are
+      // changed from محرك النسب where a change opens a new version rather than
+      // overwriting the rate old orders were settled at.
+      partnerShare: EMPTY.partnerShare,
+      services: EMPTY.services,
     });
   }, []);
 
@@ -569,22 +600,86 @@ export default function PartnersPage() {
           />
         </Field>
 
-        {/* req L142: "ربطه بمجمع أو سند" */}
-        <Field label="الربط بمجمع طبي" htmlFor="p-complex" hint="اختياري">
-          <select
+        {/* req L142: "ربطه بمجمع أو سند" — searchable, because the complex list
+            grows with the business and a plain select stops being usable. */}
+        <Field
+          label="الربط بمجمع طبي"
+          htmlFor="p-complex"
+          hint="اختياري — العضوية في مجمع هي ما يتيح إرسال واستقبال الإحالات"
+        >
+          <SearchableSelect
             id="p-complex"
-            className={fieldClass}
             value={form.complexId}
-            onChange={(e) => setForm((f) => ({ ...f, complexId: e.target.value }))}
-          >
-            <option value="">— غير مرتبط —</option>
-            {(complexes ?? []).map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+            options={complexOptions}
+            onChange={(v) => setForm((f) => ({ ...f, complexId: v }))}
+            placeholder="— غير مرتبط —"
+            searchPlaceholder="ابحث باسم المجمع..."
+            emptyMessage="لا مجمع بهذا الاسم"
+          />
         </Field>
+
+        {/* Only on create: the contract and its rules are written once, then
+            edited from محرك النسب where versioning applies. */}
+        {!editing ? (
+          <>
+            <Field
+              label="الخدمات التي يقدّمها"
+              htmlFor="p-services"
+              hint="لكل خدمة قاعدة نسب وإعداد تشغيل — بلا خدمة لا يمكن تسوية أي طلب"
+            >
+              <div
+                id="p-services"
+                className="flex flex-wrap gap-1.5 rounded-xl border border-input bg-background p-2.5"
+              >
+                {SERVICE_TYPE_KEYS.map((key) => {
+                  const on = form.services.includes(key);
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() =>
+                        setForm((f) => ({
+                          ...f,
+                          services: on
+                            ? f.services.filter((x) => x !== key)
+                            : [...f.services, key],
+                        }))
+                      }
+                      className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                        on
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-muted-foreground hover:bg-accent"
+                      }`}
+                    >
+                      {labelOf(SERVICE_TYPE_LABELS, key)}
+                    </button>
+                  );
+                })}
+              </div>
+            </Field>
+
+            <Field
+              label="نسبة الشريك %"
+              htmlFor="p-share"
+              hint={`من قيمة كل طلب يخدمه. الباقي لوريد: ${
+                100 - (Number(form.partnerShare) || 0)
+              }%`}
+            >
+              <input
+                id="p-share"
+                type="number"
+                min={1}
+                max={100}
+                step="0.1"
+                dir="ltr"
+                className={fieldClass}
+                value={form.partnerShare}
+                onChange={(e) => setForm((f) => ({ ...f, partnerShare: e.target.value }))}
+              />
+            </Field>
+          </>
+        ) : null}
 
         {form.type === "DOCTOR" && !editing ? (
           <div className="grid grid-cols-3 gap-3">

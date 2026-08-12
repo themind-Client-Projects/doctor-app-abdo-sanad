@@ -1,139 +1,137 @@
 "use client";
 
-import { useState } from "react";
-import { useRole } from "@/hooks/use-role";
+import { useMemo } from "react";
+import { Users } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
-import { StatusBadge } from "@/components/shared/status-badge";
-import { Search, Filter, UserPlus, Phone, FileText, Calendar } from "lucide-react";
+import { DataTable, type Column } from "@/components/data/data-table";
+import { PageHeader, Pill } from "@/components/data/crud-kit";
+import { formatDate, formatNumber } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
-// Doctor: Patient List (req L53 "الطبيب يرى المرضى")
+// مرضاي — derived, because nothing stores "my patients".
+//
+// The page read `lastVisit`, `nextAppointment` and `totalVisits` off a
+// `Patient` row. There is no such model, and `/api/dashboard/patients` did not
+// exist either, so the screen was a permanent skeleton reading three fields
+// that could never arrive. The endpoint now derives them from the caller's own
+// appointments and orders.
 // ─────────────────────────────────────────────────────────────
 
-interface Patient {
+type Patient = {
   id: string;
-  name: string;
-  phone: string;
-  age: number;
-  lastVisit: string;
-  nextAppointment: string;
-  status: string;
+  name: string | null;
+  phone: string | null;
+  lastVisit: string | null;
+  nextAppointment: string | null;
   totalVisits: number;
-}
+  status: "scheduled" | "past" | "new";
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  scheduled: "لديه موعد قادم",
+  past: "زيارة سابقة",
+  new: "جديد",
+};
 
 export default function PatientsPage() {
-  const { partnerId } = useRole();
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-
-  const { data: patients } = useDashboardData<Patient[]>({
+  const { data, isLoading, error, refetch } = useDashboardData<Patient[]>({
     url: "/api/dashboard/patients",
-    params: { partnerId: partnerId || "" },
   });
 
-  const filtered = (patients || []).filter((p) => {
-    const matchSearch = p.name.includes(search) || p.phone.includes(search);
-    const matchStatus = statusFilter === "all" || p.status === statusFilter;
-    return matchSearch && matchStatus;
-  });
+  const columns: Column<Patient>[] = useMemo(
+    () => [
+      {
+        key: "name",
+        header: "المريض",
+        render: (r) => (
+          <div className="min-w-0">
+            <p className="truncate font-medium text-foreground">{r.name ?? "بلا اسم"}</p>
+            {r.phone ? (
+              <a
+                href={`tel:${r.phone}`}
+                className="truncate text-xs text-primary hover:underline"
+                dir="ltr"
+              >
+                {r.phone}
+              </a>
+            ) : (
+              <span className="text-xs text-muted-foreground">لا يوجد رقم</span>
+            )}
+          </div>
+        ),
+        sortValue: (r) => r.name ?? "",
+      },
+      {
+        key: "totalVisits",
+        header: "عدد الزيارات",
+        align: "end",
+        render: (r) => formatNumber(r.totalVisits),
+        sortValue: (r) => r.totalVisits,
+      },
+      {
+        key: "lastVisit",
+        header: "آخر زيارة",
+        render: (r) => (
+          <span className="whitespace-nowrap text-xs text-muted-foreground">
+            {/* Only a COMPLETED visit counts as one — an order still in flight
+                is not a visit that happened. */}
+            {r.lastVisit ? formatDate(r.lastVisit) : "لا زيارة مكتملة"}
+          </span>
+        ),
+        sortValue: (r) => (r.lastVisit ? new Date(r.lastVisit).getTime() : 0),
+      },
+      {
+        key: "nextAppointment",
+        header: "الموعد القادم",
+        render: (r) => (
+          <span className="whitespace-nowrap text-xs text-muted-foreground">
+            {r.nextAppointment ? formatDate(r.nextAppointment) : "—"}
+          </span>
+        ),
+        sortValue: (r) => (r.nextAppointment ? new Date(r.nextAppointment).getTime() : 0),
+      },
+      {
+        key: "status",
+        header: "الحالة",
+        render: (r) => (
+          <Pill tone={r.status === "scheduled" ? "positive" : "neutral"}>
+            {STATUS_LABELS[r.status] ?? r.status}
+          </Pill>
+        ),
+      },
+    ],
+    []
+  );
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-foreground">المرضى</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            قائمة المرضى — {filtered.length} مريض
-          </p>
-        </div>
-        <button className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
-          <UserPlus size={16} />
-          مريض جديد
-        </button>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="مرضاي"
+        subtitle="المرضى الذين خدمتهم فعلاً — من مواعيدك وطلباتك"
+        icon={Users}
+      />
 
-      {/* Filters */}
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="بحث بالاسم أو الهاتف..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border border-border bg-background pr-10 pl-4 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-          />
-        </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-        >
-          <option value="all">كل الحالات</option>
-          <option value="active">نشط</option>
-          <option value="completed">مكتمل</option>
-          <option value="scheduled">مجدول</option>
-        </select>
-      </div>
-
-      {/* Table */}
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-muted/50">
-              <th className="text-right px-4 py-3 font-medium text-muted-foreground">المريض</th>
-              <th className="text-right px-4 py-3 font-medium text-muted-foreground">الهاتف</th>
-              <th className="text-right px-4 py-3 font-medium text-muted-foreground">آخر زيارة</th>
-              <th className="text-right px-4 py-3 font-medium text-muted-foreground">الموعد القادم</th>
-              <th className="text-right px-4 py-3 font-medium text-muted-foreground">الحالة</th>
-              <th className="text-right px-4 py-3 font-medium text-muted-foreground">الإجراءات</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="text-center py-12 text-muted-foreground">
-                  لا يوجد مرضى
-                </td>
-              </tr>
-            ) : (
-              filtered.map((patient) => (
-                <tr key={patient.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-bold">
-                        {patient.name.charAt(0)}
-                      </div>
-                      <div>
-                        <p className="font-medium text-foreground">{patient.name}</p>
-                        <p className="text-xs text-muted-foreground">{patient.totalVisits} زيارة</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground" dir="ltr">{patient.phone}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{patient.lastVisit}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{patient.nextAppointment || "—"}</td>
-                  <td className="px-4 py-3"><StatusBadge status={patient.status} size="sm" /></td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1">
-                      <button className="p-1.5 rounded-md hover:bg-accent transition-colors" title="اتصال">
-                        <a href={`tel:${patient.phone}`}><Phone size={14} className="text-muted-foreground" /></a>
-                      </button>
-                      <button className="p-1.5 rounded-md hover:bg-accent transition-colors" title="وصفة">
-                        <FileText size={14} className="text-muted-foreground" />
-                      </button>
-                      <button className="p-1.5 rounded-md hover:bg-accent transition-colors" title="موعد">
-                        <Calendar size={14} className="text-muted-foreground" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        rows={data}
+        columns={columns}
+        isLoading={isLoading}
+        error={error}
+        onRetry={refetch}
+        searchable={(r) => `${r.name ?? ""} ${r.phone ?? ""}`}
+        searchPlaceholder="بحث بالاسم أو الهاتف..."
+        filters={[
+          {
+            key: "status",
+            label: "كل المرضى",
+            options: [
+              { value: "scheduled", label: "لديه موعد قادم" },
+              { value: "past", label: "زيارة سابقة" },
+            ],
+            match: (r, v) => r.status === v,
+          },
+        ]}
+        emptyMessage="لا مرضى بعد"
+      />
     </div>
   );
 }

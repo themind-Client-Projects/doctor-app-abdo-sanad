@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { ROLES, withAuth } from "@/lib/api-auth";
+import { APPOINTMENT_ROLES, appointmentScope, withAuth } from "@/lib/api-auth";
 import { ErrorCode, fail, keysetArgs, ok, okList, toPage } from "@/lib/api-response";
 import { nonEmpty, paginationSchema, parseBody, parseQuery } from "@/lib/validation";
 
@@ -48,7 +48,7 @@ const createAppointmentSchema = z
 
 // GET /api/appointments — List appointments.
 export const GET = withAuth(
-  { roles: [...ROLES.CLINICAL, "PATIENT"] },
+  { roles: APPOINTMENT_ROLES },
   async (req, _ctx, identity) => {
     const requestId = req.headers.get("x-request-id") ?? undefined;
     const { page, pageSize, doctorId, patientId, status, cursor, limit } = parseQuery(
@@ -61,8 +61,11 @@ export const GET = withAuth(
     if (patientId) where.patientId = patientId;
     if (status) where.status = status;
 
-    // A patient sees only their own appointments, whatever ?patientId= says.
-    if (identity.role === "PATIENT") where.patientId = identity.userId;
+    // Tenant scope, applied LAST so it overrides the client-supplied filters —
+    // those may only narrow within the caller's own slice. A patient saw only
+    // their own already; a DOCTOR did not, so `?doctorId=` let one doctor read
+    // another's whole book.
+    Object.assign(where, appointmentScope(identity));
 
     const include = { doctor: { select: { userId: true } } } as const;
 
@@ -106,7 +109,7 @@ export const GET = withAuth(
 
 // POST /api/appointments — Create an appointment.
 export const POST = withAuth(
-  { roles: [...ROLES.CLINICAL, "PATIENT"] },
+  { roles: APPOINTMENT_ROLES },
   async (req, _ctx, identity) => {
     const requestId = req.headers.get("x-request-id") ?? undefined;
     const input = await parseBody(req, createAppointmentSchema);

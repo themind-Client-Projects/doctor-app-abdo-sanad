@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { ErrorCode, fail, ok } from "@/lib/api-response";
+import { issuesOf } from "@/lib/validation";
 import { rotateRefreshToken } from "@/lib/tokens";
 
 /**
@@ -23,7 +24,9 @@ export async function POST(req: NextRequest) {
   try {
     const parsed = bodySchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
-      return fail(ErrorCode.VALIDATION_FAILED, 400, "بيانات غير صالحة");
+      return fail(ErrorCode.VALIDATION_FAILED, 400, "بيانات غير صالحة", {
+        details: issuesOf(parsed.error),
+      });
     }
 
     const result = await rotateRefreshToken(parsed.data.refreshToken, {
@@ -44,3 +47,12 @@ export async function POST(req: NextRequest) {
     return fail(ErrorCode.INTERNAL_ERROR, 500, "فشل");
   }
 }
+
+/**
+ * Re-exported for `scripts/generate-openapi.ts`.
+ *
+ * The published OpenAPI schema for this endpoint is derived from THIS object via
+ * `z.toJSONSchema`, so the contract handed to the mobile team and the validation
+ * the server actually runs cannot drift apart.
+ */
+export { bodySchema as refreshBodySchema };

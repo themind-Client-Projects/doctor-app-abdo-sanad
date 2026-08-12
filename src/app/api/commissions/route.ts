@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
-import { ok } from "@/lib/api-response";
+import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { parseBody, percentage, serviceTypeSchema } from "@/lib/validation";
 
 const createCommissionSchema = z
@@ -33,8 +33,21 @@ const createCommissionSchema = z
 // `createdAt` on the model first.
 export const GET = withAuth({ roles: ROLES.ADMIN }, async (req) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
+  // `?history=1` returns every version, newest first — "what was this partner's
+  // share last month" is exactly what versioning exists to answer.
+  const history = req.nextUrl.searchParams.get("history") === "1";
+  // Validated, not passed through: an unknown value would be a Prisma enum
+  // error (a 500) rather than a bad request.
+  const rawService = req.nextUrl.searchParams.get("serviceType");
+  const parsedService = rawService ? serviceTypeSchema.safeParse(rawService) : null;
+  const serviceFilter = parsedService?.success ? parsedService.data : undefined;
 
   const data = await prisma.commissionRule.findMany({
+    // Only the version in force. Closed versions are history: showing them
+    // beside live rules would read as several conflicting splits for one
+    // service. They stay reachable through the order that was settled under
+    // them, and through ?history=1 below.
+    where: history ? (serviceFilter ? { serviceType: serviceFilter } : {}) : { effectiveTo: null },
     include: {
       contract: {
         select: {
@@ -47,7 +60,9 @@ export const GET = withAuth({ roles: ROLES.ADMIN }, async (req) => {
         },
       },
     },
-    orderBy: [{ contractId: "asc" }, { serviceType: "asc" }],
+    orderBy: history
+      ? [{ contractId: "asc" }, { serviceType: "asc" }, { effectiveFrom: "desc" }]
+      : [{ contractId: "asc" }, { serviceType: "asc" }],
   });
   return ok(data, { requestId });
 });
@@ -59,6 +74,29 @@ export const GET = withAuth({ roles: ROLES.ADMIN }, async (req) => {
 export const POST = withAuth({ roles: ROLES.ADMIN }, async (req) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
   const input = await parseBody(req, createCommissionSchema);
+
+  // One OPEN version per (contract, service) — enforced by a partial unique
+  // index. Checked here so the answer names the problem.
+  const existing = await prisma.commissionRule.findFirst({
+    where: { contractId: input.contractId, serviceType: input.serviceType, effectiveTo: null },
+    select: { id: true },
+  });
+  if (existing) {
+    return fail(
+      ErrorCode.DUPLICATE_RESOURCE,
+      409,
+      "لهذه الخدمة قاعدة سارية في هذا العقد — عدّلها بدلاً من إضافة قاعدة جديدة",
+      { requestId }
+    );
+  }
+
+  const contract = await prisma.contract.findUnique({
+    where: { id: input.contractId },
+    select: { startDate: true },
+  });
+  if (!contract) {
+    return fail(ErrorCode.NOT_FOUND, 404, "العقد غير موجود", { requestId });
+  }
 
   const data = await prisma.commissionRule.create({
     // Explicit allow-list — never spread the request body into Prisma.

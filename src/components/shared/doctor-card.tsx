@@ -2,6 +2,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Star, MapPin, Briefcase, CalendarClock, Stethoscope, User } from 'lucide-react';
 import type { Doctor } from '@/types/patient';
+import { doctorProfilePath, type StorefrontChannel } from '@/lib/channel-routes';
 
 interface DoctorCardProps {
   doctor: Doctor;
@@ -9,12 +10,20 @@ interface DoctorCardProps {
   buttonText?: string;
   buttonIcon?: React.ElementType;
   priceLabel?: string;
+  /**
+   * Which storefront this card is being shown in.
+   *
+   * The profile link was hardcoded to the public route, so a doctor tapped
+   * inside سند opened the DIRECT profile — priced 25,000 after being browsed at
+   * 20,000. Defaults to DIRECT so every existing caller keeps its behaviour.
+   */
+  channel?: StorefrontChannel;
 }
 
-export function DoctorCard({ doctor, onBook, buttonText = 'احجز موعد', buttonIcon: ButtonIcon = CalendarClock, priceLabel = 'سعر الكشفية' }: DoctorCardProps) {
+export function DoctorCard({ doctor, onBook, buttonText = 'احجز موعد', buttonIcon: ButtonIcon = CalendarClock, priceLabel = 'سعر الكشفية', channel = 'DIRECT' }: DoctorCardProps) {
   return (
     <div className="bg-white rounded-[2rem] p-5 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] border border-gray-100 hover:border-primary/20 hover:shadow-lg transition-colors duration-300 flex flex-col group">
-      <Link href={`/doctors/profile/${doctor.id}`} className="block flex-1 cursor-pointer">
+      <Link href={doctorProfilePath(channel, doctor.id)} className="block flex-1 cursor-pointer">
         <div className="flex items-start gap-4 mb-4">
           <div className="relative flex-shrink-0">
             {doctor.image ? (

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
 import { ok } from "@/lib/api-response";
-import { parseBody } from "@/lib/validation";
+import { parseBody, safeUrl } from "@/lib/validation";
 
 /**
  * Home-screen promo banners — "الإعلانات".
@@ -14,9 +14,11 @@ import { parseBody } from "@/lib/validation";
 export const bannerFields = z.object({
   title: z.string().trim().min(2, { message: "عنوان الإعلان مطلوب" }).max(80),
   subtitle: z.string().trim().max(160).nullable().optional(),
-  /** A path under /public or an absolute URL. */
-  imageUrl: z.string().trim().min(1, { message: "الصورة مطلوبة" }).max(500),
-  href: z.string().trim().max(500).nullable().optional(),
+  /** A path under /public or an https:// URL — see `safeUrl`. */
+  imageUrl: safeUrl.min(1, { message: "الصورة مطلوبة" }),
+  /** Where the banner leads. Rendered into a <Link> on the patient home, so a
+   *  `javascript:` value here would be stored XSS against every visitor. */
+  href: safeUrl.nullable().optional(),
   isActive: z.boolean().default(true),
   sortOrder: z.number().int().min(0).max(999).default(0),
   startsAt: z.coerce.date().nullable().optional(),

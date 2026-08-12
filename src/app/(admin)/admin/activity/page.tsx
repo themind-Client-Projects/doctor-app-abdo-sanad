@@ -2,8 +2,8 @@
 
 import { Activity } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
-import { DataTable, type Column } from "@/components/admin/data-table";
-import { PageHeader, Pill } from "@/components/admin/crud-kit";
+import { DataTable, type Column } from "@/components/data/data-table";
+import { PageHeader, Pill } from "@/components/data/crud-kit";
 import { USER_ROLE_LABELS, labelOf, optionsOf } from "@/lib/labels";
 import { formatDateTime, formatRelative } from "@/lib/format";
 

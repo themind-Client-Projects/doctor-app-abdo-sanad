@@ -1,6 +1,7 @@
 "use client";
 
 import { useDashboardData } from "@/hooks/use-dashboard-data";
+import { STALE_TIME } from "@/lib/request-cache";
 
 /**
  * The storefront content for one channel: banners, subscription plans, live
@@ -68,6 +69,7 @@ const EMPTY: Storefront = { banners: [], plans: [], offers: [], specialties: [] 
 export function useStorefront(channel: Channel = "DIRECT") {
   const { data, isLoading, error, refetch } = useDashboardData<Storefront>({
     url: "/api/public/storefront",
+    staleTime: STALE_TIME.storefront,
     params: { channel },
   });
 

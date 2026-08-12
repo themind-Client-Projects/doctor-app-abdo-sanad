@@ -103,15 +103,38 @@ export function computeSplit(total: Decimal, shares: ShareInput[]): ComputedShar
 }
 
 /**
- * Find the commission rule governing a service for a partner.
+ * Find the commission rule governing a service for a partner, AT A GIVEN TIME.
  *
- * @throws {CommissionError} when the partner has no active contract, or the
- *   contract does not price this service.
+ * `at` is the moment whose rate applies — the order's creation date, not the
+ * day it happens to be settled. Rules are versioned, so an order placed in
+ * January and completed in March is paid at January's rate; resolving "the
+ * current rule" instead silently re-priced every delivered-but-unsettled order
+ * the moment an admin edited a percentage.
+ *
+ * @throws {CommissionError} when the partner has no active contract, or no
+ *   version of a rule for this service was in force at `at`.
  */
-export async function resolveCommissionRule(partnerId: string, serviceType: ServiceType) {
+export async function resolveCommissionRule(
+  partnerId: string,
+  serviceType: ServiceType,
+  at: Date = new Date()
+) {
   const contract = await prisma.contract.findUnique({
     where: { partnerId },
-    include: { commissionRules: { where: { serviceType } } },
+    include: {
+      commissionRules: {
+        where: {
+          serviceType,
+          effectiveFrom: { lte: at },
+          // Open (still in force) or closed after `at`.
+          OR: [{ effectiveTo: null }, { effectiveTo: { gt: at } }],
+        },
+        // Newest applicable version first — a same-instant re-version is still
+        // deterministic.
+        orderBy: { effectiveFrom: "desc" },
+        take: 1,
+      },
+    },
   });
 
   if (!contract || !contract.isActive) {
@@ -123,7 +146,10 @@ export async function resolveCommissionRule(partnerId: string, serviceType: Serv
 
   const rule = contract.commissionRules[0];
   if (!rule) {
-    throw new CommissionError("NO_RULE", "لا توجد قاعدة نسب لهذه الخدمة في العقد");
+    throw new CommissionError(
+      "NO_RULE",
+      "لا توجد قاعدة نسب سارية لهذه الخدمة بتاريخ الطلب"
+    );
   }
 
   return rule;
@@ -137,10 +163,12 @@ function ruleToShares(
     waridShare: Decimal;
     nurseShare: Decimal;
     driverShare: Decimal;
+    referralShare: Decimal;
   },
   order: {
     assignedNurseId: string | null;
     assignedDriverId: string | null;
+    referringPartnerId: string | null;
   },
   providerId: string,
   complexPartnerId: string | null
@@ -169,6 +197,17 @@ function ruleToShares(
   if (rule.driverShare.greaterThan(0)) {
     if (!order.assignedDriverId) unassigned.push("السائق");
     shares.push({ party: "DRIVER", partnerId: order.assignedDriverId, percentage: rule.driverShare });
+  }
+  // The complex member who sent the patient here. Same rule as every other
+  // optional party: a percentage reserved for someone who is not on the order
+  // cannot be paid, so it is refused rather than silently lost.
+  if (rule.referralShare.greaterThan(0)) {
+    if (!order.referringPartnerId) unassigned.push("المُحيل");
+    shares.push({
+      party: "REFERRER",
+      partnerId: order.referringPartnerId,
+      percentage: rule.referralShare,
+    });
   }
 
   if (unassigned.length > 0) {
@@ -202,6 +241,10 @@ export async function settleOrder(orderId: string, settledById?: string) {
       assignedLabId: true,
       assignedPharmacyId: true,
       assignedRadiologyId: true,
+      assignedDoctorId: true,
+      referringPartnerId: true,
+      // The rate that applies is the one in force when the order was PLACED.
+      createdAt: true,
       orderSettlement: { select: { id: true, status: true } },
     },
   });
@@ -224,7 +267,16 @@ export async function settleOrder(orderId: string, settledById?: string) {
   }
 
   // The provider is whichever partner slot the service was assigned to.
+  //
+  // `assignedDoctorId` comes first because a consultation has no other slot:
+  // a referred lab test is a SEPARATE order carrying the lab as provider and
+  // the referrer only as `referringPartnerId`, so the two never compete here.
+  //
+  // Before this existed a doctor could not be a provider at all, and the seed
+  // worked around it by writing doctors into `assignedNurseId` — 44 orders
+  // paid a doctor through a nurse's commission rule.
   const providerId =
+    order.assignedDoctorId ??
     order.assignedLabId ??
     order.assignedPharmacyId ??
     order.assignedRadiologyId ??
@@ -235,7 +287,7 @@ export async function settleOrder(orderId: string, settledById?: string) {
     throw new CommissionError("NO_CONTRACT", "لم يتم تعيين مقدم خدمة لهذا الطلب");
   }
 
-  const rule = await resolveCommissionRule(providerId, order.serviceType);
+  const rule = await resolveCommissionRule(providerId, order.serviceType, order.createdAt);
 
   const provider = await prisma.partner.findUnique({
     where: { id: providerId },
@@ -460,13 +512,27 @@ export async function previewSplit(
     select: { complexId: true },
   });
 
+  // Synthetic party ids, because this is a SIMULATION of a settled order.
+  //
+  // Passing nulls made `ruleToShares` throw PARTY_UNASSIGNED for any rule
+  // reserving a cut for a nurse, driver or referring doctor — so the admin
+  // simulator could not preview the very rules whose split is worth checking.
+  // The real settlement still refuses those parties when they are genuinely
+  // absent from the order; here they are stand-ins for "whoever fills that
+  // role", which is exactly what a preview is asking about.
   const shares = computeSplit(
     new D(totalAmount),
     ruleToShares(
       rule,
-      { assignedNurseId: null, assignedDriverId: null },
+      {
+        assignedNurseId: "preview-nurse",
+        assignedDriverId: "preview-driver",
+        referringPartnerId: "preview-referrer",
+      },
       partnerId,
-      partner?.complexId ?? null
+      // Same reasoning for the complex: a rule with a complex cut is previewed
+      // as though the provider belongs to one.
+      partner?.complexId ?? "preview-complex"
     )
   );
 

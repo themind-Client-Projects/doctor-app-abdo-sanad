@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { ROLES, withAuth } from "@/lib/api-auth";
+import { ROLES, isPlatformRole, withAuth } from "@/lib/api-auth";
 import { keysetArgs, okList, toPage } from "@/lib/api-response";
 import { parseQuery } from "@/lib/validation";
 
@@ -26,7 +26,7 @@ const listQuerySchema = z.object({
   to: z.coerce.date().optional(),
 });
 
-export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
+export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
   const { cursor, limit, partnerId, type, from, to } = parseQuery(
     req.nextUrl.searchParams,
@@ -39,7 +39,19 @@ export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
   // with the date filter rather than merged — two `createdAt` keys in one
   // object would silently drop the first.
   const filters: Prisma.TransactionWhereInput[] = [];
-  if (partnerId) filters.push({ wallet: { partnerId } });
+
+  // Scoped to the caller's own wallet, applied LAST so it overrides any
+  // `?partnerId=` the client sends.
+  //
+  // This was OPERATIONS-only, so a partner could not read the ledger behind
+  // their own balance — their finance screen had nothing to show. Opening it to
+  // staff is only safe because the scope is enforced here: a partner sees their
+  // wallet's rows and no one else's, and a missing partner row matches nothing.
+  if (!isPlatformRole(identity.role)) {
+    filters.push({ wallet: { partnerId: identity.partnerId ?? "" } });
+  } else if (partnerId) {
+    filters.push({ wallet: { partnerId } });
+  }
   if (type) filters.push({ type });
   if (from || to) {
     filters.push({ createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } });

@@ -2,7 +2,8 @@ import { z } from "zod";
 import type { OrderStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
-import { keysetArgs, ok, okList, toPage } from "@/lib/api-response";
+import { orderScopeFor } from "@/lib/order-slots";
+import { ErrorCode, fail, keysetArgs, ok, okList, toPage } from "@/lib/api-response";
 import { nonEmpty, paginationSchema, parseBody, parseQuery, serviceTypeSchema } from "@/lib/validation";
 
 const orderStatus = z.enum(
@@ -88,7 +89,7 @@ const createOrderSchema = z
   .strict();
 
 // GET /api/orders — List orders with filters
-export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
+export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) => {
   // Clamped by `paginationSchema`: an unbounded pageSize dumped the whole table,
   // and a non-numeric ?page produced skip: NaN and a 500.
   const requestId = req.headers.get("x-request-id") ?? undefined;
@@ -97,7 +98,15 @@ export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
     listQuerySchema
   );
 
-  const where: Prisma.OrderWhereInput = {};
+  // Scoped to the caller, ALWAYS.
+  //
+  // This was OPERATIONS-only, which is why the partner dashboard had no way to
+  // read a nurse's visits or a driver's trips and its pages pointed at
+  // `/api/dashboard/*` routes that were never built. Opening it to staff is only
+  // safe because the scope is applied here rather than trusted from a query
+  // parameter: a partner sees the orders in THEIR assignment column and no
+  // others, and a partner row that is missing matches nothing.
+  const where: Prisma.OrderWhereInput = { ...orderScopeFor(identity) };
   if (status) where.status = status.length === 1 ? status[0] : { in: status };
   if (priority) where.priority = priority;
   if (serviceType) where.serviceType = serviceType;
@@ -147,6 +156,23 @@ export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
 export const POST = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
   const input = await parseBody(req, createOrderSchema);
+
+  // `Order.patientId` is a plain column — Prisma declares no relation to User,
+  // so the database will accept any string here. An order pinned to an id that
+  // is not a real patient is invisible to the person it belongs to: their
+  // bookings list, their medical file and the call-contacts lookup all resolve
+  // by this id and find nothing. Nothing else in the system reports it either;
+  // the row simply sits there looking valid.
+  const patient = await prisma.user.findUnique({
+    where: { id: input.patientId },
+    select: { id: true, isActive: true },
+  });
+  if (!patient) {
+    return fail(ErrorCode.NOT_FOUND, 404, "المريض غير موجود", { requestId });
+  }
+  if (!patient.isActive) {
+    return fail(ErrorCode.BUSINESS_RULE_VIOLATION, 422, "حساب المريض معطّل", { requestId });
+  }
 
   const order = await prisma.order.create({
     data: {

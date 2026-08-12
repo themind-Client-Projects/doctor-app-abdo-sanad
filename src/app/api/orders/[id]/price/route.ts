@@ -28,9 +28,9 @@ export const POST = withAuth<Ctx>({ roles: ROLES.OPERATIONS }, async (req, { par
     return ok(
       {
         orderId: order.id,
-        subtotal: quote.subtotal.toString(),
-        discountTotal: quote.discountTotal.toString(),
-        totalAmount: quote.totalAmount.toString(),
+        subtotal: quote.subtotal,
+        discountTotal: quote.discountTotal,
+        totalAmount: quote.totalAmount,
         currency: quote.currency,
         appliedCoupon: quote.appliedCoupon,
         // Surfaced so an operator can see WHY a discount did not fully apply.

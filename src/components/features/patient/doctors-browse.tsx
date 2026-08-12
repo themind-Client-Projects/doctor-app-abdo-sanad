@@ -171,7 +171,11 @@ export function DoctorsBrowse({ channel = 'DIRECT' }: { channel?: Channel }) {
             </div>
           ) : (
             paginatedDoctors.map((doctor) => (
-              <DoctorCard 
+              <DoctorCard
+                // `activeChannel`, not the prop: the سند toggle inside doctor
+                // booking can switch a DIRECT browse to the Sanad pool, and the
+                // profile link has to follow the pool actually being shown.
+                channel={activeChannel} 
                 key={doctor.id} 
                 doctor={doctor} 
                 onBook={openBooking} 

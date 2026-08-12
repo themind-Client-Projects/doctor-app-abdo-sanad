@@ -33,7 +33,7 @@ const listQuerySchema = z.object({
   /** Only partners that own a medical complex. */
   complexesOnly: z.enum(["true", "false"]).optional(),
   q: z.string().trim().min(1).max(80).optional(),
-  limit: z.coerce.number().int().min(1).max(50).default(12),
+  limit: z.coerce.number().int().min(1).max(100).default(12),
   cursor: z.string().optional(),
 });
 

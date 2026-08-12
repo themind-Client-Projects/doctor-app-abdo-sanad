@@ -56,6 +56,18 @@ export function parseQuery<S extends z.ZodType>(
 
 const MALFORMED = Symbol("malformed-json");
 
+/**
+ * Turn a zod error into the `details` array the response contract promises.
+ *
+ * `parseBody` does this automatically, but the auth routes parse by hand — they
+ * are public and shape their own failures — and were answering
+ * `VALIDATION_FAILED` with no `details` at all. A client showing "بيانات غير
+ * صالحة" has no way to know whether the email or the password was the problem.
+ */
+export function issuesOf(error: z.ZodError): { field: string; code: string; message: string }[] {
+  return toIssues(error);
+}
+
 /* ------------------------------- primitives ------------------------------- */
 
 /** Cursor-free page/pageSize, clamped so ?pageSize=1000000 can't dump a table. */
@@ -81,6 +93,42 @@ export const dateish = z.coerce.date();
 
 /** Arbitrary JSON payload for Prisma `Json` columns. */
 export const jsonValue: z.ZodType<unknown> = z.unknown();
+
+/**
+ * A link or asset URL that is safe to render.
+ *
+ * `Banner.href` was `z.string().max(500)` and lands directly in a `<Link href>`
+ * on the patient home page. `javascript:` and `data:` URLs are honoured there,
+ * so anyone able to write a banner could run script in a patient's session —
+ * the same session that holds the wallet. Admin access should not imply the
+ * ability to execute code in someone else's browser.
+ *
+ * Accepts an internal path (`/services/offers`) or an absolute `https://` URL.
+ * Everything else is refused, including:
+ *   - `javascript:` / `data:` / `vbscript:` / `file:` — script and payload schemes
+ *   - `//evil.example` — protocol-relative, i.e. off-site while looking internal
+ *   - `http://` — plaintext, and a mixed-content block in the browser anyway
+ *
+ * Backslashes are rejected too: some parsers normalise `\` to `/`, so
+ * `/\evil.example` can be read as protocol-relative.
+ */
+export const safeUrl = z
+  .string()
+  .trim()
+  .max(500)
+  .refine(
+    (value) => {
+      if (value.includes("\\")) return false;
+      // Control characters can hide a scheme from a naive check while the
+      // browser still parses it — `java\0script:` and friends.
+      // eslint-disable-next-line no-control-regex
+      if (/[\u0000-\u001f\u007f]/.test(value)) return false;
+      if (value.startsWith("//")) return false;
+      if (value.startsWith("/")) return true;
+      return /^https:\/\/[^\s]+$/i.test(value);
+    },
+    { message: "الرابط يجب أن يبدأ بـ / أو https://" }
+  );
 
 /**
  * The single service vocabulary, mirroring the `ServiceType` enum in

@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { STALE_TIME } from "@/lib/request-cache";
 import { MapPin, Settings } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { apiFetch, useMutation } from "@/hooks/use-mutation";
-import { DataTable, type Column } from "@/components/admin/data-table";
-import { Field, FormDialog, fieldClass } from "@/components/admin/form-dialog";
-import { PageHeader, Pill, RowActions } from "@/components/admin/crud-kit";
+import { DataTable, type Column } from "@/components/data/data-table";
+import { Field, FormDialog, fieldClass } from "@/components/data/form-dialog";
+import { PageHeader, Pill, RowActions } from "@/components/data/crud-kit";
 import { formatNumber } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
@@ -44,6 +45,7 @@ const parseAreas = (raw: string) =>
 export default function SettingsPage() {
   const { data, isLoading, error, refetch } = useDashboardData<Governorate[]>({
     url: "/api/governorates",
+    staleTime: STALE_TIME.reference,
   });
 
   const [editing, setEditing] = useState<Governorate | null>(null);

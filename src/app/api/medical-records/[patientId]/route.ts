@@ -10,6 +10,7 @@ import { AuthError, ROLES, withAuth } from "@/lib/api-auth";
 const RECORD_WRITE_ROLES = ["SUPER_ADMIN", "DOCTOR", "NURSE"] as const satisfies readonly UserRole[];
 import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { parseBody } from "@/lib/validation";
+import { canAccessPatientRecord } from "@/server/services/patient-access";
 
 type Ctx = { params: Promise<{ patientId: string }> };
 
@@ -40,8 +41,15 @@ export const GET = withAuth<Ctx>(
     const requestId = req.headers.get("x-request-id") ?? undefined;
     const { patientId } = await params;
 
-    // A patient may only read their own record.
-    if (identity.role === "PATIENT" && identity.userId !== patientId) {
+    // Belonging to a clinical role is not the same as treating this person.
+    //
+    // Authenticating this route stopped anonymous access but left it open to
+    // every clinician on the platform: any doctor, lab, pharmacy or radiology
+    // centre could read ANY patient's history, allergies and current
+    // medications by id. `canAccessPatientRecord` requires an actual care
+    // relationship — an order, an appointment, or a referral — and lets the
+    // patient read their own.
+    if (!(await canAccessPatientRecord(identity, patientId))) {
       throw new AuthError(403, "ليس لديك صلاحية للوصول إلى هذا الملف");
     }
 
@@ -58,10 +66,30 @@ export const GET = withAuth<Ctx>(
 // Patients must not be able to rewrite their own allergies or medications.
 export const PUT = withAuth<Ctx>(
   { roles: RECORD_WRITE_ROLES },
-  async (req, { params }) => {
+  async (req, { params }, identity) => {
     const requestId = req.headers.get("x-request-id") ?? undefined;
     const { patientId } = await params;
     const input = await parseBody(req, updateRecordSchema);
+
+    // `patientId` was written straight into an upsert with nothing checking it
+    // named a real person, and `PatientMedicalRecord.patientId` carries no
+    // foreign key — so any string minted a medical file. A sweep sending an
+    // empty body to a nonsense id created one.
+    const patient = await prisma.user.findFirst({
+      where: { id: patientId, role: "PATIENT" },
+      select: { id: true },
+    });
+    if (!patient) {
+      return fail(ErrorCode.NOT_FOUND, 404, "المريض غير موجود", { requestId });
+    }
+
+    // Writing is stricter than reading, and neither was checked. Any doctor or
+    // nurse on the platform could rewrite ANY patient's allergies, chronic
+    // diseases and current medications. That is not a privacy problem — an
+    // erased penicillin allergy is a clinical safety one.
+    if (!(await canAccessPatientRecord(identity, patientId))) {
+      throw new AuthError(403, "ليس لديك صلاحية لتعديل هذا الملف");
+    }
 
     const json = (v: unknown) =>
       v === undefined ? undefined : (v as Prisma.InputJsonValue);

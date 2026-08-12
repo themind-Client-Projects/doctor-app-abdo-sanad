@@ -72,6 +72,15 @@ export const GET = withAuth({ roles: ROLES.CLINICAL }, async (req, _ctx, identit
   // nothing rather than everything.
   Object.assign(where, partnerScope(identity, "labId"));
 
+  // The worklist has to say WHO the sample belongs to. Without this join the
+  // screen has an order id and nothing else, which is why it displayed invented
+  // `patientName` / `testType` fields that the model does not have.
+  const include = {
+    order: {
+      select: { id: true, orderNumber: true, patientName: true, patientPhone: true },
+    },
+  } as const;
+
   // Keyset paging — preferred. Offset paging over `createdAt desc` duplicates
   // and skips rows as new samples are received between requests.
   if (cursor !== undefined || limit !== undefined) {
@@ -81,6 +90,7 @@ export const GET = withAuth({ roles: ROLES.CLINICAL }, async (req, _ctx, identit
 
     const rows = await prisma.labSample.findMany({
       ...keyset,
+      include,
       where: cursorWhere ? { AND: [where, cursorWhere] } : where,
     });
 
@@ -92,6 +102,7 @@ export const GET = withAuth({ roles: ROLES.CLINICAL }, async (req, _ctx, identit
   const [data, total] = await Promise.all([
     prisma.labSample.findMany({
       where,
+      include,
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,

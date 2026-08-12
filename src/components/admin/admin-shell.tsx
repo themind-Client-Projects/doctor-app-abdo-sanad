@@ -9,7 +9,6 @@ import {
   LogOut,
   Menu,
   Moon,
-  Search,
   Sun,
   X,
 } from "lucide-react";
@@ -203,26 +202,11 @@ function AdminHeader({ onOpenNav }: { onOpenNav: () => void }) {
         <Menu size={20} />
       </button>
 
-      <form
-        role="search"
-        className="relative hidden max-w-md flex-1 sm:block"
-        onSubmit={(e) => e.preventDefault()}
-      >
-        <label htmlFor="admin-search" className="sr-only">
-          بحث شامل في النظام
-        </label>
-        <Search
-          size={16}
-          className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-          aria-hidden="true"
-        />
-        <input
-          id="admin-search"
-          type="search"
-          placeholder="بحث شامل في النظام..."
-          className="h-10 w-full rounded-xl border border-input bg-background pe-10 ps-4 text-sm outline-none transition-shadow placeholder:text-muted-foreground/70 focus:border-primary/40 focus:ring-4 focus:ring-primary/10"
-        />
-      </form>
+      {/* The "بحث شامل في النظام" field lived here and searched nothing: its
+          only handler was `onSubmit={e => e.preventDefault()}`, with no state,
+          no query and no results view. A prominent search box that swallows
+          every query teaches people the system cannot find their record.
+          Each screen has its own working search over its own rows. */}
 
       <div className="ms-auto flex items-center gap-1">
         <button

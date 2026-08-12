@@ -62,13 +62,71 @@ export async function POST(req: NextRequest) {
       }),
     ]);
 
-    await sendOTP(phone, code);
+    // Delivery is its own failure mode, separate from "the code was stored".
+    //
+    // This used to be a bare `await sendOTP(...)` inside the try: a provider
+    // error fell to the catch and answered 500 — AFTER the code had been
+    // created and the caller's rate-limit budget spent. The user was told it
+    // failed, could not retry, and a valid code was left live for five minutes.
+    let delivery: Awaited<ReturnType<typeof sendOTP>>;
+    try {
+      delivery = await sendOTP(phone, code);
+    } catch {
+      // Burn the code: nobody received it, so nothing should be able to redeem
+      // it. A distinct status lets the client offer "retry" rather than
+      // treating this as a bad request.
+      await prisma.oTPCode.updateMany({
+        where: { phone, consumedAt: null },
+        data: { consumedAt: new Date() },
+      });
+      return fail(
+        ErrorCode.UPSTREAM_UNAVAILABLE,
+        502,
+        "تعذّر إرسال رمز التحقق حالياً، حاول مرة أخرى"
+      );
+    }
+
+    // No provider at all is a different failure from a provider that broke, and
+    // the two need opposite treatment.
+    //
+    // In production it means nobody can ever receive a code: answering
+    // `{sent: true}` strands every user staring at an input box with no signal
+    // that the platform, not their phone, is the problem.
+    //
+    // Locally it is the normal state. The flow stays usable — `sendOTP` logs
+    // the code to the server console — but the response now SAYS so, because a
+    // client told "sent" while nothing was sent has no way to know it should go
+    // and read a log. The code itself is never in the body: that would turn
+    // sign-in into an open door the moment the same build reached production.
+    if (delivery === "not_configured") {
+      if (process.env.NODE_ENV === "production") {
+        return fail(
+          ErrorCode.UPSTREAM_UNAVAILABLE,
+          502,
+          "خدمة إرسال الرموز غير مهيّأة — راجع الإدارة"
+        );
+      }
+      return ok({
+        sent: false,
+        delivery: "not_configured",
+        message: "لا مزوّد رسائل مهيّأ — الرمز مطبوع في سجل الخادم",
+      });
+    }
 
     // Response is deliberately identical whether or not the phone is known —
     // it must not become an account-enumeration oracle.
-    return ok({ sent: true, message: "تم إرسال رمز التحقق" });
+    return ok({ sent: true, delivery, message: "تم إرسال رمز التحقق" });
   } catch (error) {
     console.error("[api] POST /api/auth/otp/send", error);
     return fail(ErrorCode.INTERNAL_ERROR, 500, "فشل في إرسال رمز التحقق");
   }
 }
+
+/**
+ * Re-exported for `scripts/generate-openapi.ts`.
+ *
+ * The published OpenAPI schema for this endpoint is derived from THIS object via
+ * `z.toJSONSchema`, so the contract handed to the mobile team and the validation
+ * the server actually runs cannot drift apart.
+ */
+export { sendSchema as otpSendSchema };

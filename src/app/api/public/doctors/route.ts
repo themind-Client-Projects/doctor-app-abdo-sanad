@@ -24,7 +24,7 @@ const listQuerySchema = z.object({
   specialty: z.string().trim().min(1).optional(), // slug
   q: z.string().trim().min(1).max(80).optional(),
   governorate: z.string().trim().min(1).optional(), // name, as the city picker uses
-  limit: z.coerce.number().int().min(1).max(50).default(12),
+  limit: z.coerce.number().int().min(1).max(100).default(12),
   /** Opaque keyset cursor over (createdAt, id) — see api-response.ts. */
   cursor: z.string().optional(),
 });

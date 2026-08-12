@@ -1,13 +1,13 @@
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
 import { ok } from "@/lib/api-response";
+import { startOfBaghdadDay, startOfBaghdadMonth } from "@/lib/time";
 
 // GET /api/reports — All 9 report types (req L255-264)
 export const GET = withAuth({ roles: ROLES.ADMIN }, async (req) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const thisMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const today = startOfBaghdadDay();
+  const thisMonth = startOfBaghdadMonth();
 
   const [totalOrders, completedOrders, avgRating, topDoctors, topLabs, topPharmacies] =
     await Promise.all([

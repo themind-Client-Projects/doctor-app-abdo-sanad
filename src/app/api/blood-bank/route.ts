@@ -1,73 +1,32 @@
 import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
 import { keysetArgs, ok, okList, toPage } from "@/lib/api-response";
 import { nonEmpty, parseBody, parseQuery } from "@/lib/validation";
+import {
+  bloodType,
+  createBloodBankRequestSchema,
+  requestStatus,
+  requestType,
+} from "@/server/services/blood-bank";
+
+const emptyToUndefined = (value: unknown) => (value === "" ? undefined : value);
 
 const listQuerySchema = z.object({
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
+  // Filters. The screen had these as CLIENT-side filters over whatever page had
+  // loaded, so "كل الحالات → مكتمل" searched the newest 100 rows and quietly
+  // reported nothing for anything older. A blood bank keeps its history, so
+  // that boundary is reached quickly.
+  requestType: z.preprocess(emptyToUndefined, requestType.optional()),
+  status: z.preprocess(emptyToUndefined, requestStatus.optional()),
+  bloodType: z.preprocess(emptyToUndefined, bloodType.optional()),
+  governorateId: z.preprocess(emptyToUndefined, nonEmpty.optional()),
+  /** Name, phone, or operation — the three things staff have on a phone call. */
+  q: z.preprocess(emptyToUndefined, z.string().trim().max(120).optional()),
 });
-
-/** The `BloodType` enum from prisma/schema.prisma. */
-const bloodType = z.enum(
-  ["A_POS", "A_NEG", "B_POS", "B_NEG", "AB_POS", "AB_NEG", "O_POS", "O_NEG"],
-  { message: "زمرة الدم غير صالحة" }
-);
-
-/** An ISO string or epoch number — a bare coercion would also accept booleans. */
-const dateValue = z
-  .union([z.string(), z.number()])
-  .pipe(z.coerce.date({ message: "موعد السحب غير صالح" }));
-
-/** `""` and `null` mean "no appointment", as they did before. */
-const drawAppointment = z
-  .union([z.literal(""), z.null(), dateValue], { message: "موعد السحب غير صالح" })
-  .transform((value) => (value instanceof Date ? value : null));
-
-// `.strict()` so an unexpected key is a 400 rather than being silently written:
-// the body used to be spread straight into Prisma, so any column was writable
-// and an unknown blood group crashed as a 500 instead of a 400.
-const createBloodBankRequestSchema = z
-  .object({
-    /** The toggle at the top of the form: طالب دم or متبرع دم. */
-    requestType: z.enum(["REQUESTER", "DONOR"], { message: "نوع الطلب مطلوب" }),
-    userId: nonEmpty.optional(),
-
-    // ── Identity ────────────────────────────────────────────────────────────
-    fullName: z.string().trim().min(3, { message: "الاسم الثلاثي مطلوب" }).max(120),
-    phone: z.string().trim().min(6, { message: "رقم الهاتف مطلوب" }).max(32),
-    photoUrl: z.string().trim().max(500).optional(),
-    age: z.number().int().min(1).max(120).optional(),
-    gender: z.string().trim().max(16).optional(),
-    residence: z.string().trim().max(240).optional(),
-    landmark: z.string().trim().max(160).optional(),
-    bloodType,
-    governorateId: nonEmpty.optional(),
-    lastDonation: drawAppointment.optional(),
-
-    // ── REQUESTER only ──────────────────────────────────────────────────────
-    operationType: z.string().trim().max(160).optional(),
-    bagsNeeded: z.number().int().min(1).max(50).optional(),
-    operationPlace: z.string().trim().max(240).optional(),
-
-    // ── Workflow — set by the employee, not by the form ─────────────────────
-    status: nonEmpty.default("new"),
-    donorId: nonEmpty.optional(),
-    donorName: z.string().optional(),
-    drawAppointment: drawAppointment.optional(),
-    testStatus: z.string().optional(),
-    deliveryStatus: z.string().optional(),
-    notes: z.string().trim().max(1000).optional(),
-  })
-  .strict()
-  // A blood REQUEST without an operation, a bag count and a place is not
-  // actionable — the employee cannot match donors against it. A DONOR
-  // registration carries none of those, which is why this is conditional.
-  .refine((v) => v.requestType !== "REQUESTER" || Boolean(v.operationType && v.bagsNeeded && v.operationPlace), {
-    message: "نوع العملية وعدد الأكياس ومكان العملية مطلوبة لطلب الدم",
-    path: ["operationType"],
-  });
 
 // GET /api/blood-bank — Blood bank requests (req L433-443)
 //
@@ -75,14 +34,28 @@ const createBloodBankRequestSchema = z
 // the entire history of the blood bank on every load.
 export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
-  const { cursor, limit } = parseQuery(req.nextUrl.searchParams, listQuerySchema);
+  const { cursor, limit, ...filters } = parseQuery(req.nextUrl.searchParams, listQuerySchema);
+
+  const where: Prisma.BloodBankRequestWhereInput = {};
+  if (filters.requestType) where.requestType = filters.requestType;
+  if (filters.status) where.status = filters.status;
+  if (filters.bloodType) where.bloodType = filters.bloodType;
+  if (filters.governorateId) where.governorateId = filters.governorateId;
+  if (filters.q) {
+    where.OR = [
+      { fullName: { contains: filters.q, mode: "insensitive" } },
+      { phone: { contains: filters.q } },
+      { operationType: { contains: filters.q, mode: "insensitive" } },
+    ];
+  }
+
   const keyset = keysetArgs(cursor, limit);
+  const cursorWhere = "where" in keyset ? keyset.where : undefined;
 
   const rows = await prisma.bloodBankRequest.findMany({
-    where: keyset.where ?? {},
-    include: { governorate: true },
-    orderBy: keyset.orderBy,
-    take: keyset.take,
+    ...keyset,
+    where: cursorWhere ? { AND: [where, cursorWhere] } : where,
+    include: { governorate: { select: { id: true, name: true } } },
   });
 
   const { items, page } = toPage(rows, limit);
@@ -90,6 +63,9 @@ export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
 });
 
 // POST /api/blood-bank — Create a request.
+//
+// Staff take these over the phone as often as through the patient form, so this
+// is a first-class entry point, not just the form's endpoint.
 export const POST = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
   const input = await parseBody(req, createBloodBankRequestSchema);
@@ -113,12 +89,16 @@ export const POST = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
       bloodType: input.bloodType,
       governorateId: input.governorateId ?? null,
       status: input.status,
+      // Stamped here rather than taken from the body, for the same reason the
+      // PATCH route derives it: it evidences that the case went out to donors.
+      broadcastAt: input.status === "broadcast" ? new Date() : null,
       donorId: input.donorId ?? null,
       donorName: input.donorName ?? null,
       drawAppointment: input.drawAppointment ?? null,
       testStatus: input.testStatus ?? null,
       deliveryStatus: input.deliveryStatus ?? null,
     },
+    include: { governorate: { select: { id: true, name: true } } },
   });
 
   return ok(data, { status: 201, requestId });

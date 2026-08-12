@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
 import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { nonEmpty, parseBody } from "@/lib/validation";
+import { orderScopeFor } from "@/lib/order-slots";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -27,13 +28,23 @@ const updateOrderSchema = z
   .strict();
 
 // GET /api/orders/[id] — Get order details
+//
+// `ROLES.STAFF`, matching the list. `GET /api/orders` was widened so a partner
+// could see their own queue, but this stayed on `ROLES.OPERATIONS` — so a lab
+// listed its samples and got 403 on every row it tapped. A list you cannot open
+// is not a feature.
+//
+// Scoped the same way the list is: `orderScopeFor` limits a partner to the
+// column their own type occupies, so widening the role does not widen the data.
 export const GET = withAuth<Ctx>(
-  { roles: ROLES.OPERATIONS },
-  async (req, { params }) => {
+  { roles: ROLES.STAFF },
+  async (req, { params }, identity) => {
     const requestId = req.headers.get("x-request-id") ?? undefined;
     const { id } = await params;
-    const order = await prisma.order.findUnique({
-      where: { id },
+    const order = await prisma.order.findFirst({
+      // An order outside the caller's scope answers 404, not 403 — the same
+      // convention the referral routes use, so an id cannot be probed.
+      where: { id, ...orderScopeFor(identity) },
       include: {
         governorate: true,
         timeline: { orderBy: { step: "asc" } },

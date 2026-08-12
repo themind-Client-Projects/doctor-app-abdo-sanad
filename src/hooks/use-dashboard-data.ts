@@ -1,6 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import {
+  DEFAULT_STALE_TIME_MS,
+  invalidate,
+  load,
+  snapshot,
+  subscribe,
+  type Snapshot,
+} from "@/lib/request-cache";
 
 interface UseDashboardDataOptions {
   url: string;
@@ -9,6 +17,14 @@ interface UseDashboardDataOptions {
   refreshInterval?: number;
   /** Skip fetching entirely (e.g. waiting on a required param). */
   enabled?: boolean;
+  /**
+   * How long a result is reused without going to the network.
+   *
+   * Raise it for data that rarely moves — governorates, specialties, feature
+   * flags — so navigating between screens does not re-fetch a list that is
+   * effectively constant.
+   */
+  staleTime?: number;
 }
 
 interface UseDashboardDataReturn<T> {
@@ -21,92 +37,81 @@ interface UseDashboardDataReturn<T> {
 /**
  * Read a JSON endpoint that follows the API response contract.
  *
- * Three things this handles that the previous version did not, and that every
- * screen in the app inherited:
+ * State lives in `@/lib/request-cache`, keyed by the full URL, so every
+ * component asking for the same resource shares one request and one copy of the
+ * answer. Loading `/doctors` used to open 26 sockets for 5 resources — not from
+ * any loop, but because a header, a list and a drawer each legitimately wanted
+ * `me` or `feature-flags`, and StrictMode doubled all of it.
  *
- *  - **Abort on unmount / re-fetch.** An in-flight request used to resolve into
- *    `setState` after the component was gone, and a slow first request could
- *    land *after* a fast second one and overwrite fresher data with staler.
- *    Each run now owns an `AbortController` and a sequence number; only the
- *    newest run is allowed to commit.
- *  - **`isLoading` on refetch.** Loading was set false in the first `finally`
- *    and never set true again, so a poll or a post-mutation refetch showed
- *    stale rows with no indication anything was happening.
- *  - **Undefined params are dropped**, so `?status=undefined` never reaches the
- *    server as a literal string that fails query validation.
+ * What this hook still owns:
+ *
+ *  - **`isLoading` means "and I have nothing to show"**, so a component with
+ *    cached data does not flash a skeleton over data it already has while a
+ *    background revalidation runs.
+ *  - **Undefined and empty params are dropped**, so `?status=undefined` never
+ *    reaches the server as a literal string that fails query validation.
+ *  - **Polling**, which revalidates through the same shared path — two
+ *    components polling the same URL still produce one request per tick.
+ *
+ * Torn reads are not possible: `useSyncExternalStore` is React's contract for
+ * an external store, and the cache notifies every subscriber on the same tick.
  */
 export function useDashboardData<T>({
   url,
   params,
   refreshInterval,
   enabled = true,
+  staleTime = DEFAULT_STALE_TIME_MS,
 }: UseDashboardDataOptions): UseDashboardDataReturn<T> {
-  const [data, setData] = useState<T | null>(null);
-  const [isLoading, setIsLoading] = useState(enabled);
-  const [error, setError] = useState<string | null>(null);
-
-  // A primitive, so `fetchData` stays referentially stable when a caller passes
-  // an inline `params` object literal (which every caller does).
-  const search = new URLSearchParams();
-  for (const [k, v] of Object.entries(params ?? {})) {
-    if (v !== undefined && v !== "") search.set(k, v);
-  }
-  const queryString = search.toString() ? `?${search}` : "";
-
-  const abortRef = useRef<AbortController | null>(null);
-  const runIdRef = useRef(0);
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      abortRef.current?.abort();
-    };
-  }, []);
-
-  const fetchData = useCallback(async () => {
-    if (!enabled) return;
-
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    const runId = ++runIdRef.current;
-
-    // Only the newest run may touch state — a superseded run is a no-op.
-    const isCurrent = () => mountedRef.current && runIdRef.current === runId;
-
-    if (isCurrent()) {
-      setIsLoading(true);
-      setError(null);
+  // The cache key IS the request. Built from primitives so it stays stable
+  // across renders even though every caller passes an inline `params` literal.
+  const key = useMemo(() => {
+    const search = new URLSearchParams();
+    for (const [k, v] of Object.entries(params ?? {})) {
+      if (v !== undefined && v !== "") search.set(k, v);
     }
+    const qs = search.toString();
+    return qs ? `${url}?${qs}` : url;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url, JSON.stringify(params ?? {})]);
 
-    try {
-      const response = await fetch(`${url}${queryString}`, { signal: controller.signal });
-      const body = await response.json().catch(() => null);
+  const active = enabled && url !== "";
 
-      if (!response.ok) {
-        throw new Error(body?.error ?? "فشل في تحميل البيانات");
-      }
-      if (isCurrent()) setData((body?.data ?? body) as T);
-    } catch (err) {
-      // An abort is a cancellation, not a failure — never surface it.
-      if (err instanceof DOMException && err.name === "AbortError") return;
-      if (isCurrent()) setError(err instanceof Error ? err.message : "خطأ غير معروف");
-    } finally {
-      if (isCurrent()) setIsLoading(false);
-    }
-  }, [url, queryString, enabled]);
+  const store = useSyncExternalStore<Snapshot<T>>(
+    useCallback((onChange) => (active ? subscribe(key, onChange) : () => {}), [key, active]),
+    useCallback(() => snapshot<T>(key), [key]),
+    // The server renders nothing for a client-fetched resource; without a
+    // distinct server snapshot React warns about a hydration mismatch.
+    useCallback(() => EMPTY as Snapshot<T>, [])
+  );
 
   useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
+    if (!active) return;
+    void load(key, { staleTime });
+  }, [key, active, staleTime]);
 
   useEffect(() => {
-    if (!refreshInterval || !enabled) return;
-    const interval = setInterval(() => void fetchData(), refreshInterval);
-    return () => clearInterval(interval);
-  }, [fetchData, refreshInterval, enabled]);
+    if (!refreshInterval || !active) return;
+    const timer = setInterval(() => void load(key, { force: true }), refreshInterval);
+    return () => clearInterval(timer);
+  }, [key, active, refreshInterval]);
 
-  return { data, isLoading, error, refetch: fetchData };
+  const refetch = useCallback(async () => {
+    if (!active) return;
+    // A refetch follows a write, so the freshness window must not apply — the
+    // data it would serve is precisely the data the write invalidated.
+    invalidate(key);
+    await load(key, { force: true });
+  }, [key, active]);
+
+  return {
+    data: store.data,
+    // Only a load with nothing to show is "loading". A revalidation over
+    // existing data is deliberately silent, so lists do not blink every poll.
+    isLoading: active && store.isEmpty && store.error === null,
+    error: store.error,
+    refetch,
+  };
 }
+
+const EMPTY: Snapshot<unknown> = { data: null, error: null, isFetching: false, isEmpty: true };

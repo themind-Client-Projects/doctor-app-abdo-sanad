@@ -1,137 +1,173 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { Stethoscope } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
-import { StatusBadge } from "@/components/shared/status-badge";
-import { Search, Play, StopCircle, Phone, MapPin, Navigation } from "lucide-react";
+import { useOrderActions } from "@/hooks/use-order-actions";
+import { DataTable, type Column } from "@/components/data/data-table";
+import { PageHeader, Pill, toneForStatus } from "@/components/data/crud-kit";
+import { ORDER_STATUS_LABELS, SERVICE_TYPE_LABELS, labelOf, optionsOf } from "@/lib/labels";
+import { formatRelative } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
-// Nurse: Visits List (req L56 "الممرض يرى الزيارات")
+// زيارات الممرض — this partner's own assigned work.
+//
+// The page called `/api/dashboard/visits`, a route that was never built, so it
+// showed a skeleton forever. `/api/orders` returns exactly this — and is now
+// scoped server-side, so a nurse receives only the orders assigned
+// to them and never another partner's queue.
 // ─────────────────────────────────────────────────────────────
 
-interface Visit {
+type Job = {
   id: string;
+  orderNumber: string;
   patientName: string;
   patientPhone: string;
   serviceType: string;
-  address: string;
-  area: string;
   status: string;
-  scheduledTime: string;
-}
-
-const statusLabels: Record<string, string> = {
-  assigned: "تم التعيين",
-  en_route: "في الطريق",
-  arrived: "وصل",
-  in_progress: "قيد التنفيذ",
-  completed: "مكتملة",
-  cancelled: "ملغية",
+  area: string | null;
+  address: string | null;
+  createdAt: string;
+  governorate: { name: string } | null;
 };
 
-export default function VisitsPage() {
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+/** Still to do — a finished job belongs in history, not the worklist. */
+const OPEN = "ASSIGNED,IN_TRANSIT,ARRIVED,IN_PROGRESS,DELAYED";
 
-  const { data: visits } = useDashboardData<Visit[]>({
-    url: "/api/dashboard/visits",
+export default function Page() {
+  const [showDone, setShowDone] = useState(false);
+
+  const { data, isLoading, error, refetch } = useDashboardData<Job[]>({
+    url: "/api/orders",
+    params: { limit: "100", ...(showDone ? {} : { status: OPEN }) },
+    refreshInterval: 30_000,
   });
 
-  const filtered = (visits || []).filter((v) => {
-    const matchSearch = v.patientName.includes(search) || v.address.includes(search);
-    const matchStatus = statusFilter === "all" || v.status === statusFilter;
-    return matchSearch && matchStatus;
-  });
+  const refresh = useCallback(() => void refetch(), [refetch]);
+  const { advance, isPending } = useOrderActions(refresh);
+
+  const columns: Column<Job>[] = useMemo(
+    () => [
+      {
+        key: "patient",
+        header: "المريض",
+        render: (r) => (
+          <div className="min-w-0">
+            <p className="truncate font-medium text-foreground">{r.patientName}</p>
+            <a
+              href={`tel:${r.patientPhone}`}
+              className="truncate text-xs text-primary hover:underline"
+              dir="ltr"
+            >
+              {r.patientPhone}
+            </a>
+          </div>
+        ),
+        sortValue: (r) => r.patientName,
+      },
+      {
+        key: "serviceType",
+        header: "الخدمة",
+        render: (r) => (
+          <span className="text-foreground">{labelOf(SERVICE_TYPE_LABELS, r.serviceType)}</span>
+        ),
+        sortValue: (r) => labelOf(SERVICE_TYPE_LABELS, r.serviceType),
+      },
+      {
+        key: "location",
+        header: "الموقع",
+        render: (r) => (
+          <span className="text-xs text-muted-foreground">
+            {[r.governorate?.name, r.area, r.address].filter(Boolean).join(" - ") || "بلا عنوان"}
+          </span>
+        ),
+      },
+      {
+        key: "status",
+        header: "الحالة",
+        render: (r) => (
+          <Pill tone={toneForStatus(r.status)}>{labelOf(ORDER_STATUS_LABELS, r.status)}</Pill>
+        ),
+      },
+      {
+        key: "createdAt",
+        header: "منذ",
+        secondary: true,
+        render: (r) => (
+          <span className="whitespace-nowrap text-xs text-muted-foreground">
+            {formatRelative(r.createdAt)}
+          </span>
+        ),
+        sortValue: (r) => new Date(r.createdAt).getTime(),
+      },
+    ],
+    []
+  );
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-foreground">الزيارات</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            زيارات التمريض المنزلي — {filtered.length} زيارة
-          </p>
-        </div>
-        <button className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 transition-colors">
-          <Play size={16} />
-          بدء الزيارة
-        </button>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="زياراتي"
+        subtitle="المهام المسندة إليك — تُحدَّث تلقائياً كل 30 ثانية"
+        icon={Stethoscope}
+        action={{
+          label: showDone ? "إظهار الجارية فقط" : "إظهار المنتهية أيضاً",
+          onClick: () => setShowDone((v) => !v),
+        }}
+      />
 
-      {/* Filters */}
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="بحث بالمريض أو العنوان..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border border-border bg-background pr-10 pl-4 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-          />
-        </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-        >
-          <option value="all">كل الحالات</option>
-          {Object.entries(statusLabels).map(([key, label]) => (
-            <option key={key} value={key}>{label}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* Visit Cards (mobile-friendly) */}
-      <div className="space-y-3">
-        {filtered.length === 0 ? (
-          <div className="rounded-xl border border-border bg-card p-12 text-center text-muted-foreground">
-            لا توجد زيارات
+      <DataTable
+        rows={data}
+        columns={columns}
+        isLoading={isLoading}
+        error={error}
+        onRetry={refetch}
+        searchable={(r) => `${r.patientName} ${r.patientPhone} ${r.orderNumber} ${r.area ?? ""}`}
+        searchPlaceholder="بحث بالمريض أو الهاتف أو المنطقة..."
+        filters={[
+          {
+            key: "status",
+            label: "كل الحالات",
+            options: optionsOf(ORDER_STATUS_LABELS),
+            match: (r, v) => r.status === v,
+          },
+        ]}
+        emptyMessage="لا مهام مسندة إليك حالياً"
+        actions={(r) => (
+          <div className="flex items-center justify-end gap-1">
+            {r.status === "ASSIGNED" ? (
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={() => void advance(r.id, "IN_TRANSIT")}
+                className="whitespace-nowrap rounded-lg bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-40"
+              >
+                في الطريق
+              </button>
+            ) : null}
+            {r.status === "IN_TRANSIT" ? (
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={() => void advance(r.id, "ARRIVED")}
+                className="whitespace-nowrap rounded-lg bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-40"
+              >
+                وصلت
+              </button>
+            ) : null}
+            {r.status === "ARRIVED" ? (
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={() => void advance(r.id, "STARTED")}
+                className="whitespace-nowrap rounded-lg bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-40"
+              >
+                بدء التنفيذ
+              </button>
+            ) : null}
           </div>
-        ) : (
-          filtered.map((visit) => (
-            <div key={visit.id} className="rounded-xl border border-border bg-card p-4 hover:shadow-sm transition-all">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 text-sm font-bold">
-                    {visit.patientName.charAt(0)}
-                  </div>
-                  <div>
-                    <p className="font-medium text-foreground">{visit.patientName}</p>
-                    <p className="text-xs text-muted-foreground">{visit.serviceType} — {visit.scheduledTime}</p>
-                  </div>
-                </div>
-                <StatusBadge status={statusLabels[visit.status] || visit.status} size="sm" />
-              </div>
-              <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-                <MapPin size={12} />
-                <span>{visit.area} — {visit.address}</span>
-              </div>
-              <div className="mt-3 flex items-center gap-2">
-                <a
-                  href={`tel:${visit.patientPhone}`}
-                  className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/50 transition-colors"
-                >
-                  <Phone size={12} />
-                  اتصال
-                </a>
-                {visit.status === "assigned" && (
-                  <button className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 transition-colors">
-                    <Navigation size={12} />
-                    بدء
-                  </button>
-                )}
-                {visit.status === "in_progress" && (
-                  <button className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 transition-colors">
-                    <StopCircle size={12} />
-                    إنهاء
-                  </button>
-                )}
-              </div>
-            </div>
-          ))
         )}
-      </div>
+      />
     </div>
   );
 }

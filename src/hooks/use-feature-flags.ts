@@ -1,6 +1,7 @@
 "use client";
 
 import { useDashboardData } from "@/hooks/use-dashboard-data";
+import { STALE_TIME } from "@/lib/request-cache";
 
 /**
  * Which optional features the admin has switched on.
@@ -23,7 +24,10 @@ export type FlagKey =
 type Flags = Record<string, { enabled: boolean; value: number | null }>;
 
 export function useFeatureFlags() {
-  const { data, isLoading } = useDashboardData<Flags>({ url: "/api/public/feature-flags" });
+  const { data, isLoading } = useDashboardData<Flags>({
+    url: "/api/public/feature-flags",
+    staleTime: STALE_TIME.config,
+  });
 
   const isEnabled = (key: FlagKey) => Boolean(data?.[key]?.enabled);
   /** The flag's numeric parameter — e.g. the taxi nursing add-on's price. */

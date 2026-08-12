@@ -3,8 +3,8 @@
 import { useMemo } from "react";
 import { Activity, MessageSquare, Star } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
-import { DataTable, type Column } from "@/components/admin/data-table";
-import { PageHeader, Pill, StatTile } from "@/components/admin/crud-kit";
+import { DataTable, type Column } from "@/components/data/data-table";
+import { PageHeader, Pill, StatTile } from "@/components/data/crud-kit";
 import { SERVICE_TYPE_LABELS, labelOf, optionsOf } from "@/lib/labels";
 import { formatDateTime, formatNumber, formatPercent } from "@/lib/format";
 

@@ -4,8 +4,8 @@ import { useCallback, useMemo, useState } from "react";
 import { ToggleLeft } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { apiFetch, useMutation } from "@/hooks/use-mutation";
-import { Field, FormDialog, fieldClass } from "@/components/admin/form-dialog";
-import { PageHeader, Pill } from "@/components/admin/crud-kit";
+import { Field, FormDialog, fieldClass } from "@/components/data/form-dialog";
+import { PageHeader, Pill } from "@/components/data/crud-kit";
 import { formatCurrency } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────

@@ -93,6 +93,76 @@ export const TRANSACTION_TYPE_LABELS = {
   DEBIT: "سحب",
 } as const;
 
+/** `OrderStatus` — the 9 members of the Prisma enum, in lifecycle order. */
+export const ORDER_STATUS_LABELS = {
+  NEW: "جديد",
+  ACCEPTED: "مقبول",
+  ASSIGNED: "مُسند",
+  IN_TRANSIT: "في الطريق",
+  ARRIVED: "وصل",
+  IN_PROGRESS: "قيد التنفيذ",
+  COMPLETED: "مكتمل",
+  CANCELLED: "ملغي",
+  DELAYED: "معلّق",
+} as const;
+
+export const ORDER_PRIORITY_LABELS = {
+  NORMAL: "عادي",
+  URGENT: "عاجل",
+  CRITICAL: "حرج",
+} as const;
+
+export const PAYMENT_METHOD_LABELS = {
+  CASH: "نقداً",
+  CARD: "بطاقة",
+  WALLET: "محفظة",
+} as const;
+
+/** `BloodType` — the 8 groups, rendered the way people actually write them. */
+export const BLOOD_TYPE_LABELS = {
+  A_POS: "A+",
+  A_NEG: "A−",
+  B_POS: "B+",
+  B_NEG: "B−",
+  AB_POS: "AB+",
+  AB_NEG: "AB−",
+  O_POS: "O+",
+  O_NEG: "O−",
+} as const;
+
+/**
+ * Why a patient's wallet moved.
+ *
+ * Was defined twice — the patient wallet said "إيداع رصيد" while the admin's
+ * view of the SAME row said "إيداع". One vocabulary, one place.
+ */
+export const WALLET_REASON_LABELS = {
+  TOPUP: "إيداع رصيد",
+  PAYMENT: "دفع رسوم خدمة",
+  REFUND: "استرداد مبلغ",
+  REWARD: "مكافأة",
+} as const;
+
+/** `SettlementParty` — who takes a cut of an order. */
+export const SETTLEMENT_PARTY_LABELS = {
+  PARTNER: "الشريك",
+  COMPLEX: "المجمع",
+  NURSE: "الممرض",
+  DRIVER: "السائق",
+  REFERRER: "المُحيل",
+  WARID: "وريد",
+} as const;
+
+/** `CallLog.receiverType` — who was called about an order. */
+export const CALL_RECEIVER_LABELS = {
+  PATIENT: "المريض",
+  NURSE: "الممرض",
+  DRIVER: "السائق",
+  LAB: "المختبر",
+  PHARMACY: "الصيدلية",
+  RADIOLOGY: "مركز الأشعة",
+} as const;
+
 /** Look a label up without throwing on a value the DB has but the map doesn't. */
 export function labelOf(map: Record<string, string>, key: string | null | undefined): string {
   if (!key) return "—";

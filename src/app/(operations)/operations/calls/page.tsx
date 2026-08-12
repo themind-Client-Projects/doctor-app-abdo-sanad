@@ -1,100 +1,329 @@
 "use client";
 
+import { useCallback, useMemo, useState } from "react";
+import { Clock, FileText, Phone, PhoneCall } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
-import { Phone, User, HeartPulse, FlaskConical, Pill, ScanLine, Clock, FileText, PhoneCall } from "lucide-react";
-import { formatDateTime } from "@/lib/format";
+import { apiFetch, useMutation } from "@/hooks/use-mutation";
+import { DataTable, type Column } from "@/components/data/data-table";
+import { Field, FormDialog, fieldClass } from "@/components/data/form-dialog";
+import { PageHeader, Pill, StatTile } from "@/components/data/crud-kit";
+import { SERVICE_TYPE_LABELS, labelOf, optionsOf } from "@/lib/labels";
+import { formatDateTime, formatNumber } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
-// Section 7: إدارة الاتصالات (req L421-431) — 8 features
-// 5 call targets via tel: links + 3 tracking features
-// All calls are click-to-call — NO VoIP (user decision)
+// إدارة الاتصالات (req L421-431) — اتصال مباشر، بدون VoIP
+//
+// The five target cards were `<a href="tel:">` — a colon with no number after
+// it, so every one of them dialled nobody. They were also static: five cards
+// that never referred to a particular order, and therefore to a particular
+// person. Now a call target belongs to an order, and its number is the real one.
+//
+// The log table read `target`, `phone`, `duration` (as text) and `timestamp`;
+// CallLog has `receiver`, `receiverType`, `duration` in seconds and `createdAt`,
+// so four of the five columns were blank. "مدة المكالمات" was hardcoded "—".
 // ─────────────────────────────────────────────────────────────
 
-interface CallLog {
+const RECEIVER_LABELS: Record<string, string> = {
+  PATIENT: "المريض",
+  NURSE: "الممرض",
+  DRIVER: "السائق",
+  LAB: "المختبر",
+  PHARMACY: "الصيدلية",
+  RADIOLOGY: "مركز الأشعة",
+};
+
+type CallLog = {
   id: string;
-  target: string;
+  orderId: string | null;
+  receiverType: string;
+  duration: number | null;
+  notes: string | null;
+  createdAt: string;
+  caller: { name: string | null } | null;
+  receiver: { name: string | null } | null;
+};
+
+type Contact = {
+  userId: string;
+  name: string;
   phone: string;
-  duration: string;
-  notes: string;
-  timestamp: string;
-  orderId: string;
+  type: string;
+  label: string;
+};
+
+type ActiveOrder = {
+  id: string;
+  orderNumber: string;
+  patientName: string;
+  serviceType: string;
+};
+
+/** Seconds → m:ss. `duration` is stored in seconds, not as a display string. */
+function formatDuration(seconds: number | null): string {
+  if (seconds === null) return "—";
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${formatNumber(m)}:${String(s).padStart(2, "0")}`;
 }
 
-const callTargets = [
-  { label: "المريض", icon: <User size={20} />, color: "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800" },
-  { label: "الممرض", icon: <HeartPulse size={20} />, color: "bg-pink-100 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400 border-pink-200 dark:border-pink-800" },
-  { label: "المختبر", icon: <FlaskConical size={20} />, color: "bg-cyan-100 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-400 border-cyan-200 dark:border-cyan-800" },
-  { label: "الصيدلية", icon: <Pill size={20} />, color: "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800" },
-  { label: "مركز الأشعة", icon: <ScanLine size={20} />, color: "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-800" },
-];
+/** Open orders — the ones an employee has a reason to ring about. */
+const OPEN_STATUSES = "NEW,ACCEPTED,ASSIGNED,IN_TRANSIT,ARRIVED,IN_PROGRESS,DELAYED";
 
 export default function CallsPage() {
-  const { data: logs, isLoading } = useDashboardData<CallLog[]>({ url: "/api/call-logs" });
+  const { data: logs, isLoading, error, refetch } = useDashboardData<CallLog[]>({
+    url: "/api/call-logs",
+    params: { limit: "100" },
+  });
+
+  const { data: orders } = useDashboardData<ActiveOrder[]>({
+    url: "/api/orders",
+    params: { status: OPEN_STATUSES, limit: "100" },
+  });
+
+  const [orderId, setOrderId] = useState("");
+  const [logging, setLogging] = useState<Contact | null>(null);
+  const [duration, setDuration] = useState("");
+  const [notes, setNotes] = useState("");
+
+  // Only fetched once an order is chosen — there are no contacts without one.
+  const { data: contacts, isLoading: contactsLoading } = useDashboardData<Contact[]>(
+    orderId ? { url: `/api/orders/${orderId}/contacts` } : { url: "" }
+  );
+
+  const close = useCallback(() => {
+    setLogging(null);
+    setDuration("");
+    setNotes("");
+  }, []);
+
+  const done = useCallback(() => {
+    close();
+    void refetch();
+  }, [close, refetch]);
+
+  const { mutate: logCall, isPending: saving } = useMutation(
+    async (body: Record<string, unknown>) =>
+      apiFetch("/api/call-logs", { method: "POST", body: JSON.stringify(body) }),
+    { successMessage: "تم تسجيل المكالمة", onSuccess: done }
+  );
+
+  const totals = useMemo(() => {
+    const rows = logs ?? [];
+    let seconds = 0;
+    let withNotes = 0;
+    for (const l of rows) {
+      seconds += l.duration ?? 0;
+      if (l.notes && l.notes.trim()) withNotes += 1;
+    }
+    return { count: rows.length, seconds, withNotes };
+  }, [logs]);
+
+  const columns: Column<CallLog>[] = useMemo(
+    () => [
+      {
+        key: "receiver",
+        header: "الجهة",
+        render: (r) => (
+          <div className="min-w-0">
+            <p className="truncate font-medium text-foreground">{r.receiver?.name ?? "—"}</p>
+            <Pill tone="info">{labelOf(RECEIVER_LABELS, r.receiverType)}</Pill>
+          </div>
+        ),
+        sortValue: (r) => r.receiver?.name ?? "",
+      },
+      {
+        key: "caller",
+        header: "الموظف",
+        secondary: true,
+        render: (r) => (
+          <span className="text-xs text-muted-foreground">{r.caller?.name ?? "—"}</span>
+        ),
+        sortValue: (r) => r.caller?.name ?? "",
+      },
+      {
+        key: "duration",
+        header: "المدة",
+        align: "end",
+        render: (r) => (
+          <span className="tabular-nums text-foreground" dir="ltr">
+            {formatDuration(r.duration)}
+          </span>
+        ),
+        sortValue: (r) => r.duration ?? -1,
+      },
+      {
+        key: "notes",
+        header: "الملاحظات",
+        render: (r) => (
+          <span className="line-clamp-2 text-xs text-muted-foreground">{r.notes || "—"}</span>
+        ),
+      },
+      {
+        key: "createdAt",
+        header: "الوقت",
+        secondary: true,
+        render: (r) => (
+          <span className="whitespace-nowrap text-xs text-muted-foreground">
+            {formatDateTime(r.createdAt)}
+          </span>
+        ),
+        sortValue: (r) => new Date(r.createdAt).getTime(),
+      },
+    ],
+    []
+  );
 
   return (
-    <div className="space-y-6" dir="rtl">
-      <div>
-        <h1 className="text-xl font-bold text-foreground flex items-center gap-2"><Phone size={22} className="text-primary" /> إدارة الاتصالات</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">اتصال مباشر عبر الهاتف (tel: links) — بدون VoIP</p>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="إدارة الاتصالات"
+        subtitle="اتصال مباشر عبر الهاتف — اختر الطلب ثم الجهة، وسجّل الملاحظات بعد المكالمة"
+        icon={Phone}
+      />
 
-      {/* 5 Call targets (L425-429) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        {callTargets.map((target) => (
-          <a key={target.label} href="tel:" className={`flex flex-col items-center gap-2 rounded-xl border p-4 hover:shadow-md transition-all group ${target.color}`}>
-            <div className="transition-transform group-hover:scale-110">{target.icon}</div>
-            <span className="text-sm font-medium text-foreground">{target.label}</span>
-            <span className="text-[10px] text-muted-foreground flex items-center gap-1"><PhoneCall size={10} /> اتصال</span>
-          </a>
-        ))}
-      </div>
+      <div className="rounded-xl border border-border bg-card p-4">
+        <label htmlFor="call-order" className="mb-1.5 block text-sm font-medium text-foreground">
+          الطلب
+        </label>
+        <select
+          id="call-order"
+          value={orderId}
+          onChange={(e) => setOrderId(e.target.value)}
+          className="h-11 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none transition-colors focus:border-[hsl(var(--primary))]"
+        >
+          <option value="">— اختر طلباً لعرض جهات الاتصال —</option>
+          {(orders ?? []).map((o) => (
+            <option key={o.id} value={o.id}>
+              #{o.orderNumber.slice(-8)} · {o.patientName} ·{" "}
+              {labelOf(SERVICE_TYPE_LABELS, o.serviceType)}
+            </option>
+          ))}
+        </select>
 
-      {/* 3 Tracking features */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="rounded-xl border border-border bg-card p-4">
-          <div className="flex items-center gap-2 mb-2 text-muted-foreground"><FileText size={16} /><span className="text-sm font-semibold text-foreground">سجل المكالمات</span></div>
-          <span className="text-2xl font-bold text-foreground">{(logs ?? []).length}</span>
-        </div>
-        <div className="rounded-xl border border-border bg-card p-4">
-          <div className="flex items-center gap-2 mb-2 text-muted-foreground"><Clock size={16} /><span className="text-sm font-semibold text-foreground">مدة المكالمات</span></div>
-          <span className="text-2xl font-bold text-foreground">—</span>
-        </div>
-        <div className="rounded-xl border border-border bg-card p-4">
-          <div className="flex items-center gap-2 mb-2 text-muted-foreground"><FileText size={16} /><span className="text-sm font-semibold text-foreground">ملاحظات المكالمات</span></div>
-          <span className="text-2xl font-bold text-foreground">{(logs ?? []).filter(l => l.notes).length}</span>
-        </div>
-      </div>
-
-      {/* Call log table */}
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
-        <h3 className="text-sm font-semibold text-foreground p-4 border-b border-border">سجل المكالمات الأخيرة</h3>
-        {isLoading ? (
-          <div className="space-y-3 p-5">{[1,2,3].map(i => <div key={i} className="h-10 rounded bg-muted animate-pulse" />)}</div>
-        ) : (logs ?? []).length === 0 ? (
-          <div className="py-12 text-center text-muted-foreground text-sm">لا توجد مكالمات مسجلة</div>
-        ) : (
-          <table className="w-full">
-            <thead><tr className="border-b border-border bg-muted/30">
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">الجهة</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">الهاتف</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">المدة</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">الملاحظات</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">الوقت</th>
-            </tr></thead>
-            <tbody className="divide-y divide-border">
-              {(logs ?? []).map((log) => (
-                <tr key={log.id} className="hover:bg-muted/30 transition-colors">
-                  <td className="px-4 py-3 text-sm font-medium text-foreground">{log.target}</td>
-                  <td className="px-4 py-3 text-sm text-muted-foreground" dir="ltr">{log.phone}</td>
-                  <td className="px-4 py-3 text-sm text-muted-foreground">{log.duration || "—"}</td>
-                  <td className="px-4 py-3 text-sm text-muted-foreground truncate max-w-xs">{log.notes || "—"}</td>
-                  <td className="px-4 py-3 text-xs text-muted-foreground">{formatDateTime(log.timestamp)}</td>
-                </tr>
+        {orderId ? (
+          contactsLoading ? (
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-24 animate-pulse rounded-xl bg-muted" />
               ))}
-            </tbody>
-          </table>
+            </div>
+          ) : (
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              {(contacts ?? []).map((c) => (
+                <div
+                  key={`${c.type}-${c.userId}`}
+                  className="flex flex-col items-center gap-1.5 rounded-xl border border-border p-3.5 text-center"
+                >
+                  <span className="text-xs font-semibold text-foreground">{c.label}</span>
+                  <span className="truncate text-xs text-muted-foreground" title={c.name}>
+                    {c.name}
+                  </span>
+                  <a
+                    href={`tel:${c.phone}`}
+                    aria-label={`اتصال بـ ${c.label} ${c.name}`}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                    dir="ltr"
+                  >
+                    <PhoneCall size={11} aria-hidden />
+                    {c.phone}
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setLogging(c)}
+                    className="mt-0.5 rounded-lg bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20"
+                  >
+                    تسجيل المكالمة
+                  </button>
+                </div>
+              ))}
+            </div>
+          )
+        ) : (
+          <p className="mt-2 text-xs text-muted-foreground">
+            جهات الاتصال تُشتق من الطلب: المريض والمنفّذون المعيَّنون عليه.
+          </p>
         )}
       </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <StatTile label="سجل المكالمات" value={formatNumber(totals.count)} icon={FileText} />
+        <StatTile
+          label="مدة المكالمات"
+          value={formatDuration(totals.seconds)}
+          hint="دقيقة:ثانية"
+          icon={Clock}
+        />
+        <StatTile
+          label="مكالمات بملاحظات"
+          value={formatNumber(totals.withNotes)}
+          icon={FileText}
+        />
+      </div>
+
+      <DataTable
+        rows={logs}
+        columns={columns}
+        isLoading={isLoading}
+        error={error}
+        onRetry={refetch}
+        searchable={(r) => `${r.receiver?.name ?? ""} ${r.caller?.name ?? ""} ${r.notes ?? ""}`}
+        searchPlaceholder="بحث بالجهة أو الملاحظات..."
+        filters={[
+          {
+            key: "receiverType",
+            label: "كل الجهات",
+            options: optionsOf(RECEIVER_LABELS),
+            match: (r, v) => r.receiverType === v,
+          },
+        ]}
+        emptyMessage="لا توجد مكالمات مسجلة"
+      />
+
+      <FormDialog
+        open={logging !== null}
+        title="تسجيل المكالمة"
+        description={logging ? `${logging.label} · ${logging.name} · ${logging.phone}` : undefined}
+        submitLabel="تسجيل"
+        onClose={close}
+        onSubmit={() => {
+          if (!logging) return;
+          const seconds = Number(duration);
+          void logCall({
+            orderId,
+            receiverId: logging.userId,
+            receiverType: logging.type,
+            // Omitted rather than sent as 0 — an unrecorded duration is not a
+            // zero-second call.
+            ...(duration.trim() && Number.isFinite(seconds) && seconds >= 0
+              ? { duration: Math.round(seconds) }
+              : {}),
+            ...(notes.trim() ? { notes: notes.trim() } : {}),
+          });
+        }}
+        isPending={saving}
+      >
+        <Field label="مدة المكالمة (ثانية)" htmlFor="call-duration" hint="اختياري">
+          <input
+            id="call-duration"
+            type="number"
+            min={0}
+            dir="ltr"
+            className={fieldClass}
+            value={duration}
+            onChange={(e) => setDuration(e.target.value)}
+          />
+        </Field>
+        <Field label="ملاحظات بعد المكالمة" htmlFor="call-notes" hint="اختياري">
+          <textarea
+            id="call-notes"
+            rows={3}
+            className={fieldClass}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="المريض أكد الموعد، سيكون في المنزل بعد الساعة ٤"
+          />
+        </Field>
+      </FormDialog>
     </div>
   );
 }

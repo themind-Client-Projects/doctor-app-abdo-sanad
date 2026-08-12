@@ -1,93 +1,197 @@
 "use client";
 
+import { useCallback, useMemo, useState } from "react";
+import { Pill as PillIcon } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
-import { Pill, ArrowLeft } from "lucide-react";
-import { formatDate } from "@/lib/format";
+import { useStageMutation } from "@/hooks/use-stage-mutation";
+import { DataTable, type Column } from "@/components/data/data-table";
+import { PageHeader } from "@/components/data/crud-kit";
+import {
+  PipelineStrip,
+  StageAdvance,
+  StagePill,
+  useStageCounts,
+  type Stage,
+} from "@/components/data/status-pipeline";
+import { formatDateTime, formatNumber } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
-// Section 12: الصيدليات (req L474-477) — 5 statuses
-// الوصفة استلمت → قيد التجهيز → جاهزة للتوصيل → تم التوصيل → المرتجعات
+// الصيدليات (req L474-477) — 5 مراحل
+//
+// The first stage was keyed "received" while the stored value is "new", so the
+// counter above the busiest column of the queue permanently read 0. The table
+// read `prescriptionId`, `patientName`, `pharmacyName` and `items`, none of
+// which exist on Prescription — the item count is the length of the
+// `medications` JSON array.
 // ─────────────────────────────────────────────────────────────
 
-interface PharmacyOrder {
-  id: string;
-  prescriptionId: string;
-  patientName: string;
-  pharmacyName: string;
-  status: string;
-  createdAt: string;
-  items: number;
-}
-
-const pharmaPipeline = [
-  { key: "received", label: "الوصفة استلمت", color: "bg-blue-500" },
-  { key: "preparing", label: "قيد التجهيز", color: "bg-amber-500" },
-  { key: "ready", label: "جاهزة للتوصيل", color: "bg-emerald-500" },
-  { key: "delivered", label: "تم التوصيل", color: "bg-indigo-500" },
-  { key: "returned", label: "المرتجعات", color: "bg-red-500" },
+const STAGES: readonly Stage[] = [
+  { key: "new", label: "الوصفة استلمت", tone: "info" },
+  { key: "preparing", label: "قيد التجهيز", tone: "warning" },
+  { key: "ready", label: "جاهزة للتوصيل", tone: "positive" },
+  { key: "delivered", label: "تم التوصيل", tone: "positive" },
+  { key: "returned", label: "المرتجعات", tone: "danger" },
 ];
 
-export default function PharmacyPage() {
-  const { data: orders, isLoading } = useDashboardData<PharmacyOrder[]>({ url: "/api/prescriptions", refreshInterval: 15000 });
+type Medication = { name?: string; dose?: string; quantity?: number };
 
-  const countByStatus = (status: string) => (orders ?? []).filter(o => o.status === status).length;
+type Prescription = {
+  id: string;
+  doctorId: string;
+  patientId: string;
+  pharmacyId: string | null;
+  medications: Medication[];
+  status: string;
+  notes: string | null;
+  createdAt: string;
+  order: {
+    id: string;
+    orderNumber: string;
+    patientName: string;
+    patientPhone: string;
+  } | null;
+};
+
+type Pharmacy = { id: string; name: string };
+
+const statusOf = (p: Prescription) => p.status;
+
+/** `medications` is a Json column — a malformed row must not crash the table. */
+const medicationCount = (meds: unknown) => (Array.isArray(meds) ? meds.length : 0);
+
+export default function PharmacyPage() {
+  const { data, isLoading, error, refetch } = useDashboardData<Prescription[]>({
+    url: "/api/prescriptions",
+    params: { limit: "100" },
+    refreshInterval: 30_000,
+  });
+
+  const { data: pharmacies } = useDashboardData<Pharmacy[]>({
+    url: "/api/partners",
+    params: { type: "PHARMACY", limit: "100" },
+  });
+
+  const pharmacyNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of pharmacies ?? []) map.set(p.id, p.name);
+    return map;
+  }, [pharmacies]);
+
+  const [stage, setStage] = useState<string | null>(null);
+
+  const counts = useStageCounts(data, STAGES, statusOf);
+
+  const refresh = useCallback(() => void refetch(), [refetch]);
+  const { setStage: advance, isPending } = useStageMutation("/api/prescriptions", refresh);
+
+  const rows = useMemo(
+    () => (stage ? (data ?? []).filter((p) => p.status === stage) : (data ?? [])),
+    [data, stage]
+  );
+
+  const columns: Column<Prescription>[] = useMemo(
+    () => [
+      {
+        key: "prescription",
+        header: "الوصفة",
+        render: (r) => (
+          <span className="font-mono text-sm font-medium text-primary" dir="ltr">
+            #{r.id.slice(-8)}
+          </span>
+        ),
+        sortValue: (r) => r.id,
+      },
+      {
+        key: "patient",
+        header: "المريض",
+        render: (r) =>
+          r.order ? (
+            <div className="min-w-0">
+              <p className="truncate font-medium text-foreground">{r.order.patientName}</p>
+              <p className="truncate text-xs text-muted-foreground" dir="ltr">
+                {r.order.patientPhone}
+              </p>
+            </div>
+          ) : (
+            // Prescription.patientId is a plain column with no User relation, so
+            // an unlinked prescription genuinely has no name to show.
+            <span className="font-mono text-xs text-muted-foreground" dir="ltr">
+              {r.patientId.slice(-8)}
+            </span>
+          ),
+        sortValue: (r) => r.order?.patientName ?? "",
+      },
+      {
+        key: "pharmacy",
+        header: "الصيدلية",
+        secondary: true,
+        render: (r) => (
+          <span className="text-xs text-muted-foreground">
+            {r.pharmacyId
+              ? (pharmacyNames.get(r.pharmacyId) ?? r.pharmacyId.slice(-8))
+              : "لم تُسند لصيدلية"}
+          </span>
+        ),
+        sortValue: (r) => (r.pharmacyId ? (pharmacyNames.get(r.pharmacyId) ?? "") : ""),
+      },
+      {
+        key: "medications",
+        header: "الأدوية",
+        align: "end",
+        render: (r) => formatNumber(medicationCount(r.medications)),
+        sortValue: (r) => medicationCount(r.medications),
+      },
+      {
+        key: "status",
+        header: "المرحلة",
+        render: (r) => <StagePill stages={STAGES} value={r.status} />,
+      },
+      {
+        key: "createdAt",
+        header: "التاريخ",
+        secondary: true,
+        render: (r) => (
+          <span className="whitespace-nowrap text-xs text-muted-foreground">
+            {formatDateTime(r.createdAt)}
+          </span>
+        ),
+        sortValue: (r) => new Date(r.createdAt).getTime(),
+      },
+    ],
+    [pharmacyNames]
+  );
 
   return (
-    <div className="space-y-6" dir="rtl">
-      <div>
-        <h1 className="text-xl font-bold text-foreground flex items-center gap-2"><Pill size={22} className="text-primary" /> الصيدليات</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">5 مراحل: استلام → تجهيز → جاهزة → توصيل → مرتجعات</p>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="الصيدليات"
+        subtitle="٥ مراحل — استلام ثم تجهيز ثم جاهزة ثم توصيل، والمرتجعات"
+        icon={PillIcon}
+      />
 
-      {/* Pipeline */}
-      <div className="flex items-center gap-0 overflow-x-auto pb-2 hide-scrollbar">
-        {pharmaPipeline.map((step, i) => (
-          <div key={step.key} className="flex items-center">
-            <div className="flex flex-col items-center rounded-xl border border-border bg-card p-4 min-w-[120px] hover:shadow-md transition-all">
-              <span className={`flex h-10 w-10 items-center justify-center rounded-full text-white text-sm font-bold mb-2 ${step.color}`}>
-                {countByStatus(step.key)}
-              </span>
-              <span className="text-xs font-medium text-foreground text-center">{step.label}</span>
-            </div>
-            {i < pharmaPipeline.length - 1 && <ArrowLeft size={16} className="text-muted-foreground mx-1 flex-shrink-0" />}
-          </div>
-        ))}
-      </div>
+      <PipelineStrip stages={STAGES} counts={counts} active={stage} onSelect={setStage} />
 
-      {/* Orders table */}
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
-        {isLoading ? (
-          <div className="space-y-3 p-5">{[1,2,3].map(i => <div key={i} className="h-12 rounded bg-muted animate-pulse" />)}</div>
-        ) : (orders ?? []).length === 0 ? (
-          <div className="py-16 text-center text-muted-foreground">لا توجد وصفات</div>
-        ) : (
-          <table className="w-full">
-            <thead><tr className="border-b border-border bg-muted/30">
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">رقم الوصفة</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">المريض</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">الصيدلية</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">العناصر</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">الحالة</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">التاريخ</th>
-            </tr></thead>
-            <tbody className="divide-y divide-border">
-              {(orders ?? []).map((o) => {
-                const step = pharmaPipeline.find(p => p.key === o.status);
-                return (
-                  <tr key={o.id} className="hover:bg-muted/30 transition-colors">
-                    <td className="px-4 py-3 text-sm font-mono font-medium text-primary">{o.prescriptionId || o.id.slice(0,8)}</td>
-                    <td className="px-4 py-3 text-sm font-medium text-foreground">{o.patientName}</td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">{o.pharmacyName}</td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">{o.items || "—"}</td>
-                    <td className="px-4 py-3"><span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold text-white ${step?.color || "bg-gray-500"}`}>{step?.label || o.status}</span></td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">{formatDate(o.createdAt)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      <DataTable
+        rows={rows}
+        columns={columns}
+        isLoading={isLoading}
+        error={error}
+        onRetry={refetch}
+        searchable={(r) =>
+          `${r.id} ${r.order?.patientName ?? ""} ${r.order?.orderNumber ?? ""} ${r.notes ?? ""}`
+        }
+        searchPlaceholder="بحث برقم الوصفة أو المريض..."
+        emptyMessage={stage ? "لا توجد وصفات في هذه المرحلة" : "لا توجد وصفات"}
+        actions={(r) => (
+          <StageAdvance
+            stages={STAGES}
+            current={r.status}
+            onAdvance={(next) => void advance(r.id, next)}
+            disabled={isPending}
+            label={`وصفة ${r.id.slice(-8)}`}
+          />
         )}
-      </div>
+      />
     </div>
   );
 }
