@@ -3,7 +3,7 @@
   "info": {
     "title": "وريد / Warid — HTTP API",
     "version": "1.0.0",
-    "description": "Generated from the route files and the Zod schemas the server validates with —\nrun `npx tsx scripts/generate-openapi.ts` after changing a route.\n\nRead `docs/api/README.md` first: it carries the conventions this spec cannot\nexpress — Baghdad-day bucketing, the money contract, refresh-token rotation\nand its reuse detection, and what is not built yet.\n\nOnly the endpoints listed under `Auth`, `Public`, `Patient` and `Referrals`\nare intended for a mobile client. `Internal` serves the web dashboards: it is\nreachable and documented, but unversioned and expected to change with them."
+    "description": "Generated from the route files and the Zod schemas the server validates with —\nrun `npx tsx scripts/generate-openapi.ts` after changing a route.\n\nRead `docs/api/README.md` first: it carries the conventions this spec cannot\nexpress — Baghdad-day bucketing, the money contract, refresh-token rotation\nand its reuse detection, and what is not built yet.\n\nThis is the FULL surface, most of which serves the web dashboards. The\nnative app signs in as a PATIENT and can only reach `Auth`, `Public` and\n`Patient` — hand the mobile team `openapi.mobile.json` instead, which is\nthis spec filtered to exactly those three."
   },
   "servers": [
     {
@@ -8447,7 +8447,7 @@
     "/api/notifications/{id}/read": {
       "patch": {
         "tags": [
-          "Internal"
+          "Patient"
         ],
         "summary": "PATCH /api/notifications/{id}/read",
         "description": "Requires: **AUTHENTICATED**",

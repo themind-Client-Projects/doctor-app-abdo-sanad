@@ -641,25 +641,42 @@ lets the chain continue: doctor → lab → pharmacy.
 
 ## Import it into Postman (or anything else)
 
-`docs/api/openapi.json` is an **OpenAPI 3.1** spec generated from this codebase.
-Postman, Insomnia, Swagger UI and Bruno all import it directly, and
-`openapi-generator` will turn it into a typed Swift or Kotlin client.
+**OpenAPI 3.1**, generated from this codebase. Postman, Insomnia, Swagger UI
+and Bruno all import it directly, and `openapi-generator` will turn it into a
+typed Swift or Kotlin client.
 
 ```bash
 npx tsx scripts/generate-openapi.ts
 ```
 
-Run that after changing any route. Two halves of the spec are derived, not
-written: the paths, methods and required role come from walking `src/app/api`,
-and the **request bodies come from the Zod schemas the routes validate with**.
-So the spec cannot describe a field the server would reject, or omit one it
-requires — the radiology safety booleans and the medication columns appear as
-`required` because they genuinely are.
+That writes **two** files, and which one you hand over matters:
+
+| File | Contents | Give it to |
+|---|---|---|
+| `openapi.mobile.json` | 24 paths, 26 operations — `Auth` + `Public` + `Patient` | **the mobile team** |
+| `openapi.json` | 123 paths, 193 operations — everything | web dashboard work |
+
+The native app signs in as a `PATIENT` and holds no other role, so the other
+167 operations would answer **403** to it. Handing over the full spec makes the
+client's first job guessing which endpoints apply — and a guess that lands on a
+provider route costs a round of "why is this 403" before anyone suspects the
+document. The filtered spec answers the question by construction.
+
+`PATCH /api/notifications/{id}/read` is in the mobile spec even though it sits
+outside `/api/v1`: the notifications screen cannot work without it, so it is
+part of the patient surface and carries the same stability promise.
+
+Run the generator after changing any route. Two halves of the spec are derived,
+not written: the paths, methods and required role come from walking
+`src/app/api`, and the **request bodies come from the Zod schemas the routes
+validate with**. So the spec cannot describe a field the server would reject, or
+omit one it requires — the radiology safety booleans and the medication columns
+appear as `required` because they genuinely are.
 
 ### Postman
 
-1. **Import** → `docs/api/openapi.json` → it becomes a collection with folders
-   per tag (Auth, Public, Patient, Referrals, Provider dashboard, Internal).
+1. **Import** → `docs/api/openapi.mobile.json` → it becomes a collection with
+   folders per tag (Auth, Public, Patient).
 2. **Import** → `docs/api/warid.postman_environment.json`, then select it.
 3. Set `baseUrl`. The collection's auth is already `Bearer {{accessToken}}`
    because the spec declares a bearer security scheme.
@@ -686,7 +703,7 @@ read the code from the **server console** (no SMS provider is configured — see
 
 ```bash
 npx @openapitools/openapi-generator-cli generate \
-  -i docs/api/openapi.json -g swift5 -o ./client-swift
+  -i docs/api/openapi.mobile.json -g swift5 -o ./client-swift
 ```
 
 One caveat the generator cannot infer: **`clinical` on a referral is a union
@@ -747,8 +764,16 @@ file — referral attachments, lab results, avatars — accepts a URL you host
 elsewhere. When the key is configured, an upload endpoint can return a URL into
 the same field and no stored data changes.
 
-**Push notifications.** `GET /api/notifications` and `GET /api/v1/me/notifications`
-are polled. There is no device-token registration endpoint and no push delivery.
+This does not affect the patient app, which uploads nothing: the fields that
+carry files belong to the provider surface, and the app only ever reads the
+URLs a provider already stored.
+
+**Notifications are in-app, by design.** `GET /api/v1/me/notifications` is an
+activity feed the user opens and reads, with `PATCH /api/notifications/{id}/read`
+marking one seen. There is no device-token registration and no APNs/FCM
+delivery, and none is planned — so a booking confirmation reaches the user when
+they next open the app, not before. Poll the feed; do not build against a push
+that will not arrive.
 
 **OTP delivery.** Wired to UltraMsg/WhatsApp, but no credentials are set in this
 environment, so no message is sent. The verification half is complete.
