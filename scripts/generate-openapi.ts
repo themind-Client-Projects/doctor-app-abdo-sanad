@@ -1,0 +1,313 @@
+#!/usr/bin/env tsx
+/**
+ * Build `docs/api/openapi.json` from the code that actually serves the API.
+ *
+ *   npx tsx scripts/generate-openapi.ts
+ *
+ * Two halves, neither hand-maintained:
+ *
+ *   - **Paths, methods and auth** come from walking `src/app/api`, the same way
+ *     `api-inventory.mjs` builds the endpoint table.
+ *   - **Request bodies** come from the Zod schemas the routes validate with,
+ *     converted by `z.toJSONSchema`. The spec therefore describes the shape the
+ *     server genuinely accepts; it cannot document a field that would be
+ *     rejected, or miss one that is required.
+ *
+ * That second half is the whole point. A hand-written spec is wrong within a
+ * week and the client has no way to tell — the same failure this project already
+ * hit twice with a hand-kept endpoint list and a hand-written error-shape claim.
+ *
+ * Import it into Postman, Insomnia, Swagger UI, or feed it to
+ * openapi-generator to produce a typed Swift/Kotlin client.
+ */
+import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { join, relative } from "node:path";
+import { z } from "zod";
+
+import { tokenGrantSchema } from "@/app/api/auth/token/route";
+import { refreshBodySchema } from "@/app/api/auth/token/refresh/route";
+import { otpSendSchema } from "@/app/api/auth/otp/send/route";
+import { createReferralSchema } from "@/app/api/referrals/route";
+import { respondReferralSchema } from "@/app/api/referrals/[id]/route";
+import { createBookingSchema } from "@/app/api/v1/me/bookings/route";
+import { updateProfileSchema } from "@/app/api/v1/me/profile/route";
+import { createPrescriptionSchema } from "@/app/api/prescriptions/route";
+import {
+  doctorClinicalSchema,
+  labClinicalSchema,
+  medicationSchema,
+  pharmacyClinicalSchema,
+  radiologyClinicalSchema,
+} from "@/server/services/referral-forms";
+
+/* ------------------------------ route walking ----------------------------- */
+
+const API_DIR = "src/app/api";
+const METHODS = ["get", "post", "put", "patch", "delete"] as const;
+
+function routeFiles(dir: string, found: string[] = []): string[] {
+  for (const entry of readdirSync(dir)) {
+    const path = join(dir, entry);
+    if (statSync(path).isDirectory()) routeFiles(path, found);
+    else if (entry === "route.ts") found.push(path);
+  }
+  return found;
+}
+
+/** The role group guarding a handler, read from its `withAuth` wrapper. */
+function guardFor(source: string, method: string): string | null {
+  const upper = method.toUpperCase();
+  const assigned = source.search(new RegExp(`export const ${upper}\\s*=`));
+  const bare = new RegExp(`export async function ${upper}\\s*\\(`).test(source);
+  if (assigned < 0 && !bare) return null;
+  if (assigned < 0) return "PUBLIC";
+
+  const head = source.slice(assigned, assigned + 400);
+  const named = head.match(/roles:\s*ROLES\.(\w+)/);
+  if (named) return `ROLES.${named[1]}`;
+  const local = head.match(/roles:\s*([A-Z_]+)\b/);
+  if (local) return local[1];
+  return /withAuth/.test(head) ? "AUTHENTICATED" : "PUBLIC";
+}
+
+/** `/api/referrals/[id]` → `/api/referrals/{id}`, and the parameter list. */
+function toOpenApiPath(url: string) {
+  const params: string[] = [];
+  const path = url.replace(/\[([^\]]+)\]/g, (_, name: string) => {
+    params.push(name);
+    return `{${name}}`;
+  });
+  return { path, params };
+}
+
+/* -------------------------------- schemas --------------------------------- */
+
+const json = (schema: z.ZodType) => {
+  const out = z.toJSONSchema(schema, { io: "input" }) as Record<string, unknown>;
+  // OpenAPI 3.1 carries its own dialect; a nested `$schema` confuses some
+  // importers (Postman among them) into treating the node as external.
+  delete out.$schema;
+  return out;
+};
+
+const components = {
+  securitySchemes: {
+    bearerAuth: {
+      type: "http",
+      scheme: "bearer",
+      bearerFormat: "JWT",
+      description:
+        "Access token from POST /api/auth/token. Valid 15 minutes; refresh with " +
+        "POST /api/auth/token/refresh. If this header is present its verdict is " +
+        "final — the server never falls back to a cookie.",
+    },
+  },
+  schemas: {
+    Error: {
+      type: "object",
+      required: ["error", "code"],
+      properties: {
+        error: { type: "string", description: "Human-readable Arabic. Not stable — do not branch on it." },
+        code: {
+          type: "string",
+          description: "The machine-readable contract. Branch on this.",
+          enum: [
+            "MALFORMED_JSON", "VALIDATION_FAILED", "INVALID_QUERY_PARAM",
+            "UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND",
+            "DUPLICATE_RESOURCE", "INVALID_REFERENCE", "INVALID_STATE_TRANSITION",
+            "BUSINESS_RULE_VIOLATION", "RATE_LIMITED",
+            "INTERNAL_ERROR", "UPSTREAM_UNAVAILABLE",
+          ],
+        },
+        details: {
+          type: "array",
+          description: "Present on VALIDATION_FAILED. `field` is a dot path into the body you sent.",
+          items: {
+            type: "object",
+            required: ["field", "code", "message"],
+            properties: {
+              field: { type: "string", example: "clinical.medications.0.dose" },
+              code: { type: "string" },
+              message: { type: "string" },
+            },
+          },
+        },
+        requestId: { type: "string" },
+      },
+    },
+    PageMeta: {
+      type: "object",
+      required: ["nextCursor", "hasMore", "limit"],
+      properties: {
+        nextCursor: {
+          type: ["string", "null"],
+          description: "Opaque keyset cursor over (createdAt, id). Do not parse or construct it.",
+        },
+        hasMore: { type: "boolean" },
+        limit: { type: "integer", maximum: 100 },
+        total: { type: "integer", description: "Only when explicitly requested — COUNT(*) is a scan." },
+      },
+    },
+    Envelope: {
+      type: "object",
+      required: ["data"],
+      properties: {
+        data: {},
+        meta: {
+          type: "object",
+          properties: {
+            requestId: { type: "string" },
+            page: { $ref: "#/components/schemas/PageMeta" },
+          },
+        },
+      },
+    },
+    // The four referral documents. `clinical` is a union DISCRIMINATED ON
+    // `kind` — model it as a sealed type, not one struct of optional fields:
+    // every schema is `.strict()`, so a merged struct sends keys that 400.
+    RadiologyClinical: json(radiologyClinicalSchema),
+    PharmacyClinical: json(pharmacyClinicalSchema),
+    LabClinical: json(labClinicalSchema),
+    DoctorClinical: json(doctorClinicalSchema),
+    Medication: json(medicationSchema),
+  },
+} as const;
+
+/** Request bodies derived from the schema the route validates with. */
+const BODIES: Record<string, { schema: z.ZodType; summary: string }> = {
+  "post /api/auth/token": { schema: tokenGrantSchema, summary: "Sign in — password, otp or google grant" },
+  "post /api/auth/token/refresh": { schema: refreshBodySchema, summary: "Rotate the token pair" },
+  "post /api/auth/otp/send": { schema: otpSendSchema, summary: "Send a verification code" },
+  "post /api/referrals": { schema: createReferralSchema, summary: "Send one of the four referral documents" },
+  "patch /api/referrals/{id}": { schema: respondReferralSchema, summary: "Reply to a referral, or withdraw it" },
+  "post /api/v1/me/bookings": { schema: createBookingSchema, summary: "Book a service" },
+  "patch /api/v1/me/profile": { schema: updateProfileSchema, summary: "Update my profile" },
+  "post /api/prescriptions": { schema: createPrescriptionSchema, summary: "Write a prescription" },
+};
+
+/** Group endpoints so Postman shows readable folders. */
+function tagFor(url: string): string {
+  if (url.startsWith("/api/auth")) return "Auth";
+  if (url.startsWith("/api/public")) return "Public";
+  if (url.startsWith("/api/v1/me")) return "Patient";
+  if (url.startsWith("/api/v1")) return "Patient";
+  if (url.startsWith("/api/referrals")) return "Referrals";
+  if (url.startsWith("/api/dashboard")) return "Provider dashboard";
+  return "Internal";
+}
+
+/* --------------------------------- build ---------------------------------- */
+
+const paths: Record<string, Record<string, unknown>> = {};
+let handlerCount = 0;
+
+for (const file of routeFiles(API_DIR).sort()) {
+  const source = readFileSync(file, "utf8");
+  const url =
+    "/" +
+    relative("src/app", file).replace(/\/route\.ts$/, "").replace(/\(([^)]+)\)\//g, "");
+
+  // NextAuth's own catch-all is a browser redirect flow, not part of this API.
+  if (url.includes("[...nextauth]")) continue;
+
+  const { path, params } = toOpenApiPath(url);
+
+  for (const method of METHODS) {
+    const guard = guardFor(source, method);
+    if (!guard) continue;
+    handlerCount++;
+
+    const key = `${method} ${path}`;
+    const body = BODIES[key];
+    const isPublic = guard === "PUBLIC";
+
+    const operation: Record<string, unknown> = {
+      tags: [tagFor(url)],
+      summary: body?.summary ?? `${method.toUpperCase()} ${path}`,
+      description: `Requires: **${guard}**`,
+      operationId: `${method}${path.replace(/[^a-zA-Z0-9]+/g, "_")}`,
+      security: isPublic ? [] : [{ bearerAuth: [] }],
+      responses: {
+        "200": {
+          description: "Success",
+          content: { "application/json": { schema: { $ref: "#/components/schemas/Envelope" } } },
+        },
+        "400": errorResponse("Validation failed — see `details`"),
+        ...(isPublic ? {} : { "401": errorResponse("Missing, expired or invalid token") }),
+        ...(isPublic ? {} : { "403": errorResponse("Authenticated, but not allowed") }),
+        "404": errorResponse("Not found — or not yours; the two are deliberately indistinguishable"),
+        "422": errorResponse("Refused by a domain rule — `error` explains why"),
+        "429": errorResponse("Rate limited — back off"),
+        "500": errorResponse("Server fault — retry with backoff and quote `requestId`"),
+      },
+    };
+
+    if (params.length > 0) {
+      operation.parameters = params.map((name) => ({
+        name,
+        in: "path",
+        required: true,
+        schema: { type: "string" },
+      }));
+    }
+
+    if (body) {
+      operation.requestBody = {
+        required: true,
+        content: { "application/json": { schema: json(body.schema) } },
+      };
+    }
+
+    paths[path] ??= {};
+    paths[path][method] = operation;
+  }
+}
+
+function errorResponse(description: string) {
+  return {
+    description,
+    content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+  };
+}
+
+const spec = {
+  openapi: "3.1.0",
+  info: {
+    title: "وريد / Warid — HTTP API",
+    version: "1.0.0",
+    description: [
+      "Generated from the route files and the Zod schemas the server validates with —",
+      "run `npx tsx scripts/generate-openapi.ts` after changing a route.",
+      "",
+      "Read `docs/api/README.md` first: it carries the conventions this spec cannot",
+      "express — Baghdad-day bucketing, the money contract, refresh-token rotation",
+      "and its reuse detection, and what is not built yet.",
+      "",
+      "Only the endpoints listed under `Auth`, `Public`, `Patient` and `Referrals`",
+      "are intended for a mobile client. `Internal` serves the web dashboards: it is",
+      "reachable and documented, but unversioned and expected to change with them.",
+    ].join("\n"),
+  },
+  servers: [
+    { url: "http://localhost:3000", description: "Local development" },
+    { url: "{baseUrl}", description: "Deployed", variables: { baseUrl: { default: "https://warid.app" } } },
+  ],
+  tags: [
+    { name: "Auth", description: "Sign in, refresh, sign out" },
+    { name: "Public", description: "Browsable with no token" },
+    { name: "Patient", description: "The patient app surface (/api/v1)" },
+    { name: "Referrals", description: "The four referral documents inside a medical complex" },
+    { name: "Provider dashboard", description: "Partner worklists and earnings" },
+    { name: "Internal", description: "Web dashboard surface — unversioned" },
+  ],
+  security: [{ bearerAuth: [] }],
+  components,
+  paths,
+};
+
+writeFileSync("docs/api/openapi.json", JSON.stringify(spec, null, 2) + "\n");
+
+console.log(
+  `docs/api/openapi.json — ${Object.keys(paths).length} paths, ${handlerCount} operations, ` +
+    `${Object.keys(BODIES).length} request bodies derived from live Zod schemas`
+);
