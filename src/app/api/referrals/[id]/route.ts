@@ -69,7 +69,7 @@ export const GET = withAuth<Ctx>({ roles: ROLES.STAFF }, async (req, { params },
   const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
 
-  const { referral, actor } = await loadForCaller(id, identity);
+  const { referral, actor, ctx } = await loadForCaller(id, identity);
   // Same 404 for "does not exist" and "not yours", so the endpoint cannot be
   // used to probe which referral ids are real.
   if (!referral || !actor) {
@@ -78,7 +78,7 @@ export const GET = withAuth<Ctx>({ roles: ROLES.STAFF }, async (req, { params },
 
   return ok(
     {
-      ...decorateReferral(referral),
+      ...decorateReferral(referral, ctx?.partnerId ?? null),
       attachments: parseAttachments(referral.attachments),
       direction: directionFor(actor),
     },
@@ -92,7 +92,7 @@ export const PATCH = withAuth<Ctx>({ roles: ROLES.CLINICAL }, async (req, { para
   const { id } = await params;
   const input = await parseBody(req, respondSchema);
 
-  const { referral, actor } = await loadForCaller(id, identity);
+  const { referral, actor, ctx } = await loadForCaller(id, identity);
   if (!referral || !actor) {
     return fail(ErrorCode.NOT_FOUND, 404, "الإحالة غير موجودة", { requestId });
   }
@@ -206,7 +206,7 @@ export const PATCH = withAuth<Ctx>({ roles: ROLES.CLINICAL }, async (req, { para
 
   return ok(
     {
-      ...decorateReferral(updated),
+      ...decorateReferral(updated, ctx?.partnerId ?? null),
       attachments: parseAttachments(updated.attachments),
       direction: directionFor(actor),
     },

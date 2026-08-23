@@ -41,20 +41,23 @@ const roleMenus: Record<string, { label: string; icon: React.ReactNode; href: st
   ],
   LAB: [
     { label: "الرئيسية", icon: <LayoutDashboard size={20} />, href: "/dashboard" },
+    { label: "المرضى", icon: <Users size={20} />, href: "/dashboard/patients" },
     { label: "العينات", icon: <FlaskConical size={20} />, href: "/dashboard/samples" },
-        { label: "المالية", icon: <Wallet size={20} />, href: "/dashboard/finance" },
+    { label: "المالية", icon: <Wallet size={20} />, href: "/dashboard/finance" },
     { label: "الإشعارات", icon: <Bell size={20} />, href: "/dashboard/notifications" },
     { label: "الإعدادات", icon: <Settings size={20} />, href: "/dashboard/settings" },
   ],
   PHARMACY: [
     { label: "الرئيسية", icon: <LayoutDashboard size={20} />, href: "/dashboard" },
+    { label: "المرضى", icon: <Users size={20} />, href: "/dashboard/patients" },
     { label: "الوصفات", icon: <Pill size={20} />, href: "/dashboard/prescriptions" },
-        { label: "المالية", icon: <Wallet size={20} />, href: "/dashboard/finance" },
+    { label: "المالية", icon: <Wallet size={20} />, href: "/dashboard/finance" },
     { label: "الإشعارات", icon: <Bell size={20} />, href: "/dashboard/notifications" },
     { label: "الإعدادات", icon: <Settings size={20} />, href: "/dashboard/settings" },
   ],
   NURSE: [
     { label: "الرئيسية", icon: <LayoutDashboard size={20} />, href: "/dashboard" },
+    { label: "المرضى", icon: <Users size={20} />, href: "/dashboard/patients" },
     { label: "الزيارات", icon: <Stethoscope size={20} />, href: "/dashboard/visits" },
     { label: "المالية", icon: <Wallet size={20} />, href: "/dashboard/finance" },
     { label: "الإشعارات", icon: <Bell size={20} />, href: "/dashboard/notifications" },
@@ -69,6 +72,7 @@ const roleMenus: Record<string, { label: string; icon: React.ReactNode; href: st
   ],
   RADIOLOGY: [
     { label: "الرئيسية", icon: <LayoutDashboard size={20} />, href: "/dashboard" },
+    { label: "المرضى", icon: <Users size={20} />, href: "/dashboard/patients" },
     { label: "طلبات الأشعة", icon: <ScanLine size={20} />, href: "/dashboard/imaging" },
     { label: "المالية", icon: <Wallet size={20} />, href: "/dashboard/finance" },
     { label: "الإشعارات", icon: <Bell size={20} />, href: "/dashboard/notifications" },

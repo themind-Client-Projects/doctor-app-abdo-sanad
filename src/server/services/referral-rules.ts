@@ -33,6 +33,32 @@ export type ReferralStatus = (typeof REFERRAL_STATUSES)[number];
 
 export const referralStatusSchema = z.enum(REFERRAL_STATUSES, { message: "حالة غير صالحة" });
 
+/**
+ * What the TIMELINE can record — a superset of what the status column can hold.
+ *
+ * The client's form draws أُرسل ← استُلم ← رُوجع ← أُعيدت ← عُولجت. Four of those
+ * are statuses a referral enters, but "أُعيدت الإحالة" is not: re-referring
+ * creates a NEW document and leaves the old one exactly where it was. It is
+ * something that HAPPENED to the referral, which is precisely what an event log
+ * is for and what a status column cannot express.
+ *
+ * Keeping it out of `REFERRAL_STATUSES` is deliberate: `canTransition` must
+ * never offer it, and no row's `status` may ever be written to it.
+ */
+export const REFERRAL_EVENT_STATUSES = [...REFERRAL_STATUSES, "re_referred"] as const;
+
+export type ReferralEventStatus = (typeof REFERRAL_EVENT_STATUSES)[number];
+
+/** One label map for the timeline, so the track reads the same wherever drawn. */
+export const REFERRAL_EVENT_LABELS: Record<ReferralEventStatus, string> = {
+  sent: "أُرسلت",
+  received: "استُلمت",
+  in_progress: "قيد التنفيذ",
+  completed: "عُولجت",
+  cancelled: "سُحبت",
+  re_referred: "أُعيدت الإحالة",
+};
+
 /** Statuses the RECIPIENT may move a referral to, keyed by where it is now. */
 const RECIPIENT_TRANSITIONS: Record<ReferralStatus, readonly ReferralStatus[]> = {
   sent: ["received", "in_progress", "completed"],

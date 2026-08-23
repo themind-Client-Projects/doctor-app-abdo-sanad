@@ -450,6 +450,45 @@ thing that moves money.
 | `GET /api/v1/specialties` | medical specialties |
 | `GET /api/v1/doctors` | authenticated doctor list |
 
+### Verifying a printed document
+
+```
+GET /api/public/documents/verify?reference=RAD-2024-05120&code=<code>
+```
+
+Public, no token. Every referral document carries a QR whose URL is
+`/verify/{reference}?c={code}`; scanning it opens a web page, and this endpoint
+is the same check for an app that would rather verify in-app than open a browser.
+
+```json
+{ "data": {
+    "referenceNumber": "RAD-2024-05120",
+    "kind": "RADIOLOGY",
+    "status": "completed",
+    "issuedAt": "2024-05-20T10:30:00.000Z",
+    "expiresAt": "2024-06-19T10:30:00.000Z",
+    "isExpired": false,
+    "respondedAt": "2024-05-21T08:00:00.000Z",
+    "fromPartner": "عيادة د. أحمد",
+    "toPartner": "مركز الرافدين للأشعة",
+    "complex": "مجمّع بغداد الطبي" } }
+```
+
+**No patient data comes back** — no name, no phone, no clinical content, no
+result, no attachments. Whoever scanned the QR is already holding the document;
+this confirms what they can see rather than disclosing what they cannot. Do not
+build a screen that expects more.
+
+**Every failure is the same `404`** with code `NOT_FOUND` — unknown reference,
+wrong code, malformed input. They are deliberately indistinguishable: the
+sequence is an incrementing integer, so a distinguishable answer would enumerate
+the platform's referral volume. Treat 404 as "not verified", never as "retry".
+
+A `200` is not the whole answer. Check `status` and `isExpired` too: a genuine
+document that was withdrawn returns `status: "cancelled"`, and one past its
+30-day window returns `isExpired: true`. Both are real documents that must not
+be acted on.
+
 ---
 
 ## Provider app surface
@@ -462,7 +501,7 @@ the caller's own partner record.
 | `GET /api/partners/me` | the caller's own provider record — read-only |
 | `GET /api/dashboard/summary` | headline counts |
 | `GET /api/dashboard/earnings` | wallet balance, today, this month, and the gross value of delivered-but-unsettled work |
-| `GET /api/dashboard/patients` | people this provider has treated, derived from their own orders and appointments |
+| `GET /api/dashboard/patients` | people this provider has treated, derived from their own orders, appointments, referrals and prescriptions |
 | `GET /api/dashboard/tasks` · `alerts` · `calendar` · `recent-activity` | worklist widgets |
 | `GET /api/orders` | orders assigned to this partner |
 | `GET /api/transactions` | this partner's wallet ledger |
@@ -678,9 +717,13 @@ appear as `required` because they genuinely are.
 1. **Import** → `docs/api/openapi.mobile.json` → it becomes a collection with
    folders per tag (Auth, Public, Patient).
 2. **Import** → `docs/api/warid.postman_environment.json`, then select it.
-3. Set `baseUrl`. The collection's auth is already `Bearer {{accessToken}}`
-   because the spec declares a bearer security scheme.
-4. Sign in and capture the token. On `POST /api/auth/token`, add this to the
+3. Set `baseUrl` in the environment.
+4. Open the **collection** → **Authorization**. The spec declares a bearer
+   scheme, so Postman preselects **Bearer Token** — but it fills a placeholder
+   of its own, not our variable. Replace the token value with
+   `{{accessToken}}`. Every request inherits it; leave each request's own auth
+   on *Inherit from parent*.
+5. Sign in and capture the token. On `POST /api/auth/token`, add this to the
    **Scripts → Post-response** tab so you never paste a token by hand:
 
 ```js
@@ -856,7 +899,7 @@ method is the group that may call it.
 | `/api/dashboard/alerts` | `GET` ROLES.STAFF |
 | `/api/dashboard/calendar` | `GET` ROLES.STAFF |
 | `/api/dashboard/earnings` | `GET` ROLES.STAFF |
-| `/api/dashboard/patients` | `GET` ROLES.STAFF |
+| `/api/dashboard/patients` | `GET` ROLES.CLINICAL |
 | `/api/dashboard/recent-activity` | `GET` ROLES.STAFF |
 | `/api/dashboard/summary` | `GET` ROLES.STAFF |
 | `/api/dashboard/tasks` | `GET` ROLES.STAFF |
@@ -881,7 +924,7 @@ method is the group that may call it.
 | `/api/orders/[id]/hold` | `POST` ROLES.OPERATIONS |
 | `/api/orders/[id]/price` | `POST` ROLES.OPERATIONS |
 | `/api/orders/[id]/reject` | `POST` ROLES.OPERATIONS |
-| `/api/orders/[id]` | `GET` ROLES.OPERATIONS<br>`PATCH` ROLES.OPERATIONS<br>`DELETE` ROLES.ADMIN |
+| `/api/orders/[id]` | `GET` ROLES.STAFF<br>`PATCH` ROLES.OPERATIONS<br>`DELETE` ROLES.ADMIN |
 | `/api/orders/[id]/settle` | `GET` ROLES.OPERATIONS<br>`POST` ROLES.OPERATIONS<br>`DELETE` ROLES.ADMIN |
 | `/api/orders/[id]/timeline` | `GET` ROLES.OPERATIONS<br>`POST` ROLES.OPERATIONS |
 | `/api/orders/[id]/transfer` | `POST` ROLES.OPERATIONS |
@@ -904,6 +947,7 @@ method is the group that may call it.
 | `/api/pricing` | `GET` ROLES.ADMIN<br>`POST` ROLES.ADMIN |
 | `/api/public/doctors/[id]` | `GET` PUBLIC |
 | `/api/public/doctors` | `GET` PUBLIC |
+| `/api/public/documents/verify` | `GET` PUBLIC |
 | `/api/public/feature-flags` | `GET` PUBLIC |
 | `/api/public/governorates` | `GET` PUBLIC |
 | `/api/public/offers` | `GET` PUBLIC |
@@ -946,5 +990,3 @@ method is the group that may call it.
 | `/api/wallets/[partnerId]/transfers` | `GET` ROLES.ADMIN<br>`POST` ROLES.ADMIN |
 | `/api/wallets` | `GET` ROLES.ADMIN |
 | `/api/webhooks/wayl` | `POST` PUBLIC |
-
-<!-- END GENERATED: api-inventory -->

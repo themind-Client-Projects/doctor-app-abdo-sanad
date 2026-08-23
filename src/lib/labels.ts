@@ -112,6 +112,21 @@ export const ORDER_PRIORITY_LABELS = {
   CRITICAL: "حرج",
 } as const;
 
+/**
+ * The same `Priority` enum, worded as the client's printed forms word it.
+ *
+ * "عادي / مهم / عاجل" is what the four referral documents show, and it does not
+ * match the operations wording above — `URGENT` reads as عاجل on a delivery
+ * order and مهم on a prescription. Two maps because they are two vocabularies,
+ * both centralised here because the send dialog and the printed sheet must not
+ * disagree about what a referral's own priority is called.
+ */
+export const REFERRAL_PRIORITY_LABELS = {
+  NORMAL: "عادي",
+  URGENT: "مهم",
+  CRITICAL: "عاجل",
+} as const;
+
 export const PAYMENT_METHOD_LABELS = {
   CASH: "نقداً",
   CARD: "بطاقة",

@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { Building2, Share2 } from "lucide-react";
 import { DataTable, type Column } from "@/components/data/data-table";
-import { PageHeader, Pill } from "@/components/data/crud-kit";
+import { PageHeader } from "@/components/data/crud-kit";
 import { Field, FormDialog, fieldClass } from "@/components/data/form-dialog";
 import { SearchableSelect, type SelectOption } from "@/components/data/searchable-select";
 import { PipelineStrip, StagePill, useStageCounts, type Stage } from "@/components/data/status-pipeline";
@@ -14,13 +14,18 @@ import {
   type Referral,
   type ReferralAttachment,
 } from "@/hooks/use-referrals";
-import { PARTNER_TYPE_LABELS, SERVICE_TYPE_LABELS } from "@/lib/labels";
+import {
+  PARTNER_TYPE_LABELS,
+  REFERRAL_PRIORITY_LABELS,
+  SERVICE_TYPE_LABELS,
+} from "@/lib/labels";
 import {
   ClinicalFields,
   emptyClinical,
   isClinicalComplete,
   type ClinicalDraft,
 } from "@/components/features/referrals/clinical-fields";
+import { ReReferDialog } from "@/components/features/referrals/re-refer-dialog";
 import {
   KIND_RECIPIENTS,
   REFERRAL_KINDS,
@@ -57,12 +62,21 @@ const RECIPIENT_NEXT: Record<string, string[]> = {
   cancelled: [],
 };
 
-/** عادي / مهم / عاجل — the wording on the client's forms, over `Priority`. */
-const PRIORITY_OPTIONS = [
-  { value: "NORMAL", label: "عادي" },
-  { value: "URGENT", label: "مهم" },
-  { value: "CRITICAL", label: "عاجل" },
-];
+/** عادي / مهم / عاجل — from `labels.ts`, so the form and the printed sheet agree. */
+const PRIORITY_OPTIONS = Object.entries(REFERRAL_PRIORITY_LABELS).map(([value, label]) => ({
+  value,
+  label,
+}));
+
+/**
+ * One class for every row action, so the buttons do not drift apart.
+ *
+ * `whitespace-nowrap` because the cell can now hold up to four controls, and
+ * "إعادة الإحالة" is two words — without it the label wraps mid-phrase at
+ * narrow widths and the row grows a second line.
+ */
+const rowActionClass =
+  "whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-accent disabled:opacity-50";
 
 const partnerLabel = (type: string) =>
   PARTNER_TYPE_LABELS[type as keyof typeof PARTNER_TYPE_LABELS] ?? type;
@@ -95,6 +109,7 @@ export default function ReferralsPage() {
 
   const [sendOpen, setSendOpen] = useState(false);
   const [replyTo, setReplyTo] = useState<Referral | null>(null);
+  const [reReferFrom, setReReferFrom] = useState<Referral | null>(null);
 
   const counts = useStageCounts(all, STAGES, (r) => r.status);
 
@@ -120,6 +135,22 @@ export default function ReferralsPage() {
           <div className="min-w-0">
             <p className="truncate font-medium text-foreground">{r.title}</p>
             <p className="truncate text-xs text-muted-foreground">{serviceLabel(r.serviceType)}</p>
+            {/* The chain, in whichever direction it exists. Without this a
+                re-referral is invisible in the list and the two documents look
+                unrelated. */}
+            {r.parent ? (
+              <p className="truncate text-[11px] text-muted-foreground">
+                متابعة لـ <span className="font-mono" dir="ltr">{r.parent.referenceNumber}</span>
+              </p>
+            ) : null}
+            {r.children.length > 0 ? (
+              <p className="truncate text-[11px] text-muted-foreground">
+                أُعيدت الإحالة —{" "}
+                <span className="font-mono" dir="ltr">
+                  {r.children.map((c) => c.referenceNumber).join("، ")}
+                </span>
+              </p>
+            ) : null}
           </div>
         ),
         sortValue: (r) => r.title,
@@ -252,29 +283,64 @@ export default function ReferralsPage() {
         searchable={(r) => `${r.patientName} ${r.patientPhone} ${r.title} ${r.fromPartner.name} ${r.toPartner.name}`}
         searchPlaceholder="بحث باسم المريض أو الطلب..."
         emptyMessage={stage ? "لا إحالات في هذه الحالة" : "لا إحالات بعد"}
-        actions={(r) =>
-          r.direction === "incoming" && RECIPIENT_NEXT[r.status]?.length ? (
-            <button
-              type="button"
-              onClick={() => setReplyTo(r)}
-              disabled={isResponding}
-              className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
+        actions={(r) => (
+          <div className="flex items-center justify-end gap-1.5">
+            {r.direction === "incoming" && RECIPIENT_NEXT[r.status]?.length ? (
+              <button
+                type="button"
+                onClick={() => setReplyTo(r)}
+                disabled={isResponding}
+                className={`${rowActionClass} text-foreground`}
+              >
+                الرد
+              </button>
+            ) : null}
+
+            {/* إعادة الإحالة — available to whichever side is holding the case
+                now. A lab that finished a test sends the patient on to the
+                pharmacy; a doctor whose result came back re-refers onward.
+                Withdrawn documents are excluded: continuing a chain from a
+                referral that never happened would assert care that never
+                occurred.
+
+                Not for `observed` — a platform role is watching, not treating,
+                and the server refuses their send with 422 because they belong
+                to no complex. Offering a button that cannot succeed is worse
+                than offering none. */}
+            {r.status !== "cancelled" && r.direction !== "observed" ? (
+              <button
+                type="button"
+                onClick={() => setReReferFrom(r)}
+                disabled={isSending}
+                className={`${rowActionClass} text-foreground`}
+              >
+                إعادة الإحالة
+              </button>
+            ) : null}
+
+            {/* A new tab, not a route change: the reviewer is mid-worklist and
+                the sheet is a document to print, not a place to navigate to. */}
+            <a
+              href={`/referrals/${r.id}/print`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`${rowActionClass} text-muted-foreground`}
             >
-              الرد
-            </button>
-          ) : r.direction === "outgoing" && (r.status === "sent" || r.status === "received") ? (
-            <button
-              type="button"
-              onClick={() => withdraw(r)}
-              disabled={isResponding}
-              className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent disabled:opacity-50"
-            >
-              سحب
-            </button>
-          ) : (
-            <Pill tone="neutral">—</Pill>
-          )
-        }
+              طباعة
+            </a>
+
+            {r.direction === "outgoing" && (r.status === "sent" || r.status === "received") ? (
+              <button
+                type="button"
+                onClick={() => withdraw(r)}
+                disabled={isResponding}
+                className={`${rowActionClass} text-muted-foreground`}
+              >
+                سحب
+              </button>
+            ) : null}
+          </div>
+        )}
       />
 
       <SendReferralDialog
@@ -301,6 +367,17 @@ export default function ReferralsPage() {
           if (!replyTo) return;
           const updated = await respond(replyTo.id, input);
           if (updated) setReplyTo(null);
+        }}
+      />
+
+      <ReReferDialog
+        source={reReferFrom}
+        recipients={recipients}
+        isPending={isSending}
+        onClose={() => setReReferFrom(null)}
+        onSubmit={async (input) => {
+          const created = await send(input);
+          if (created) setReReferFrom(null);
         }}
       />
     </div>

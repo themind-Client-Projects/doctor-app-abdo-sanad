@@ -32,6 +32,7 @@ import { respondReferralSchema } from "@/app/api/referrals/[id]/route";
 import { createBookingSchema } from "@/app/api/v1/me/bookings/route";
 import { updateProfileSchema } from "@/app/api/v1/me/profile/route";
 import { createPrescriptionSchema } from "@/app/api/prescriptions/route";
+import { verifyDocumentQuerySchema } from "@/app/api/public/documents/verify/route";
 import {
   doctorClinicalSchema,
   labClinicalSchema,
@@ -197,10 +198,37 @@ const BODIES: Record<string, { schema: z.ZodType; summary: string }> = {
  */
 const PATIENT_EXTRAS = new Set(["patch /api/notifications/{id}/read"]);
 
+/**
+ * Query parameters derived from the schema the route parses them with.
+ *
+ * Same principle as `BODIES`, and just as necessary: an endpoint whose entire
+ * input is a query string, published with no parameters at all, documents
+ * nothing a client can call.
+ */
+const QUERIES: Record<string, z.ZodType> = {
+  "get /api/public/documents/verify": verifyDocumentQuerySchema,
+};
+
+/** Turn an object schema into OpenAPI `parameters`, one entry per property. */
+function queryParameters(schema: z.ZodType) {
+  const asJson = json(schema) as {
+    properties?: Record<string, Record<string, unknown>>;
+    required?: string[];
+  };
+  const required = new Set(asJson.required ?? []);
+  return Object.entries(asJson.properties ?? {}).map(([name, propertySchema]) => ({
+    name,
+    in: "query",
+    required: required.has(name),
+    schema: propertySchema,
+  }));
+}
+
 /** Group endpoints so Postman shows readable folders. */
 function tagFor(url: string, method: string, path: string): string {
   if (PATIENT_EXTRAS.has(`${method} ${path}`)) return "Patient";
   if (url.startsWith("/api/auth")) return "Auth";
+  if (url.startsWith("/api/public/documents")) return "Public";
   if (url.startsWith("/api/public")) return "Public";
   if (url.startsWith("/api/v1/me")) return "Patient";
   if (url.startsWith("/api/v1")) return "Patient";
@@ -265,14 +293,16 @@ for (const file of routeFiles(API_DIR).sort()) {
       },
     };
 
-    if (params.length > 0) {
-      operation.parameters = params.map((name) => ({
+    const parameters = [
+      ...params.map((name) => ({
         name,
         in: "path",
         required: true,
         schema: { type: "string" },
-      }));
-    }
+      })),
+      ...(QUERIES[key] ? queryParameters(QUERIES[key]) : []),
+    ];
+    if (parameters.length > 0) operation.parameters = parameters;
 
     if (body) {
       operation.requestBody = {

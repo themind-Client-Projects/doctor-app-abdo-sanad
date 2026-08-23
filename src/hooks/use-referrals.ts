@@ -56,6 +56,25 @@ export type Referral = {
   toPartner: ReferralParty;
   complex: { id: string; name: string };
   direction: ReferralDirection;
+  /** إعادة الإحالة — the document this one continues, and what came out of it. */
+  parent: ReferralChainLink | null;
+  children: ReferralChainLink[];
+};
+
+/**
+ * A neighbour in the chain — enough to name and link it, and nothing more.
+ *
+ * Deliberately carries no result, clinical payload or attachments: the
+ * recipient of a re-referral is not a party to its parent and has no right to
+ * read it. The re-referral form gets that context from the sender's own row.
+ */
+export type ReferralChainLink = {
+  id: string;
+  referenceNumber: string;
+  kind: string;
+  status: string;
+  createdAt: string;
+  toPartner: { id: string; name: string; type: string };
 };
 
 export type RecipientsPayload = {
@@ -89,6 +108,14 @@ export type SendReferralInput = {
   priority?: string;
   /** The document's own fields, validated server-side against `kind`. */
   clinical?: unknown;
+  /**
+   * إعادة الإحالة — the referral this one continues.
+   *
+   * The ONLY thing carried over. `kind`, the recipient, the title and above all
+   * `clinical` are re-authored: a copied "لا حساسية من الصبغة" would read as an
+   * answer given today when nobody was asked.
+   */
+  parentId?: string;
 };
 
 export type RespondInput = {

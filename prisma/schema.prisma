@@ -308,6 +308,17 @@ model ComplexReferral {
   /// each other.
   orderId String?
 
+  /// إعادة الإحالة — the referral this one continues.
+  ///
+  /// A lab replies with a result, and the doctor re-refers the same patient
+  /// onward to a pharmacy. That is a NEW document with its own number, its own
+  /// 30-day validity and its own clinical content — not a status on the old
+  /// one — so the link is a parent pointer rather than a mutation.
+  ///
+  /// Nullable and `onDelete: SetNull`: losing a parent must orphan the chain,
+  /// never cascade-delete a prescription a pharmacy already acted on.
+  parentId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -316,6 +327,8 @@ model ComplexReferral {
   toPartner   Partner         @relation("ReferralsReceived", fields: [toPartnerId], references: [id])
   order       Order?          @relation(fields: [orderId], references: [id])
   events      ReferralEvent[]
+  parent      ComplexReferral?  @relation("ReferralChain", fields: [parentId], references: [id], onDelete: SetNull)
+  children    ComplexReferral[] @relation("ReferralChain")
 
   @@index([toPartnerId, status, createdAt(sort: Desc)])
   @@index([fromPartnerId, createdAt(sort: Desc)])
@@ -324,6 +337,7 @@ model ComplexReferral {
   @@index([orderId])
   @@index([kind, status, createdAt(sort: Desc)])
   @@index([seq])
+  @@index([parentId])
 }
 
 /// Every step a referral passed through, with the time it happened.
@@ -334,7 +348,12 @@ model ComplexReferral {
 model ReferralEvent {
   id         String   @id @default(cuid())
   referralId String
-  /// The status entered at this point. Same vocabulary as `ComplexReferral`.
+  /// What happened at this point — `REFERRAL_EVENT_STATUSES`.
+  ///
+  /// A SUPERSET of `ComplexReferral.status`: it adds `re_referred`, which is an
+  /// event and not a state. Re-referring creates a new document and leaves this
+  /// one where it was, so the track can show أُعيدت الإحالة without any row's
+  /// status column ever holding it.
   status     String
   at         DateTime @default(now())
   /// Who moved it. Null for a step the system stamped itself.

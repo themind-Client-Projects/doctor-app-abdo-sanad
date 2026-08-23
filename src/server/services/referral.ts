@@ -7,6 +7,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import type { Identity } from "@/lib/api-auth";
 import { isPlatformRole } from "@/lib/roles";
+import { documentVerifyCode, documentVerifyUrl } from "@/lib/document-verify";
 
 export * from "./referral-rules";
 export * from "./referral-forms";
@@ -53,6 +54,20 @@ export type ComplexContext = {
  */
 export async function complexContextFor(identity: Identity): Promise<ComplexContext | null> {
   if (isPlatformRole(identity.role) || !identity.partnerId) return null;
+
+  // A PATIENT never has a referral context, even holding a partnerId.
+  //
+  // `auth.ts` sets `token.partnerId` from the user's Partner link with no
+  // condition on role, and both `PUT /api/users/[id]/role` and
+  // `POST /api/partners` can leave a User at `role: PATIENT` with that link
+  // live. Such an account would otherwise resolve a real complex here, and
+  // `referralScopeFor` would hand it the from/to clause — partner scope
+  // standing in for a role check it was never meant to make.
+  //
+  // Closed here rather than at each caller so no future reader of a referral
+  // has to remember: the API routes already gate on ROLES.STAFF, but the
+  // printed document is served outside that wrapper.
+  if (identity.role === "PATIENT") return null;
 
   const partner = await prisma.partner.findFirst({
     where: { id: identity.partnerId, deletedAt: null },
@@ -158,6 +173,39 @@ export const REFERRAL_INCLUDE = {
     select: { id: true, status: true, at: true, byUserId: true, note: true },
     orderBy: { at: "asc" },
   },
+  // إعادة الإحالة — the chain, one link in each direction.
+  //
+  // IDENTITY ONLY. Not the parent's `resultSummary`, `clinical`, description or
+  // attachments — and that restraint is the point: the recipient of a
+  // re-referral is NOT a party to its parent, so `referralScopeFor` gives them
+  // no right to read it. Selecting the parent's result here would have handed a
+  // pharmacy the lab's full report as a side effect of the join, quietly
+  // widening a rule the rest of this module enforces deliberately.
+  //
+  // The re-referral form does not need it either: it is opened from a row in
+  // the sender's OWN list, so it reads that referral's result directly, from a
+  // document they are genuinely party to.
+  parent: {
+    select: {
+      id: true, kind: true, seq: true, createdAt: true, status: true,
+      fromPartner: { select: { id: true, name: true, type: true } },
+      toPartner: { select: { id: true, name: true, type: true } },
+    },
+  },
+  // The parties are selected so `decorateReferral` can drop the children the
+  // viewer is not entitled to see — a child is a separate document with its own
+  // two parties, and the recipient of THIS referral is not automatically one of
+  // them. Without that filter, a lab that ran a test would learn that the
+  // doctor afterwards sent the patient to a particular pharmacy: downstream
+  // care it has no part in.
+  children: {
+    select: {
+      id: true, kind: true, seq: true, createdAt: true, status: true,
+      fromPartnerId: true, toPartnerId: true,
+      toPartner: { select: { id: true, name: true, type: true } },
+    },
+    orderBy: { createdAt: "asc" },
+  },
 } as const satisfies Prisma.ComplexReferralInclude;
 
 /**
@@ -184,26 +232,78 @@ export function directionFor(actor: ReferralActor): ReferralDirection {
 /**
  * Everything the printed document needs, computed rather than stored.
  *
- * `referenceNumber` and the patient's number and age are derived from the
- * sequence and the date of birth — one source of truth, and no column that can
- * drift out of step with the row it describes.
+ * `referenceNumber`, the verification code and the patient's number and age are
+ * derived from the sequence, the identity and the date of birth — one source of
+ * truth, and no column that can drift out of step with the row it describes.
  */
 export function decorateReferral<
   T extends {
+    id: string;
     kind: ReferralKind;
     seq: number;
     createdAt: Date;
     clinical: Prisma.JsonValue;
     expiresAt: Date | null;
+    // REQUIRED, not optional. Every caller reads with `REFERRAL_INCLUDE`, and
+    // making these optional meant a row without them decorated to
+    // `parent: null, children: []` — "this document begins and ends a chain",
+    // which is a claim, not an absence. A compile error is the right answer.
+    parent: ChainLink | null;
+    children: ChainLinkWithParties[];
   },
->(row: T) {
+>(row: T, viewerPartnerId?: string | null) {
+  const referenceNumber = referralNumber(row.kind, row.seq, row.createdAt);
+
   return {
     ...row,
-    referenceNumber: referralNumber(row.kind, row.seq, row.createdAt),
+    referenceNumber,
+    /**
+     * The QR's payload — what a phone camera opens to check this document.
+     *
+     * Null rather than thrown when the signing secret is missing or too short.
+     * This function is on the read path of EVERY referral endpoint, so letting
+     * it throw would turn one misconfigured environment variable into a 500 on
+     * the whole worklist — a printing concern taking down clinical data.
+     */
+    verifyUrl: safeVerifyUrl(row, referenceNumber),
     clinical: parseClinical(row.kind, row.clinical),
     /** True once a pharmacy or an imaging centre should refuse to act on it. */
     isExpired: row.expiresAt !== null && row.expiresAt.getTime() < Date.now(),
+    // The chain, with its numbers already rendered. A client showing "أُعيدت
+    // إلى RX-2026-00043" must not have to know how a reference is built.
+    parent: row.parent ? withReference(row.parent) : null,
+    children: row.children
+      // A child is its own document with its own two parties. Platform roles
+      // (no partner) see the whole chain, as they do everywhere else.
+      .filter(
+        (child) =>
+          !viewerPartnerId ||
+          child.fromPartnerId === viewerPartnerId ||
+          child.toPartnerId === viewerPartnerId
+      )
+      .map(withReference),
   };
+}
+
+/** The minimum `REFERRAL_INCLUDE` selects for a parent or a child. */
+type ChainLink = { kind: ReferralKind; seq: number; createdAt: Date };
+type ChainLinkWithParties = ChainLink & { fromPartnerId: string; toPartnerId: string };
+
+/** Generic so the caller keeps every field it selected, plus the number. */
+function withReference<L extends ChainLink>(link: L) {
+  return { ...link, referenceNumber: referralNumber(link.kind, link.seq, link.createdAt) };
+}
+
+function safeVerifyUrl(
+  doc: { id: string; kind: ReferralKind; seq: number; createdAt: Date },
+  reference: string
+): string | null {
+  try {
+    return documentVerifyUrl(reference, documentVerifyCode(doc));
+  } catch (error) {
+    console.error("[referral] cannot sign a document verification code", error);
+    return null;
+  }
 }
 
 /**

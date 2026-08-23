@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  REFERRAL_EVENT_LABELS,
+  REFERRAL_EVENT_STATUSES,
   REFERRAL_STATUSES,
   type ReferralStatus,
   attachmentsSchema,
   canTransition,
   parseAttachments,
+  referralStatusSchema,
 } from "@/server/services/referral-rules";
 
 /**
@@ -127,5 +130,39 @@ describe("reading attachments back out of a Json column", () => {
   it("survives a column that is not an array at all", () => {
     expect(parseAttachments(null)).toEqual([]);
     expect(parseAttachments({ url: "/a" } as never)).toEqual([]);
+  });
+});
+
+/**
+ * إعادة الإحالة — an event, never a state.
+ *
+ * Re-referring creates a NEW document and leaves the old one exactly where it
+ * was. The moment `re_referred` leaks into the status vocabulary, two things
+ * break at once: a referral's status column can hold a value no UI labels, and
+ * `canTransition` starts offering it as a move.
+ */
+describe("the re-referral event", () => {
+  it("is recordable on the timeline", () => {
+    expect(REFERRAL_EVENT_STATUSES).toContain("re_referred");
+    expect(REFERRAL_EVENT_LABELS.re_referred).toBe("أُعيدت الإحالة");
+  });
+
+  it("is NOT a status a referral can hold", () => {
+    expect(REFERRAL_STATUSES).not.toContain("re_referred");
+    expect(() => referralStatusSchema.parse("re_referred")).toThrow();
+  });
+
+  it("is never offered as a transition to either party", () => {
+    for (const from of REFERRAL_STATUSES) {
+      for (const actor of ["sender", "recipient"] as const) {
+        expect(canTransition(from, "re_referred" as never, actor)).toBe(false);
+      }
+    }
+  });
+
+  it("labels every event the timeline can contain, so none renders as a raw key", () => {
+    for (const status of REFERRAL_EVENT_STATUSES) {
+      expect(REFERRAL_EVENT_LABELS[status]).toBeTruthy();
+    }
   });
 });

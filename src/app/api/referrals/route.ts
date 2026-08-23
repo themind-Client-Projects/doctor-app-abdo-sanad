@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
+import { TX_OPTIONS, prisma } from "@/lib/prisma";
 import { ROLES, isPlatformRole, withAuth } from "@/lib/api-auth";
 import { ErrorCode, fail, keysetArgs, ok, okList, toPage } from "@/lib/api-response";
 import { nonEmpty, parseBody, parseQuery, serviceTypeSchema } from "@/lib/validation";
@@ -67,6 +67,14 @@ const createSchema = z
     clinical: z.unknown().optional(),
     /** The order this referral came out of — the consultation being acted on. */
     orderId: nonEmpty.optional(),
+    /**
+     * إعادة الإحالة — the referral this one continues.
+     *
+     * Only the LINK is accepted. Nothing is inherited from the parent: `kind`,
+     * `toPartnerId`, `title` and above all `clinical` are re-authored, because
+     * a clinical assertion is about the patient NOW. See the POST handler.
+     */
+    parentId: nonEmpty.optional(),
   })
   .strict();
 
@@ -111,7 +119,7 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) 
   // to decide between "respond" and "withdraw", and deriving it in the browser
   // from partner ids means shipping the caller's partnerId to do it.
   const data = items.map((row) => ({
-    ...decorateReferral(row),
+    ...decorateReferral(row, ctx?.partnerId ?? null),
     direction: isPlatformRole(identity.role)
       ? ("observed" as const)
       : row.toPartnerId === ctx?.partnerId
@@ -151,9 +159,11 @@ export const POST = withAuth({ roles: ROLES.CLINICAL }, async (req, _ctx, identi
   // A prescription goes to a pharmacy, an imaging request to a radiology
   // centre. Without this the form would happily send a drug list to a lab,
   // which would accept it and have nothing to do with it.
+  // `userId` is read here too, so the transaction below does not have to make a
+  // second round trip for the same partner just to notify them.
   const recipient = await prisma.partner.findUnique({
     where: { id: input.toPartnerId },
-    select: { type: true, name: true },
+    select: { type: true, name: true, userId: true },
   });
   const allowedTypes = KIND_RECIPIENTS[input.kind];
   if (!recipient || !allowedTypes.includes(recipient.type)) {
@@ -203,6 +213,39 @@ export const POST = withAuth({ roles: ROLES.CLINICAL }, async (req, _ctx, identi
     }
   }
 
+  // إعادة الإحالة — the parent must be one the caller is genuinely party to,
+  // and about this same patient.
+  //
+  // Scoped in the query rather than fetched-then-checked, so a referral the
+  // caller cannot see is indistinguishable from one that does not exist. Without
+  // the patient check, a valid parent id plus someone else's patientId would
+  // stitch two unrelated people into one chain.
+  if (input.parentId) {
+    const parent = await prisma.complexReferral.findFirst({
+      where: {
+        AND: [
+          { id: input.parentId, patientId: patient.id },
+          referralScopeFor(identity, ctx),
+        ],
+      },
+      select: { id: true, status: true },
+    });
+    if (!parent) {
+      return fail(ErrorCode.NOT_FOUND, 404, "الإحالة الأصلية غير موجودة", { requestId });
+    }
+    // The UI hides the button on a withdrawn referral, but the rule belongs
+    // here: a chain continuing from a document that was cancelled asserts a
+    // course of care that never happened, and any client can post this body.
+    if (parent.status === "cancelled") {
+      return fail(
+        ErrorCode.INVALID_STATE_TRANSITION,
+        422,
+        "لا يمكن إعادة الإحالة من وثيقة مسحوبة",
+        { requestId }
+      );
+    }
+  }
+
   const referral = await prisma.$transaction(async (tx) => {
     const created = await tx.complexReferral.create({
       data: {
@@ -221,6 +264,7 @@ export const POST = withAuth({ roles: ROLES.CLINICAL }, async (req, _ctx, identi
         title: input.title,
         description: input.description ?? null,
         orderId: input.orderId ?? null,
+        parentId: input.parentId ?? null,
         status: "sent",
         // The first stage of the printed track. Every later move appends here,
         // so the timeline is a record rather than a guess from the status.
@@ -229,13 +273,25 @@ export const POST = withAuth({ roles: ROLES.CLINICAL }, async (req, _ctx, identi
       include: REFERRAL_INCLUDE,
     });
 
+    // The parent's own track gains أُعيدت الإحالة, pointing at what it became.
+    //
+    // On the PARENT, not the child: the child's story starts at "sent". This is
+    // what lets the printed five-stage track show a re-referral without the
+    // parent's status column ever leaving `completed`.
+    if (input.parentId) {
+      await tx.referralEvent.create({
+        data: {
+          referralId: input.parentId,
+          status: "re_referred",
+          byUserId: identity.userId,
+          note: `${REFERRAL_KIND_LABELS[input.kind]} إلى ${recipient.name}`,
+        },
+      });
+    }
+
     // "تظهر لهم أنه تم إرسال مريض فلان" — the recipient has to LEARN about it,
     // not discover it by refreshing a list.
-    const recipient = await tx.partner.findUnique({
-      where: { id: input.toPartnerId },
-      select: { userId: true },
-    });
-    if (recipient?.userId) {
+    if (recipient.userId) {
       await tx.notification.create({
         data: {
           userId: recipient.userId,
@@ -247,13 +303,13 @@ export const POST = withAuth({ roles: ROLES.CLINICAL }, async (req, _ctx, identi
     }
 
     return created;
-  });
+  }, TX_OPTIONS);
 
   // A create is always outgoing for its author. Omitting it made the create
   // response the one referral payload with no `direction`, so a client could
   // not reuse its list model to render what it had just sent.
   return ok(
-    { ...decorateReferral(referral), direction: "outgoing" as const },
+    { ...decorateReferral(referral, ctx.partnerId), direction: "outgoing" as const },
     { status: 201, requestId }
   );
 });

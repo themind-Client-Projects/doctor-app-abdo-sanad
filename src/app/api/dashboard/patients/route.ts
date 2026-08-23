@@ -3,6 +3,7 @@ import { ROLES, isPlatformRole, withAuth } from "@/lib/api-auth";
 import { ok } from "@/lib/api-response";
 import { orderScopeFor } from "@/lib/order-slots";
 import { complexContextFor } from "@/server/services/referral";
+import { prescriptionScopeFor } from "@/server/services/patient-access";
 
 /**
  * "مرضاي" — the people this provider has actually treated.
@@ -18,19 +19,29 @@ import { complexContextFor } from "@/server/services/referral";
  * a `Patient` row. There is no such model, and no endpoint answered it, so the
  * screen was a permanent skeleton reading three fields that could never arrive.
  *
- * Three sources, because there are three ways a provider comes to hold someone:
- * an order assigned to them, an appointment, and — inside a complex — a
- * referral they are party to.
+ * FOUR sources, because there are four ways a provider comes to hold someone:
+ * an order assigned to them, an appointment, a referral they are party to
+ * inside a complex, and a prescription they wrote or are named to dispense.
+ *
+ * The sources are exactly `resolvePatientForCaller`'s, and they have to stay
+ * that way — that module exists so this screen, the referral form and the
+ * medical file cannot disagree about whose patient someone is. A patient listed
+ * here whom the referral form then refuses to name is the bug it prevents.
  *
  * Scoped to the caller: a doctor sees the patients of THEIR appointments, a lab
  * the patients of the orders assigned to it and the cases sent to it.
- * `orderScopeFor` fails closed, and `complexContextFor` returns null outside a
- * complex, so neither widens anything.
+ * `orderScopeFor` fails closed, `complexContextFor` returns null outside a
+ * complex, and `prescriptionScopeFor` returns null for roles that hold none, so
+ * none of them widens anything.
+ *
+ * `ROLES.CLINICAL`, not `ROLES.STAFF`: DRIVER is the one role the codebase
+ * deliberately keeps out of clinical scope, and a driver's link to a patient is
+ * a delivery address rather than care.
  *
  * `totalVisits` counts interactions, not distinct days: an order and a referral
  * for the same person are two, as an order and an appointment already were.
  */
-export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) => {
+export const GET = withAuth({ roles: ROLES.CLINICAL }, async (req, _ctx, identity) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
   const now = new Date();
 
@@ -40,9 +51,14 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) 
   // form to send them on to the pharmacy.
   const ctx = await complexContextFor(identity);
 
+  // A pharmacy can dispense against a prescription that has no order behind it
+  // — `Prescription.orderId` is optional. Without this source that patient
+  // appears on the pharmacy's own prescriptions screen and nowhere else.
+  const prescriptionScope = prescriptionScopeFor(identity);
+
   // Appointments belong to a DoctorProfile, orders to a Partner — two different
   // ids for the same person, which is why both scopes are resolved separately.
-  const [appointments, orders, referrals] = await Promise.all([
+  const [appointments, orders, referrals, prescriptions] = await Promise.all([
     identity.doctorProfileId || isPlatformRole(identity.role)
       ? prisma.appointment.findMany({
           where: {
@@ -70,6 +86,14 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) 
             createdAt: true,
             status: true,
           },
+        })
+      : Promise.resolve([]),
+    prescriptionScope
+      ? prisma.prescription.findMany({
+          where: prescriptionScope,
+          // No denormalised contact details on this model — names are filled in
+          // from the account below, the same way appointments are.
+          select: { patientId: true, dispensedAt: true, status: true },
         })
       : Promise.resolve([]),
   ]);
@@ -114,6 +138,18 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) 
     // means the patient has not arrived yet, so it must not become a lastVisit.
     if (r.status === "completed" && (!row.lastVisit || r.createdAt > row.lastVisit)) {
       row.lastVisit = r.createdAt;
+    }
+  }
+
+  for (const p of prescriptions) {
+    const row = touch(p.patientId);
+    row.totalVisits += 1;
+    // `dispensedAt`, not `createdAt`: a visit is when the patient collected the
+    // medicine, which can be days after the doctor wrote it. Using the write
+    // date would report a visit that had not happened yet — and would report
+    // one even for a prescription that was never collected at all.
+    if (p.dispensedAt && (!row.lastVisit || p.dispensedAt > row.lastVisit)) {
+      row.lastVisit = p.dispensedAt;
     }
   }
 
