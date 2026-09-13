@@ -33,6 +33,7 @@ import { createBookingSchema } from "@/app/api/v1/me/bookings/route";
 import { updateProfileSchema } from "@/app/api/v1/me/profile/route";
 import { createPrescriptionSchema } from "@/app/api/prescriptions/route";
 import { verifyDocumentQuerySchema } from "@/app/api/public/documents/verify/route";
+import { purchaseMembershipSchema } from "@/app/api/v1/me/membership/route";
 import {
   doctorClinicalSchema,
   labClinicalSchema,
@@ -184,6 +185,7 @@ const BODIES: Record<string, { schema: z.ZodType; summary: string }> = {
   "post /api/v1/me/bookings": { schema: createBookingSchema, summary: "Book a service" },
   "patch /api/v1/me/profile": { schema: updateProfileSchema, summary: "Update my profile" },
   "post /api/prescriptions": { schema: createPrescriptionSchema, summary: "Write a prescription" },
+  "post /api/v1/me/membership": { schema: purchaseMembershipSchema, summary: "Buy or renew a membership, paid from the wallet" },
 };
 
 /**

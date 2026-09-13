@@ -1,5 +1,6 @@
 import { Prisma, type OrderSource, type ServiceType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { membershipDiscountFor } from "./membership";
 
 /**
  * Price resolution — "إدارة الأسعار" (req L231-238).
@@ -44,6 +45,12 @@ export type Quote = {
   appliedCoupon: { id: string; code: string; maxUses: number } | null;
   /** The coupon's own contribution, distinct from the total discount. */
   couponDiscount: Decimal;
+  /** The membership's own contribution — zero when there is none, or when the
+   *  provider is not in the programme. Surfaced separately so the checkout can
+   *  say "خصم العضوية" rather than folding it into one unexplained number. */
+  membershipDiscount: Decimal;
+  /** The rate that produced it, for display: "خصم العضوية 10%". */
+  membershipPercent: Decimal;
   /** Set when the contract floor raised the price above the discounted one. */
   minimumApplied: boolean;
 };
@@ -55,8 +62,10 @@ export type Quote = {
  *   1. base price by order source — Sanad and complex orders may be priced
  *      differently from a direct booking
  *   2. the service's own standing discount (`PriceConfig.discountPercent`)
- *   3. a coupon, if supplied and valid
- *   4. the partner's contractual minimum, which acts as a FLOOR — a partner
+ *   3. the patient's membership rate ("نسبة الخصم الأساسية"), but ONLY at a
+ *      provider taking part in the programme
+ *   4. a coupon, if supplied and valid
+ *   5. the partner's contractual minimum, which acts as a FLOOR — a partner
  *      must never be paid below what their contract guarantees, so a discount
  *      cannot cut into it
  */
@@ -92,7 +101,32 @@ export async function quoteService(params: {
     );
   }
 
-  // 3. coupon
+  // 3. membership — "نسبة الخصم الأساسية"
+  //
+  // Gated on the provider taking part: "الخصومات والمزايا متاحة فقط لدى مقدمي
+  // الخدمات والمجمعات المشتركين في برنامج وريد وسند". `PartnerChannel` already
+  // records exactly that — who is live in which storefront — so participation
+  // is read from it rather than from a second flag that could disagree.
+  //
+  // With no `partnerId` the caller is quoting a service in the abstract (a
+  // price list, not a booking), and the rate still applies: refusing it there
+  // would advertise one price and charge another.
+  let membershipPercent = new D(0);
+  if (userId) {
+    const eligible = partnerId ? await participatesInProgramme(partnerId, source) : true;
+    if (eligible) membershipPercent = await membershipDiscountFor(userId);
+  }
+
+  let membershipContribution = new D(0);
+  if (membershipPercent.greaterThan(0)) {
+    membershipContribution = base
+      .times(membershipPercent)
+      .dividedBy(100)
+      .toDecimalPlaces(MONEY_DP, D.ROUND_DOWN);
+    discount = discount.plus(membershipContribution);
+  }
+
+  // 4. coupon
   let appliedCoupon: Quote["appliedCoupon"] = null;
   let couponContribution = new D(0);
   if (couponCode) {
@@ -112,7 +146,7 @@ export async function quoteService(params: {
 
   let total = base.minus(discount);
 
-  // 4. contract floor
+  // 5. contract floor
   let minimumApplied = false;
   if (partnerId) {
     const floor = await contractMinimum(partnerId, serviceType);
@@ -135,8 +169,29 @@ export async function quoteService(params: {
     currency: "IQD",
     appliedCoupon,
     couponDiscount: couponContribution,
+    membershipDiscount: membershipContribution,
+    membershipPercent,
     minimumApplied,
   };
+}
+
+/**
+ * Is this provider in the وريد وسند programme for this storefront?
+ *
+ * `PartnerChannel` is that record already — a partner is live per channel, with
+ * a status independent of their overall one. Reading it here means the discount
+ * follows the same switch operations already use to take a partner in or out of
+ * a storefront, instead of a parallel flag that drifts from it.
+ */
+async function participatesInProgramme(
+  partnerId: string,
+  source: OrderSource
+): Promise<boolean> {
+  const channel = await prisma.partnerChannel.findUnique({
+    where: { partnerId_channel: { partnerId, channel: source } },
+    select: { status: true },
+  });
+  return channel?.status === "ACTIVE";
 }
 
 /** The partner's contractual minimum for a service, if their contract sets one. */

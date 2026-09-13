@@ -464,6 +464,7 @@ model User {
   notifications  Notification[]
   activityLogs   ActivityLog[]
   patientWallet  PatientWallet?
+  memberships    Membership[]
   callsMade      CallLog[]         @relation("Caller")
   callsReceived  CallLog[]         @relation("Receiver")
   feedbacks      PatientFeedback[]
@@ -1426,28 +1427,171 @@ model Address {
 // never raw CSS. A native app has no Tailwind classes to apply.
 // ═══════════════════════════════════════════════════════════════
 
-/// #39 — Subscription packages (الاشتراكات والباقات).
+/// #39 — عضويات وريد وسند. What a patient buys; `Membership` is what they hold.
+///
+/// This was a marketing card: a name, a price and a JSON list of strings behind
+/// a button that did nothing. The client's four packages need terms a system can
+/// actually enforce — a duration, a discount rate, and a per-service allowance —
+/// so those are columns and rows now rather than prose.
 model HealthPlan {
-  id           String  @id @default(cuid())
-  name         String
-  description  String?
+  id          String  @id @default(cuid())
+  /// Stable machine key — DAILY | WEEKLY | MONTHLY | YEARLY. The seed and any
+  /// analytics key off this; `name` is display text the admin may reword.
+  code        String  @unique
+  name        String
+  description String?
+
   /// Decimal, not Float — this is IQD the patient is billed.
-  monthlyPrice Decimal @db.Decimal(18, 3)
-  /// JSON array of feature strings, rendered as the bullet list on the card.
-  features     Json    @default("[]")
+  ///
+  /// Renamed from `monthlyPrice`: the client sells a one-day package for 5,000
+  /// and a twelve-month one for 225,000, so "monthly" was wrong on three of the
+  /// four cards. Duration is `durationDays`, and the two together are the offer.
+  price Decimal @db.Decimal(18, 3)
+
+  /// How long the membership runs from the moment it is bought.
+  /// 1 = يومي, 7 = أسبوعي, 30 = شهري, 365 = سنوي.
+  durationDays Int
+
+  /// "نسبة الخصم الأساسية" — 2.5 / 5 / 10 / 15.
+  ///
+  /// Applied to every eligible service at a participating provider, on top of
+  /// any standing service discount. See `quoteService`, which owns the
+  /// precedence between this, coupons and the contract floor.
+  discountPercent Decimal @default(0) @db.Decimal(5, 2)
+
   /// Palette key the client maps itself, e.g. "blue" | "emerald" | "purple".
-  accent       String  @default("blue")
+  accent String @default("blue")
   /// Icon key the client maps itself, e.g. "activity" | "star" | "home".
-  icon         String  @default("activity")
+  icon   String @default("activity")
+
   /// Renders the "الأكثر طلباً" ribbon.
-  isPopular    Boolean @default(false)
-  isActive     Boolean @default(true)
-  sortOrder    Int     @default(0)
+  isPopular Boolean @default(false)
+  isActive  Boolean @default(true)
+
+  /// "متوفر قريباً" — listed on the pricing page, refused at purchase.
+  ///
+  /// A separate flag from `isActive` because the two mean different things to a
+  /// reader: inactive is hidden, coming-soon is shown deliberately and must not
+  /// be buyable. The client's yearly card is exactly this state.
+  isComingSoon Boolean @default(false)
+
+  sortOrder Int @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  benefits    HealthPlanBenefit[]
+  memberships Membership[]
+
   @@index([isActive, sortOrder])
+}
+
+/// One row of a package card — "حجز الأطباء · عدد 4".
+///
+/// Rows, not the JSON string list this replaced, because the client's card
+/// states three different things per line and a string can express none of
+/// them: how many uses are included, which service that maps to, and whether
+/// the line is live, on hold, or locked.
+model HealthPlanBenefit {
+  id     String @id @default(cuid())
+  planId String
+
+  /// What the row grants, when it maps to something bookable.
+  ///
+  /// Null for a line that is a statement rather than an allowance — "الصيدليات"
+  /// is access at a discount, not a counted entitlement. A null here is why
+  /// `quota` and `serviceType` are separate questions.
+  serviceType ServiceType?
+
+  /// The label exactly as the card prints it ("مكالمة / استشارة هاتفية").
+  label String
+
+  /// How many uses the period includes. NULL means unlimited.
+  ///
+  /// Nullable rather than 0-means-unlimited: zero is a real, different answer
+  /// (the line is shown but grants nothing), and conflating the two is how a
+  /// "0 visits" package silently becomes an unlimited one.
+  quota Int?
+
+  /// AVAILABLE — the green check.
+  /// SUSPENDED — "معلق": printed on the card, not yet honoured.
+  /// LOCKED    — the padlock: not part of this package at all.
+  ///
+  /// The card draws three icons and the difference matters at booking time, so
+  /// it is stored rather than inferred from whether `quota` is set.
+  state String @default("AVAILABLE")
+
+  sortOrder Int @default(0)
+
+  plan HealthPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([planId, sortOrder])
+}
+
+/// عضوية — what a patient actually holds after buying a `HealthPlan`.
+///
+/// Every commercial term is COPIED here at purchase, never read back through
+/// the plan. The admin edits prices and allowances; a membership already sold
+/// must keep the deal it was sold under, exactly as `CommissionRule` versioning
+/// keeps past settlements intact.
+model Membership {
+  id     String @id @default(cuid())
+  userId String
+  planId String
+
+  /// Snapshots. What the card said on the day it was bought.
+  planName        String
+  pricePaid       Decimal @db.Decimal(18, 3)
+  discountPercent Decimal @db.Decimal(5, 2)
+
+  startsAt  DateTime @default(now())
+  expiresAt DateTime
+
+  /// ACTIVE | EXPIRED | CANCELLED.
+  ///
+  /// `expiresAt` is the truth and is what every query filters on; this column
+  /// records a deliberate end (the patient cancelled) that a date cannot.
+  status String @default("ACTIVE")
+
+  cancelledAt DateTime?
+
+  /// The wallet debit that paid for it — the audit trail back to the money.
+  transactionId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan         HealthPlan              @relation(fields: [planId], references: [id])
+  entitlements MembershipEntitlement[]
+
+  @@index([userId, expiresAt(sort: Desc)])
+  @@index([status, expiresAt])
+  @@index([planId])
+}
+
+/// A membership's own copy of one benefit row, plus the counter against it.
+///
+/// The snapshot and the tally live together deliberately: consuming a use is
+/// then a single conditional UPDATE against the row that also states the limit,
+/// so two concurrent bookings cannot both pass a read-then-write check and
+/// spend the same last visit.
+model MembershipEntitlement {
+  id           String @id @default(cuid())
+  membershipId String
+
+  serviceType ServiceType?
+  label       String
+  /// NULL = unlimited for the period.
+  quota       Int?
+  used        Int     @default(0)
+  state       String  @default("AVAILABLE")
+  sortOrder   Int     @default(0)
+
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@unique([membershipId, serviceType])
+  @@index([membershipId, sortOrder])
 }
 
 /// #40 — Home-screen promo banners (الإعلانات).

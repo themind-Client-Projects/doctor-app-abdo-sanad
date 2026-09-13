@@ -5,6 +5,7 @@ import { withAuth } from "@/lib/api-auth";
 import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { SERVICE_TYPE_LABELS } from "@/lib/labels";
 import { nonEmpty, parseBody, serviceTypeSchema } from "@/lib/validation";
+import { consumeEntitlement } from "@/server/services/membership";
 import { PROVIDER_SLOT } from "@/lib/order-slots";
 import { priceOrder } from "@/server/services/orders";
 import { InsufficientBalance, payOrderFromWallet } from "@/server/services/patient-wallet";
@@ -331,6 +332,22 @@ export const POST = withAuth({}, async (req, _ctx, identity) => {
     pricingError = error instanceof Error ? error.message : "تعذّر تسعير الحجز";
   }
 
+  // Spend one use from the membership, if it covers this service.
+  //
+  // Best-effort by the same rule as payment below: a patient whose four visits
+  // are spent is booking a fifth at the ordinary price, which is a normal
+  // outcome and not a reason to refuse the booking. The DISCOUNT is separate
+  // and already applied by `priceOrder` — an exhausted allowance does not
+  // withdraw it, because the card sells the rate and the visits as two
+  // different promises.
+  //
+  // Reported either way so the screen can say "استخدمت 1 من 4" instead of the
+  // count silently changing.
+  const entitlement = await consumeEntitlement({
+    userId: identity.userId,
+    serviceType: input.serviceType,
+  });
+
   // Wallet payment is best-effort and never blocks the booking: the service is
   // still ordered if the balance is short, and the patient pays another way.
   let paid = false;
@@ -353,6 +370,10 @@ export const POST = withAuth({}, async (req, _ctx, identity) => {
       source: input.source,
       totalAmount: priced?.totalAmount ?? null,
       discountTotal: priced?.discountTotal ?? null,
+      /** Whether this booking spent a membership visit, and what is left. */
+      membership: entitlement.consumed
+        ? { covered: true, remaining: entitlement.remaining }
+        : { covered: false, reason: entitlement.reason },
       paid,
       // Reported, never swallowed: the client must be able to say "we could not
       // price this yet" rather than showing a confident zero.

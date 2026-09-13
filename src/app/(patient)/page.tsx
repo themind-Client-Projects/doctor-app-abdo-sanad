@@ -174,7 +174,9 @@ function RootLandingContent() {
         <section>
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-base font-bold text-gray-800">الاشتراكات والباقات</h3>
-            <span className="text-xs text-primary font-medium cursor-pointer">عرض الكل</span>
+            {/* Was a `cursor-pointer` span with no handler — it looked like a
+                link and did nothing. */}
+            <Link href="/memberships" className="text-xs text-primary font-medium">عرض الكل</Link>
           </div>
           <div className="flex gap-4 overflow-x-auto hide-scrollbar snap-x pb-4">
             {storefront.plans.map((pkg) => (
@@ -190,20 +192,42 @@ function RootLandingContent() {
                 <h4 className="font-extrabold text-gray-800 text-lg mb-1">{pkg.name}</h4>
                 <p className="text-xs text-gray-500 mb-4">{pkg.description}</p>
 
+                {/* The card's first three live rows. The full matrix — including
+                    the "معلق" and locked ones — is on /memberships; a carousel
+                    tile that listed eight rows would scroll past the price. */}
                 <div className="space-y-2 mb-5 min-h-[70px]">
-                  {pkg.features.map((feature, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
-                      <span className="text-xs text-gray-600 font-medium">{feature}</span>
-                    </div>
-                  ))}
+                  {pkg.benefits
+                    .filter((benefit) => benefit.state === 'AVAILABLE')
+                    .slice(0, 3)
+                    .map((benefit) => (
+                      <div key={benefit.id} className="flex items-center gap-2">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+                        <span className="text-xs text-gray-600 font-medium">
+                          {benefit.label}
+                          {benefit.quota !== null ? ` — عدد ${benefit.quota}` : ''}
+                        </span>
+                      </div>
+                    ))}
                 </div>
 
                 <div className="flex items-center justify-between mt-auto pt-4 border-t border-gray-100/50">
-                  <span className="font-extrabold text-gray-900 text-xl">{formatNumber(pkg.monthlyPrice)} <span className="text-[10px] text-gray-400 font-normal">د.ع / شهر</span></span>
-                  <button className={`text-xs font-bold px-5 py-2.5 rounded-xl transition-colors ${(PLAN_ACCENTS[pkg.accent] ?? PLAN_ACCENTS.blue).btn}`}>
-                    اشتراك
-                  </button>
+                  <span className="font-extrabold text-gray-900 text-xl">
+                    {formatNumber(pkg.price)}{' '}
+                    {/* Was hardcoded "/ شهر" on every card, which is wrong for
+                        three of the four packages the client sells. */}
+                    <span className="text-[10px] text-gray-400 font-normal">
+                      د.ع / {pkg.durationDays === 1 ? 'يوم' : pkg.durationDays === 7 ? 'أسبوع' : pkg.durationDays >= 365 ? 'سنة' : 'شهر'}
+                    </span>
+                  </span>
+                  {/* Was a bare <button> with no onClick. Subscribing needs the
+                      wallet balance and the shortfall message, so it links to
+                      the page that has both rather than half-doing it here. */}
+                  <Link
+                    href="/memberships"
+                    className={`text-xs font-bold px-5 py-2.5 rounded-xl transition-colors ${(PLAN_ACCENTS[pkg.accent] ?? PLAN_ACCENTS.blue).btn}`}
+                  >
+                    {pkg.isComingSoon ? 'قريباً' : 'اشتراك'}
+                  </Link>
                 </div>
               </div>
             ))}

@@ -28,15 +28,33 @@ export type StorefrontBanner = {
   href: string | null;
 };
 
+/** One row of a package card — "حجز الأطباء · عدد 4". */
+export type StorefrontPlanBenefit = {
+  id: string;
+  label: string;
+  /** null = unlimited for the period. */
+  quota: number | null;
+  /** AVAILABLE | SUSPENDED ("معلق") | LOCKED. */
+  state: string;
+  serviceType: string | null;
+};
+
 export type StorefrontPlan = {
   id: string;
+  /** DAILY | WEEKLY | MONTHLY | YEARLY. */
+  code: string;
   name: string;
   description: string | null;
-  monthlyPrice: number;
-  features: string[];
+  price: number;
+  durationDays: number;
+  /** "نسبة الخصم الأساسية" — 2.5 / 5 / 10 / 15. */
+  discountPercent: number;
   accent: string;
   icon: string;
   isPopular: boolean;
+  /** "متوفر قريباً" — shown, and refused at purchase. */
+  isComingSoon: boolean;
+  benefits: StorefrontPlanBenefit[];
 };
 
 export type StorefrontOffer = {

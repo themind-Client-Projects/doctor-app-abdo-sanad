@@ -114,43 +114,61 @@ async function creditIn(
  * update carries the balance condition in its own predicate, so a double-tap
  * cannot pass the check twice and drive the balance negative.
  */
-export async function debitWallet(params: {
+export type DebitParams = {
   userId: string;
   amount: number | Prisma.Decimal;
   description?: string;
   orderId?: string | null;
-}) {
+};
+
+export async function debitWallet(params: DebitParams, tx?: Prisma.TransactionClient) {
   const amount = new D(params.amount);
   if (amount.lte(0)) throw new Error("المبلغ يجب أن يكون أكبر من صفر");
 
-  return prisma.$transaction(async (tx) => {
-    const wallet = await ensureWallet(params.userId, tx);
+  // Joins a caller's transaction, exactly as `creditWallet` does. Buying a
+  // membership has to take the money and grant the membership atomically:
+  // separately, a failure between them charges the patient and hands them
+  // nothing, which is the one outcome that must be impossible. This function
+  // opened its own transaction and so could not be nested, which is the
+  // asymmetry that made that impossible to write correctly.
+  if (tx) return debitIn(tx, params, amount);
+  return prisma.$transaction((inner) => debitIn(inner, params, amount), TX_OPTIONS);
+}
 
-    // The guard lives in the WHERE clause, not in an `if` above it: an `if`
-    // that reads the balance and then updates is a race two concurrent
-    // requests both win.
-    const { count } = await tx.patientWallet.updateMany({
-      where: { id: wallet.id, balance: { gte: amount } },
-      data: { balance: { decrement: amount } },
-    });
+async function debitIn(
+  tx: Prisma.TransactionClient,
+  params: DebitParams,
+  amount: Prisma.Decimal
+) {
+  const wallet = await ensureWallet(params.userId, tx);
 
-    if (count === 0) {
-      throw new InsufficientBalance(wallet.balance.toString(), amount.toString());
-    }
+  // The guard lives in the WHERE clause, not in an `if` above it: an `if`
+  // that reads the balance and then updates is a race two concurrent
+  // requests both win.
+  const { count } = await tx.patientWallet.updateMany({
+    where: { id: wallet.id, balance: { gte: amount } },
+    data: { balance: { decrement: amount } },
+  });
 
-    await tx.patientTransaction.create({
-      data: {
-        walletId: wallet.id,
-        orderId: params.orderId ?? null,
-        amount,
-        type: "DEBIT",
-        reason: "PAYMENT",
-        description: params.description ?? null,
-      },
-    });
+  if (count === 0) {
+    throw new InsufficientBalance(wallet.balance.toString(), amount.toString());
+  }
 
-    return tx.patientWallet.findUniqueOrThrow({ where: { id: wallet.id } });
-  }, TX_OPTIONS);
+  const transaction = await tx.patientTransaction.create({
+    data: {
+      walletId: wallet.id,
+      orderId: params.orderId ?? null,
+      amount,
+      type: "DEBIT",
+      reason: "PAYMENT",
+      description: params.description ?? null,
+    },
+  });
+
+  const updated = await tx.patientWallet.findUniqueOrThrow({ where: { id: wallet.id } });
+  // The transaction id comes back so a caller can record WHICH debit paid for
+  // what it just created — the audit trail from a membership back to the money.
+  return Object.assign(updated, { transactionId: transaction.id });
 }
 
 /**

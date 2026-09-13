@@ -49,16 +49,27 @@ export const GET = withPublic(async (req) => {
 
     prisma.healthPlan.findMany({
       where: { isActive: true },
-      orderBy: [{ sortOrder: "asc" }, { monthlyPrice: "asc" }],
+      orderBy: [{ sortOrder: "asc" }, { price: "asc" }],
       select: {
         id: true,
+        code: true,
         name: true,
         description: true,
-        monthlyPrice: true,
-        features: true,
+        price: true,
+        durationDays: true,
+        discountPercent: true,
         accent: true,
         icon: true,
         isPopular: true,
+        isComingSoon: true,
+        // The card's rows. Selected here so the home screen's carousel and the
+        // full pricing page render from ONE query shape — a second, thinner
+        // plan payload is how the two screens start disagreeing about what a
+        // package includes.
+        benefits: {
+          orderBy: { sortOrder: "asc" },
+          select: { id: true, label: true, quota: true, state: true, serviceType: true },
+        },
       },
     }),
 
