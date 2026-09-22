@@ -94,6 +94,13 @@ export const GET = withAuth({}, async (req, _ctx, identity) => {
         assignedPharmacy: { select: { name: true } },
         assignedNurse: { select: { name: true } },
         assignedRadiology: { select: { name: true } },
+        // The patient's own rating, if they gave one — so the card can show
+        // their stars instead of asking again.
+        feedbacks: {
+          where: { patientId: identity.userId },
+          select: { rating: true },
+          take: 1,
+        },
       },
     }),
   ]);
@@ -113,6 +120,10 @@ export const GET = withAuth({}, async (req, _ctx, identity) => {
     source: string | null;
     isPast: boolean;
     sortAt: string;
+    /** Only a completed ORDER can be rated — appointments carry no feedback row. */
+    canRate: boolean;
+    /** The patient's own rating, 1-5, or null. */
+    rating: number | null;
   };
 
   // The extra row fetched above exists only to detect truncation; it must not
@@ -133,6 +144,8 @@ export const GET = withAuth({}, async (req, _ctx, identity) => {
       source: null,
       isPast: APPT_TERMINAL.includes(a.status) || a.date.getTime() < Date.now(),
       sortAt: a.date.toISOString(),
+      canRate: false,
+      rating: null,
     })),
     ...orders.slice(0, CARD_LIMIT).map((o) => ({
       id: o.id,
@@ -156,6 +169,8 @@ export const GET = withAuth({}, async (req, _ctx, identity) => {
       source: o.source,
       isPast: (ORDER_TERMINAL as readonly string[]).includes(o.status),
       sortAt: o.createdAt.toISOString(),
+      canRate: o.status === "COMPLETED",
+      rating: o.feedbacks[0]?.rating ?? null,
     })),
   ];
 

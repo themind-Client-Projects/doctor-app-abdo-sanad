@@ -370,7 +370,11 @@ export async function seedOperationalData(
     data: completed.slice(0, Math.floor(completed.length * 0.7)).map((b, i) => ({
       id: `seed-fb-${b.id.slice(-4)}`,
       orderId: b.id,
-      patientId: ctx.patientIds[i % ctx.patientIds.length],
+      // The patient who PLACED this order — the same index the order rows use.
+      // This read `patientIds[i % n]` with `i` counted over the completed subset,
+      // so a rating was credited to a different patient than the one served:
+      // "patient 3 rated patient 7's lab test".
+      patientId: ctx.patientIds[built.indexOf(b) % ctx.patientIds.length],
       // Skewed high, with a realistic tail — a flat 5.0 average would tell the
       // dashboard nothing.
       rating: [5, 5, 5, 4, 4, 4, 3, 5, 4, 2][i % 10],

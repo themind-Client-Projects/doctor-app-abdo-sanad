@@ -31,6 +31,16 @@
 
 type Entry = {
   data?: unknown;
+  /**
+   * The envelope's `meta` — pagination and, for list endpoints, the `summary`
+   * aggregated over the WHOLE filtered set.
+   *
+   * Dropped before this existed, so no screen could show a server-side total:
+   * /admin/quality re-derived its averages from the loaded page and had to
+   * label them as partial. A figure like membership revenue cannot be derived
+   * from a page at all.
+   */
+  meta?: unknown;
   error?: string;
   /** When `data`/`error` last landed. 0 means never. */
   fetchedAt: number;
@@ -94,6 +104,13 @@ function entryFor(key: string): Entry {
   return entry;
 }
 
+/** The `{ data, meta }` envelope's second half. */
+export type ResponseMeta = {
+  requestId?: string;
+  page?: { nextCursor: string | null; hasMore: boolean; limit: number };
+  summary?: Record<string, unknown>;
+};
+
 /** Anything that changes what a subscriber would see must go through here. */
 function notify(entry: Entry) {
   // Drop the memoized view so the next `getSnapshot` builds a fresh identity —
@@ -104,6 +121,7 @@ function notify(entry: Entry) {
 
 export type Snapshot<T> = {
   data: T | null;
+  meta: ResponseMeta | null;
   error: string | null;
   /** True while a request for this key is open. */
   isFetching: boolean;
@@ -118,6 +136,7 @@ export function snapshot<T>(key: string): Snapshot<T> {
   // Stable identity between notifications — see `Entry.view`.
   entry.view ??= {
     data: entry.data ?? null,
+    meta: (entry.meta as ResponseMeta | undefined) ?? null,
     error: entry.error ?? null,
     isFetching: Boolean(entry.inflight),
     isEmpty: entry.fetchedAt === 0,
@@ -128,6 +147,7 @@ export function snapshot<T>(key: string): Snapshot<T> {
 /** One frozen instance, so an unknown key is also referentially stable. */
 const EMPTY_SNAPSHOT: Snapshot<unknown> = Object.freeze({
   data: null,
+  meta: null,
   error: null,
   isFetching: false,
   isEmpty: true,
@@ -178,6 +198,7 @@ export function load(
         throw new Error(body?.error ?? "فشل في تحميل البيانات");
       }
       entry.data = body?.data ?? body;
+      entry.meta = body?.meta ?? undefined;
       entry.error = undefined;
     } catch (err) {
       // No abort handling: a request is shared now, so one component unmounting

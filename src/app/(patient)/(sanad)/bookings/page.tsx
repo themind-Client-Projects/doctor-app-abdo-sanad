@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
-import { CalendarClock, MapPin, Check, X, Clock, Stethoscope, TestTubes, Building2, Activity } from 'lucide-react';
+import { CalendarClock, MapPin, Check, X, Clock, Stethoscope, TestTubes, Building2, Activity, Star } from 'lucide-react';
 import { FlexibleHeader } from '@/components/shared/flexible-header';
 import { useDashboardData } from '@/hooks/use-dashboard-data';
 import { apiFetch, useMutation } from '@/hooks/use-mutation';
@@ -49,6 +49,10 @@ type BookingCard = {
   price: number | null;
   reference: string;
   source: string | null;
+  /** A completed order — the only kind that can be rated. */
+  canRate: boolean;
+  /** The patient's own rating, if given. */
+  rating: number | null;
 };
 
 const availableTimes = [
@@ -323,13 +327,22 @@ export default function BookingsPage() {
                     </div>
                   </div>
                 ) : (
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    className="w-full bg-white border-2 border-primary/20 text-primary hover:bg-primary hover:text-white py-2.5 rounded-xl text-sm font-bold transition-colors text-center cursor-pointer select-none"
-                  >
-                    حجز مرة أخرى
-                  </div>
+                  <>
+                    {booking.kind === 'order' && booking.canRate ? (
+                      <RateOrder
+                        orderId={booking.id}
+                        initial={booking.rating}
+                        onRated={() => void refetch()}
+                      />
+                    ) : null}
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      className="w-full bg-white border-2 border-primary/20 text-primary hover:bg-primary hover:text-white py-2.5 rounded-xl text-sm font-bold transition-colors text-center cursor-pointer select-none"
+                    >
+                      حجز مرة أخرى
+                    </div>
+                  </>
                 )}
               </div>
             );
@@ -503,6 +516,75 @@ export default function BookingsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/* ------------------------------- rating --------------------------------- */
+
+/**
+ * تقييم الخدمة — five stars on a completed order.
+ *
+ * The first thing that writes `PatientFeedback`: the owner's average rating,
+ * the reports and the partner performance screens all read it and had nothing
+ * to read. One tap saves; tapping a different star later edits it — the server
+ * keeps one rating per order, so a second tap never counts twice.
+ */
+function RateOrder({
+  orderId,
+  initial,
+  onRated,
+}: {
+  orderId: string;
+  initial: number | null;
+  onRated: () => void;
+}) {
+  const [rating, setRating] = useState<number | null>(initial);
+  const [hover, setHover] = useState<number | null>(null);
+
+  const { mutate: save, isPending } = useMutation(
+    (value: number) =>
+      apiFetch(`/api/v1/me/orders/${orderId}/feedback`, {
+        method: 'POST',
+        body: JSON.stringify({ rating: value }),
+      }),
+    { successMessage: 'شكراً لتقييمك', onSuccess: onRated }
+  );
+
+  const shown = hover ?? rating ?? 0;
+
+  return (
+    <div className="mb-3 flex items-center justify-between rounded-2xl border border-gray-100 bg-gray-50/80 px-3.5 py-2.5">
+      <span className="text-xs font-bold text-gray-600">
+        {rating ? 'تقييمك' : 'قيّم الخدمة'}
+      </span>
+      <div className="flex items-center gap-0.5" role="radiogroup" aria-label="التقييم من 1 إلى 5">
+        {[1, 2, 3, 4, 5].map((value) => (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={rating === value}
+            aria-label={`${value} من 5`}
+            disabled={isPending}
+            onMouseEnter={() => setHover(value)}
+            onMouseLeave={() => setHover(null)}
+            onClick={async () => {
+              const previous = rating;
+              // Optimistic, and rolled back if the server refuses — a star that
+              // stays lit after a failed save would claim a rating that is not there.
+              setRating(value);
+              const saved = await save(value);
+              if (!saved) setRating(previous);
+            }}
+            className="p-0.5 transition-transform hover:scale-110 disabled:opacity-60"
+          >
+            <Star
+              className={`h-5 w-5 ${value <= shown ? 'fill-amber-400 text-amber-400' : 'text-gray-300'}`}
+            />
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

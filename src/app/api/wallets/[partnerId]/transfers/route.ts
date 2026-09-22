@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
 import { ErrorCode, fail, keysetArgs, ok, okList, toPage } from "@/lib/api-response";
 import { amount, parseBody, parseQuery } from "@/lib/validation";
+import { PartnerWalletError, recordPartnerTransfer } from "@/server/services/partner-wallet";
 
 type Ctx = { params: Promise<{ partnerId: string }> };
 
@@ -21,7 +22,7 @@ const createTransferSchema = z
   .object({
     amount,
     type: z.enum(["CREDIT", "DEBIT"], { message: "نوع العملية غير صالح" }),
-    description: z.string().optional(),
+    description: z.string().trim().max(200).optional(),
     orderId: z.string().optional(),
   })
   .strict();
@@ -48,31 +49,50 @@ export const GET = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params })
   return okList(items, page, { requestId });
 });
 
-// POST — Record a transaction against this partner's wallet.
+// POST — pay the partner out (DEBIT) or adjust their balance up (CREDIT).
 //
 // This was `data: { walletId: wallet.id, ...body }` — the spread came LAST, so a
 // client-supplied `walletId` silently overrode the wallet resolved from the
-// route param and money could be written to any partner's wallet. `amount` and
-// `type` were also unvalidated (a string amount or an arbitrary `type` went
-// straight to the DB). walletId now comes only from the looked-up wallet.
-export const POST = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }) => {
+// route param and money could be written to any partner's wallet. That was
+// fixed; what remained is that it only INSERTED a Transaction row and never
+// moved `Wallet.balance`. A payout appeared in the history while the balance
+// still showed the money, and a DEBIT had no guard against paying out more
+// than was held. `recordPartnerTransfer` moves both, atomically, and audits it.
+export const POST = withAuth<Ctx>({ roles: ROLES.ADMIN }, async (req, { params }, identity) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
   const { partnerId } = await params;
   const input = await parseBody(req, createTransferSchema);
 
-  const wallet = await prisma.wallet.findUnique({ where: { partnerId } });
-  if (!wallet) return fail(ErrorCode.NOT_FOUND, 404, "غير موجود", { requestId });
-
-  const data = await prisma.transaction.create({
-    // Explicit allow-list — never spread the request body into Prisma.
-    data: {
-      walletId: wallet.id,
-      amount: input.amount,
+  try {
+    const result = await recordPartnerTransfer({
+      partnerId,
       type: input.type,
-      description: input.description ?? null,
-      orderId: input.orderId ?? null,
-    },
-  });
-
-  return ok(data, { status: 201, requestId });
+      amount: input.amount,
+      description: input.description,
+      orderId: input.orderId,
+      adminId: identity.userId,
+    });
+    return ok(
+      { transaction: result.transaction, balance: result.wallet.balance },
+      { status: 201, requestId }
+    );
+  } catch (error) {
+    if (error instanceof PartnerWalletError) {
+      if (error.code === "NO_WALLET") {
+        return fail(ErrorCode.NOT_FOUND, 404, error.message, { requestId });
+      }
+      return fail(ErrorCode.BUSINESS_RULE_VIOLATION, 422, error.message, {
+        requestId,
+        ...(error.detail
+          ? {
+              details: [
+                { field: "balance", code: "insufficient", message: error.detail.balance },
+                { field: "required", code: "insufficient", message: error.detail.required },
+              ],
+            }
+          : {}),
+      });
+    }
+    throw error;
+  }
 });

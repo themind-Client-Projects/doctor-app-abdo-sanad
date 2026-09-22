@@ -1,118 +1,560 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
+import Link from "next/link";
+import { KeyRound, UserCog } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
-import { StatusBadge } from "@/components/shared/status-badge";
-import { UserCog, Plus, Search, Shield, Ban, CheckCircle2 } from "lucide-react";
+import { useServerFilters } from "@/hooks/use-server-filters";
+import { apiFetch, useMutation } from "@/hooks/use-mutation";
+import { DataTable, type Column } from "@/components/data/data-table";
+import { Field, FormDialog, fieldClass } from "@/components/data/form-dialog";
+import { PageHeader, Pill } from "@/components/data/crud-kit";
+import { ServerFilterBar } from "@/components/data/server-filter-bar";
 import { formatDate } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
-// Section 10: إدارة المستخدمين (req L265)
-// User CRUD, role assignment, enable/disable
+// المستخدمون — إدارة الحسابات (req L265)
+//
+// This page said "User CRUD, role assignment, enable/disable" in its header and
+// did none of it: "إضافة مستخدم" and "تعديل" were buttons with no handler,
+// while the API behind them already supported every operation. The owner could
+// not switch off a single account, patient or staff.
+//
+// It also could not have made a staff login work even with the buttons wired:
+// an account created here had no password, and nothing in the product could
+// set one — onboarding deliberately leaves it blank for "an administrator to
+// set afterwards", with nowhere to do so. `كلمة المرور` below is that place.
+//
+// Provider accounts (doctor, lab, pharmacy…) are NOT created here. They are
+// half of a pair with a Partner record, and /admin/partners creates both
+// together. They are listed, edited and given passwords here like any other.
 // ─────────────────────────────────────────────────────────────
 
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  role: string;
-  isActive: boolean;
-  createdAt: string;
-}
-
-const roleLabels: Record<string, string> = {
-  SUPER_ADMIN: "مدير النظام",
+const ROLE_LABELS: Record<string, string> = {
+  SUPER_ADMIN: "مدير عام",
   OPERATIONS: "عمليات",
   DOCTOR: "طبيب",
   LAB: "مختبر",
   PHARMACY: "صيدلية",
-  NURSE: "ممرض",
+  NURSE: "تمريض",
   DRIVER: "سائق",
   RADIOLOGY: "أشعة",
   PATIENT: "مريض",
 };
 
-export default function UsersPage() {
-  const [search, setSearch] = useState("");
-  const [filterRole, setFilterRole] = useState<string | null>(null);
+/** Created here. Providers come from onboarding — see the header. */
+const CREATABLE_ROLES = ["OPERATIONS", "SUPER_ADMIN", "PATIENT"] as const;
 
-  const { data, isLoading } = useDashboardData<{ data: User[]; total: number }>({
+/** Mirrors `PASSWORD_ROLES` on the server: everyone but a patient. */
+const hasPasswordLogin = (role: string) => role !== "PATIENT";
+
+type User = {
+  id: string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  role: string;
+  isActive: boolean;
+  hasPassword: boolean;
+  createdAt: string;
+  partner: { id: string; name: string } | null;
+};
+
+type Draft = {
+  name: string;
+  email: string;
+  phone: string;
+  role: string;
+  password: string;
+  isActive: boolean;
+};
+
+const EMPTY_DRAFT: Draft = {
+  name: "",
+  email: "",
+  phone: "",
+  role: "OPERATIONS",
+  password: "",
+  isActive: true,
+};
+
+const EMPTY_FILTERS = { q: "", role: "", status: "" };
+
+type Dialog =
+  | { kind: "create" }
+  | { kind: "edit"; user: User }
+  | { kind: "password"; user: User }
+  | { kind: "role"; user: User }
+  | { kind: "delete"; user: User }
+  | null;
+
+export default function UsersPage() {
+  const filters = useServerFilters(EMPTY_FILTERS);
+  const { data, isLoading, error, refetch } = useDashboardData<User[]>({
     url: "/api/users",
-    params: filterRole ? { role: filterRole } : undefined,
+    params: { limit: "100", ...filters.params },
   });
 
-  const users = data?.data ?? [];
+  const [dialog, setDialog] = useState<Dialog>(null);
+  const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
+  const [password, setPassword] = useState("");
+  const [nextRole, setNextRole] = useState("");
+
+  const close = useCallback(() => {
+    setDialog(null);
+    setDraft(EMPTY_DRAFT);
+    setPassword("");
+    setNextRole("");
+  }, []);
+
+  const done = useCallback(() => {
+    close();
+    void refetch();
+  }, [close, refetch]);
+
+  /* ------------------------------- mutations ------------------------------ */
+
+  const { mutate: create, isPending: creating } = useMutation(
+    async () =>
+      apiFetch("/api/users", {
+        method: "POST",
+        body: JSON.stringify({
+          name: draft.name.trim() || undefined,
+          email: draft.email.trim() || undefined,
+          phone: draft.phone.trim() || undefined,
+          role: draft.role,
+          isActive: draft.isActive,
+          // Only staff sign in with a password; the server refuses one for a
+          // patient, so it is never sent for one.
+          password: hasPasswordLogin(draft.role) && draft.password ? draft.password : undefined,
+        }),
+      }),
+    { successMessage: "تم إنشاء الحساب", onSuccess: done }
+  );
+
+  const { mutate: update, isPending: updating } = useMutation(
+    async (id: string) =>
+      apiFetch(`/api/users/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: draft.name.trim() || undefined,
+          email: draft.email.trim() || undefined,
+          phone: draft.phone.trim() || undefined,
+          isActive: draft.isActive,
+        }),
+      }),
+    { successMessage: "تم تحديث الحساب", onSuccess: done }
+  );
+
+  const { mutate: setActive, isPending: toggling } = useMutation(
+    async (id: string, isActive: boolean) =>
+      apiFetch(`/api/users/${id}`, { method: "PATCH", body: JSON.stringify({ isActive }) }),
+    { successMessage: "تم تحديث حالة الحساب", onSuccess: () => void refetch() }
+  );
+
+  const { mutate: savePassword, isPending: savingPassword } = useMutation(
+    async (id: string) =>
+      apiFetch(`/api/users/${id}/password`, {
+        method: "POST",
+        body: JSON.stringify({ password }),
+      }),
+    { successMessage: "تم تعيين كلمة المرور", onSuccess: done }
+  );
+
+  const { mutate: changeRole, isPending: changingRole } = useMutation(
+    async (id: string) =>
+      apiFetch(`/api/users/${id}/role`, { method: "PUT", body: JSON.stringify({ role: nextRole }) }),
+    { successMessage: "تم تغيير الدور", onSuccess: done }
+  );
+
+  const { mutate: remove, isPending: removing } = useMutation(
+    async (id: string) => apiFetch(`/api/users/${id}`, { method: "DELETE" }),
+    { successMessage: "تم حذف الحساب", onSuccess: done }
+  );
+
+  const openEdit = useCallback((user: User) => {
+    setDraft({
+      name: user.name ?? "",
+      email: user.email ?? "",
+      phone: user.phone ?? "",
+      role: user.role,
+      password: "",
+      isActive: user.isActive,
+    });
+    setDialog({ kind: "edit", user });
+  }, []);
+
+  /* -------------------------------- columns ------------------------------- */
+
+  const columns: Column<User>[] = [
+    {
+      key: "name",
+      header: "الحساب",
+      render: (u) => (
+        <div className="min-w-0">
+          <p className="truncate font-medium text-foreground">{u.name || "بلا اسم"}</p>
+          <p className="truncate text-xs text-muted-foreground" dir="ltr">
+            {u.email ?? u.phone ?? "—"}
+          </p>
+        </div>
+      ),
+      sortValue: (u) => u.name ?? "",
+    },
+    {
+      key: "role",
+      header: "الدور",
+      render: (u) => (
+        <div className="min-w-0">
+          <Pill tone={u.role === "SUPER_ADMIN" ? "danger" : u.role === "PATIENT" ? "neutral" : "info"}>
+            {ROLE_LABELS[u.role] ?? u.role}
+          </Pill>
+          {u.partner ? (
+            <p className="mt-1 truncate text-xs text-muted-foreground">{u.partner.name}</p>
+          ) : null}
+        </div>
+      ),
+      sortValue: (u) => u.role,
+    },
+    {
+      key: "login",
+      header: "الدخول",
+      secondary: true,
+      render: (u) =>
+        hasPasswordLogin(u.role) ? (
+          // The column that answers "can this person actually sign in?" —
+          // before, a provider onboarded without a password looked exactly like
+          // one who could.
+          u.hasPassword ? (
+            <span className="text-xs text-muted-foreground">كلمة مرور</span>
+          ) : (
+            <Pill tone="warning">بلا كلمة مرور</Pill>
+          )
+        ) : (
+          <span className="text-xs text-muted-foreground">رمز الهاتف</span>
+        ),
+    },
+    {
+      key: "isActive",
+      header: "الحالة",
+      render: (u) => (
+        <Pill tone={u.isActive ? "positive" : "neutral"}>{u.isActive ? "فعّال" : "موقوف"}</Pill>
+      ),
+    },
+    {
+      key: "createdAt",
+      header: "تاريخ الإنشاء",
+      secondary: true,
+      render: (u) => (
+        <span className="whitespace-nowrap text-xs text-muted-foreground">{formatDate(u.createdAt)}</span>
+      ),
+      sortValue: (u) => new Date(u.createdAt).getTime(),
+    },
+  ];
+
+  const busy = toggling || removing;
 
   return (
-    <div className="space-y-6" dir="rtl">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
-            <UserCog size={22} className="text-primary" />
-            إدارة المستخدمين
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">إجمالي: {data?.total ?? 0} مستخدم</p>
-        </div>
-        <button className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
-          <Plus size={16} /> إضافة مستخدم
-        </button>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="المستخدمون"
+        subtitle="الحسابات وكلمات المرور والحالة — أضف حسابات الأطباء والمختبرات من صفحة الشركاء"
+        icon={UserCog}
+        action={{
+          label: "إضافة مستخدم",
+          onClick: () => {
+            setDraft(EMPTY_DRAFT);
+            setDialog({ kind: "create" });
+          },
+        }}
+      />
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1 max-w-md">
-          <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input type="text" placeholder="بحث بالاسم أو الهاتف..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full h-10 rounded-lg border border-input bg-background pr-9 pl-4 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-        </div>
-        <div className="flex gap-1 overflow-x-auto hide-scrollbar">
-          {Object.entries(roleLabels).map(([key, label]) => (
-            <button key={key} onClick={() => setFilterRole(filterRole === key ? null : key)} className={`px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${filterRole === key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent"}`}>
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* Server-backed: the list is paged, so a browser-side search would only
+          ever search the first hundred accounts. */}
+      <ServerFilterBar
+        idPrefix="users"
+        search={{ placeholder: "بحث بالاسم أو البريد أو الهاتف..." }}
+        selects={[
+          {
+            key: "role",
+            label: "الدور",
+            placeholder: "كل الأدوار",
+            options: Object.entries(ROLE_LABELS).map(([value, label]) => ({ value, label })),
+          },
+          {
+            key: "status",
+            label: "الحالة",
+            placeholder: "كل الحالات",
+            options: [
+              { value: "active", label: "فعّال" },
+              { value: "inactive", label: "موقوف" },
+            ],
+          },
+        ]}
+        values={filters.values}
+        onChange={(key, value) => filters.set(key as keyof typeof EMPTY_FILTERS, value)}
+        isActive={filters.isActive}
+        onReset={filters.reset}
+      />
 
-      {/* Users table */}
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
-        {isLoading ? (
-          <div className="space-y-3 p-5">{[1,2,3,4,5].map(i => <div key={i} className="h-12 rounded bg-muted animate-pulse" />)}</div>
-        ) : users.length === 0 ? (
-          <div className="py-16 text-center text-muted-foreground">لا يوجد مستخدمون</div>
-        ) : (
-          <table className="w-full">
-            <thead><tr className="border-b border-border bg-muted/30">
-              <th className="px-5 py-3 text-right text-xs font-semibold text-muted-foreground">الاسم</th>
-              <th className="px-5 py-3 text-right text-xs font-semibold text-muted-foreground">البريد</th>
-              <th className="px-5 py-3 text-right text-xs font-semibold text-muted-foreground">الهاتف</th>
-              <th className="px-5 py-3 text-right text-xs font-semibold text-muted-foreground">الدور</th>
-              <th className="px-5 py-3 text-right text-xs font-semibold text-muted-foreground">الحالة</th>
-              <th className="px-5 py-3 text-right text-xs font-semibold text-muted-foreground">التسجيل</th>
-              <th className="px-5 py-3 text-right text-xs font-semibold text-muted-foreground">إجراءات</th>
-            </tr></thead>
-            <tbody className="divide-y divide-border">
-              {users.filter(u => search ? u.name?.includes(search) || u.phone?.includes(search) : true).map((user) => (
-                <tr key={user.id} className="hover:bg-muted/30 transition-colors">
-                  <td className="px-5 py-3.5 text-sm font-medium text-foreground">{user.name}</td>
-                  <td className="px-5 py-3.5 text-sm text-muted-foreground" dir="ltr">{user.email || "—"}</td>
-                  <td className="px-5 py-3.5 text-sm text-muted-foreground" dir="ltr">{user.phone || "—"}</td>
-                  <td className="px-5 py-3.5"><span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground"><Shield size={10} />{roleLabels[user.role] || user.role}</span></td>
-                  <td className="px-5 py-3.5">
-                    <span className={`inline-flex items-center gap-1 text-xs font-medium ${user.isActive ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                      {user.isActive ? <><CheckCircle2 size={12} />نشط</> : <><Ban size={12} />معطل</>}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5 text-xs text-muted-foreground">{user.createdAt ? formatDate(user.createdAt) : "—"}</td>
-                  <td className="px-5 py-3.5">
-                    <button className="text-xs font-medium text-primary hover:underline">تعديل</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <DataTable
+        rows={data}
+        columns={columns}
+        isLoading={isLoading}
+        error={error}
+        onRetry={refetch}
+        emptyMessage={filters.isActive ? "لا حسابات تطابق البحث" : "لا توجد حسابات بعد"}
+        actions={(u) => (
+          <div className="flex items-center justify-end gap-1.5">
+            <RowButton onClick={() => openEdit(u)} disabled={busy}>
+              تعديل
+            </RowButton>
+            {hasPasswordLogin(u.role) ? (
+              <RowButton
+                onClick={() => {
+                  setPassword("");
+                  setDialog({ kind: "password", user: u });
+                }}
+                disabled={busy}
+              >
+                كلمة المرور
+              </RowButton>
+            ) : null}
+            <RowButton
+              onClick={() => {
+                setNextRole(u.role);
+                setDialog({ kind: "role", user: u });
+              }}
+              disabled={busy}
+            >
+              الدور
+            </RowButton>
+            <RowButton onClick={() => void setActive(u.id, !u.isActive)} disabled={busy}>
+              {u.isActive ? "إيقاف" : "تفعيل"}
+            </RowButton>
+            <RowButton onClick={() => setDialog({ kind: "delete", user: u })} disabled={busy} danger>
+              حذف
+            </RowButton>
+          </div>
         )}
-      </div>
+      />
+
+      {/* ── create / edit ──────────────────────────────────────── */}
+      <FormDialog
+        open={dialog?.kind === "create" || dialog?.kind === "edit"}
+        title={dialog?.kind === "edit" ? "تعديل الحساب" : "حساب جديد"}
+        description={
+          dialog?.kind === "edit"
+            ? (dialog.user.name ?? dialog.user.email ?? undefined)
+            : "للإدارة والعمليات والمرضى — الشركاء يُضافون من صفحة الشركاء"
+        }
+        onClose={close}
+        onSubmit={() =>
+          void (dialog?.kind === "edit" ? update(dialog.user.id) : create())
+        }
+        isPending={creating || updating}
+        submitDisabled={
+          (draft.email.trim() === "" && draft.phone.trim() === "") ||
+          // A new staff account without a password is one that cannot sign in.
+          (dialog?.kind === "create" && hasPasswordLogin(draft.role) && draft.password.length < 10)
+        }
+      >
+        <Field label="الاسم" htmlFor="u-name">
+          <input
+            id="u-name"
+            className={fieldClass}
+            value={draft.name}
+            onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+          />
+        </Field>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="البريد الإلكتروني" htmlFor="u-email">
+            <input
+              id="u-email"
+              type="email"
+              dir="ltr"
+              className={fieldClass}
+              value={draft.email}
+              onChange={(e) => setDraft((d) => ({ ...d, email: e.target.value }))}
+            />
+          </Field>
+          <Field label="رقم الهاتف" htmlFor="u-phone" hint="البريد أو الهاتف مطلوب">
+            <input
+              id="u-phone"
+              type="tel"
+              dir="ltr"
+              className={fieldClass}
+              value={draft.phone}
+              onChange={(e) => setDraft((d) => ({ ...d, phone: e.target.value }))}
+              placeholder="07701234567"
+            />
+          </Field>
+        </div>
+
+        {dialog?.kind === "create" ? (
+          <>
+            <Field
+              label="الدور"
+              htmlFor="u-role"
+              hint="لإضافة طبيب أو مختبر أو صيدلية استخدم صفحة الشركاء"
+            >
+              <select
+                id="u-role"
+                className={fieldClass}
+                value={draft.role}
+                onChange={(e) => setDraft((d) => ({ ...d, role: e.target.value }))}
+              >
+                {CREATABLE_ROLES.map((role) => (
+                  <option key={role} value={role}>
+                    {ROLE_LABELS[role]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            {hasPasswordLogin(draft.role) ? (
+              <PasswordField value={draft.password} onChange={(v) => setDraft((d) => ({ ...d, password: v }))} />
+            ) : (
+              <p className="rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                المرضى يدخلون برمز يُرسل إلى هواتفهم — لا كلمة مرور لهم.
+              </p>
+            )}
+          </>
+        ) : null}
+
+        <label className="flex cursor-pointer items-center gap-2.5 text-sm text-foreground">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-input accent-[hsl(var(--primary))]"
+            checked={draft.isActive}
+            onChange={(e) => setDraft((d) => ({ ...d, isActive: e.target.checked }))}
+          />
+          الحساب فعّال
+        </label>
+      </FormDialog>
+
+      {/* ── password ───────────────────────────────────────────── */}
+      <FormDialog
+        open={dialog?.kind === "password"}
+        title={dialog?.kind === "password" && dialog.user.hasPassword ? "إعادة تعيين كلمة المرور" : "تعيين كلمة المرور"}
+        description={
+          dialog?.kind === "password"
+            ? `${dialog.user.name ?? dialog.user.email ?? ""} — تنتهي كل جلسات الحساب المفتوحة عند الحفظ`
+            : undefined
+        }
+        onClose={close}
+        onSubmit={() => void (dialog?.kind === "password" && savePassword(dialog.user.id))}
+        isPending={savingPassword}
+        submitLabel="حفظ"
+        submitDisabled={password.length < 10}
+      >
+        <PasswordField value={password} onChange={setPassword} />
+        <p className="flex items-start gap-2 rounded-lg bg-muted/50 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+          <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          سلّم كلمة المرور لصاحب الحساب مباشرة. لا تُرسل تلقائياً — لا توجد قناة
+          بريد أو رسائل مهيّأة للموظفين بعد.
+        </p>
+      </FormDialog>
+
+      {/* ── role ───────────────────────────────────────────────── */}
+      <FormDialog
+        open={dialog?.kind === "role"}
+        title="تغيير الدور"
+        description={dialog?.kind === "role" ? (dialog.user.name ?? dialog.user.email ?? undefined) : undefined}
+        onClose={close}
+        onSubmit={() => void (dialog?.kind === "role" && changeRole(dialog.user.id))}
+        isPending={changingRole}
+        submitDisabled={dialog?.kind !== "role" || nextRole === dialog.user.role}
+      >
+        <Field
+          label="الدور الجديد"
+          htmlFor="u-next-role"
+          hint="حسابات الشركاء تُغيَّر من صفحة الشركاء، لأن نوع الشريك يحدّد توجيه الطلبات والتسويات"
+        >
+          <select
+            id="u-next-role"
+            className={fieldClass}
+            value={nextRole}
+            onChange={(e) => setNextRole(e.target.value)}
+          >
+            {Object.entries(ROLE_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </FormDialog>
+
+      {/* ── delete ─────────────────────────────────────────────── */}
+      <FormDialog
+        open={dialog?.kind === "delete"}
+        title="حذف الحساب"
+        description={
+          dialog?.kind === "delete"
+            ? `«${dialog.user.name ?? dialog.user.email ?? dialog.user.phone ?? ""}» — يُغلق الحساب وتنتهي جلساته. سجلّاته الطبية وطلباته تبقى محفوظة، ويُحرَّر رقمه وبريده لتسجيل جديد.`
+            : undefined
+        }
+        submitLabel="حذف"
+        submitTone="danger"
+        onClose={close}
+        onSubmit={() => void (dialog?.kind === "delete" && remove(dialog.user.id))}
+        isPending={removing}
+      />
+
+      <p className="text-xs text-muted-foreground">
+        تغيير أدوار عدة حسابات دفعة واحدة من{" "}
+        <Link href="/admin/roles" className="text-primary hover:underline">
+          الصلاحيات والأدوار
+        </Link>
+        .
+      </p>
     </div>
+  );
+}
+
+/* --------------------------------- pieces --------------------------------- */
+
+function PasswordField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <Field label="كلمة المرور" htmlFor="u-password" hint="10 أحرف على الأقل — عبارة طويلة أقوى من رموز معقّدة">
+      <input
+        id="u-password"
+        type="password"
+        dir="ltr"
+        // "new-password" so the browser offers to generate one and never
+        // autofills the ADMIN's own saved password into someone else's account.
+        autoComplete="new-password"
+        className={fieldClass}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        maxLength={72}
+      />
+    </Field>
+  );
+}
+
+function RowButton({
+  children,
+  onClick,
+  disabled,
+  danger,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`whitespace-nowrap rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-accent disabled:opacity-50 ${
+        danger ? "text-destructive hover:bg-destructive/10" : "text-foreground"
+      }`}
+    >
+      {children}
+    </button>
   );
 }

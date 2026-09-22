@@ -1,6 +1,6 @@
 import { Prisma, type ServiceType } from "@prisma/client";
 import { TX_OPTIONS, prisma } from "@/lib/prisma";
-import { InsufficientBalance, debitWallet } from "./patient-wallet";
+import { InsufficientBalance, creditWallet, debitWallet } from "./patient-wallet";
 
 /**
  * عضويات وريد وسند — buying one, holding one, and spending from it.
@@ -30,7 +30,8 @@ export class MembershipError extends Error {
       | "PLAN_NOT_FOUND"
       | "PLAN_COMING_SOON"
       | "PLAN_INACTIVE"
-      | "ALREADY_MEMBER",
+      | "ALREADY_MEMBER"
+      | "REFUND_TOO_LARGE",
     message: string
   ) {
     super(message);
@@ -99,8 +100,9 @@ export async function membershipDiscountFor(
 
 export type PurchaseResult = {
   membership: Prisma.MembershipGetPayload<{ include: typeof MEMBERSHIP_INCLUDE }>;
-  /** Balance after the debit, so the client does not have to refetch. */
-  walletBalance: Prisma.Decimal;
+  /** Balance after the debit, so the client does not have to refetch. Null for
+   *  an owner's grant, which takes nothing from the wallet. */
+  walletBalance: Prisma.Decimal | null;
   /** True when this extended a membership the patient already held. */
   renewed: boolean;
 };
@@ -120,6 +122,16 @@ export type PurchaseResult = {
 export async function purchaseMembership(params: {
   userId: string;
   planId: string;
+  /**
+   * The owner granting it free — a comp, a staff benefit, a goodwill gesture.
+   *
+   * The SAME path as a purchase, deliberately: a grant has to obey every rule a
+   * sale does — the snapshot, one membership at a time, renewal extending from
+   * the end — and a second code path is where those rules would quietly drift.
+   * The only differences are that no money moves, the price recorded is zero,
+   * and the owner's name goes in the audit log.
+   */
+  grantedBy?: string;
 }): Promise<PurchaseResult> {
   const plan = await prisma.healthPlan.findUnique({
     where: { id: params.planId },
@@ -160,14 +172,33 @@ export async function purchaseMembership(params: {
       );
     }
 
-    const wallet = await debitWallet(
-      {
-        userId: params.userId,
-        amount: plan.price,
-        description: `اشتراك ${plan.name}`,
-      },
-      tx
-    );
+    const granted = params.grantedBy !== undefined;
+
+    // A grant moves no money. A free plan (price 0) cannot be debited either —
+    // `debitWallet` refuses a zero amount — so it is treated the same way.
+    const wallet =
+      granted || plan.price.lte(0)
+        ? null
+        : await debitWallet(
+            {
+              userId: params.userId,
+              amount: plan.price,
+              description: `اشتراك ${plan.name}`,
+            },
+            tx
+          );
+
+    if (granted) {
+      await tx.activityLog.create({
+        data: {
+          userId: params.grantedBy!,
+          action: existing ? `تمديد عضوية مجانية — ${plan.name}` : `منح عضوية مجانية — ${plan.name}`,
+          entityType: "membership",
+          entityId: existing?.id ?? null,
+          details: { patientId: params.userId, planId: plan.id, planCode: plan.code },
+        },
+      });
+    }
 
     // ── Renewal: one row, a longer period, more visits ─────────────────────
     if (existing) {
@@ -197,7 +228,7 @@ export async function purchaseMembership(params: {
           where: { id: existing.id },
           include: MEMBERSHIP_INCLUDE,
         }),
-        walletBalance: wallet.balance,
+        walletBalance: wallet?.balance ?? null,
         renewed: true,
       };
     }
@@ -212,12 +243,14 @@ export async function purchaseMembership(params: {
         // Snapshots — see rule 1. Read back through `plan` and an admin's price
         // edit would silently rewrite what this patient was sold.
         planName: plan.name,
-        pricePaid: plan.price,
+        // What was actually PAID — zero for a grant, so revenue reports count
+        // money received and not the list price of memberships given away.
+        pricePaid: granted ? new D(0) : plan.price,
         discountPercent: plan.discountPercent,
         startsAt: now,
         expiresAt,
         status: "ACTIVE",
-        transactionId: wallet.transactionId,
+        transactionId: wallet?.transactionId ?? null,
         entitlements: {
           create: plan.benefits.map((benefit) => ({
             serviceType: benefit.serviceType,
@@ -233,7 +266,7 @@ export async function purchaseMembership(params: {
 
     await notifyMembership(tx, params.userId, plan.name, expiresAt, false);
 
-    return { membership, walletBalance: wallet.balance, renewed: false };
+    return { membership, walletBalance: wallet?.balance ?? null, renewed: false };
   }, TX_OPTIONS);
 }
 
@@ -260,20 +293,94 @@ function formatDay(date: Date): string {
 }
 
 /**
- * End a membership early — "يمكنك إلغاء التجديد في أي وقت".
+ * End a membership NOW, on the owner's decision — with or without money back.
  *
- * Does NOT refund and does not cut the period short: the patient keeps what
- * they paid for until it lapses. Cancelling is a statement about renewal, and
- * treating it as a refund would be a money decision no screen asked for.
+ * Replaces a patient-side `cancelMembership` that was never called and whose
+ * own comment contradicted what it did: it promised the patient kept their
+ * benefits until the period lapsed, but set `status: CANCELLED`, which
+ * `activeMembershipFor` stops honouring immediately. Memberships here do not
+ * auto-renew — each period is bought out of the wallet — so there is no
+ * renewal to cancel, and the only real operation is this one.
+ *
+ * The refund, when given, goes back to the WALLET the membership was paid
+ * from, in the same transaction as the termination. It is capped at what the
+ * patient actually paid: a comp membership (pricePaid 0) cannot be "refunded"
+ * into money the platform never received.
+ *
+ * @throws {MembershipError} no such live membership, or refund above the price
  */
-export async function cancelMembership(userId: string, membershipId: string) {
-  const { count } = await prisma.membership.updateMany({
-    // Scoped to the owner in the predicate, so another patient's id is a
-    // no-match rather than a successful cancellation.
-    where: { id: membershipId, userId, status: "ACTIVE" },
-    data: { status: "CANCELLED", cancelledAt: new Date() },
-  });
-  return count === 1;
+export async function terminateMembership(params: {
+  membershipId: string;
+  adminId: string;
+  reason: string;
+  refundAmount?: number;
+}) {
+  return prisma.$transaction(async (tx) => {
+    const membership = await tx.membership.findFirst({
+      where: { id: params.membershipId, status: "ACTIVE" },
+      select: { id: true, userId: true, planName: true, pricePaid: true, expiresAt: true },
+    });
+    if (!membership) {
+      throw new MembershipError("PLAN_NOT_FOUND", "العضوية غير موجودة أو منتهية مسبقاً");
+    }
+
+    const refund = new D(params.refundAmount ?? 0);
+    if (refund.lt(0) || refund.gt(membership.pricePaid)) {
+      throw new MembershipError(
+        "REFUND_TOO_LARGE",
+        `الاسترداد لا يتجاوز المبلغ المدفوع (${membership.pricePaid.toString()} د.ع)`
+      );
+    }
+
+    const now = new Date();
+    const updated = await tx.membership.update({
+      where: { id: membership.id },
+      // `expiresAt` moves to now as well as the status: the date is what every
+      // reader filters on, so the two cannot be allowed to disagree.
+      data: {
+        status: "CANCELLED",
+        cancelledAt: now,
+        expiresAt: membership.expiresAt < now ? membership.expiresAt : now,
+      },
+      include: MEMBERSHIP_INCLUDE,
+    });
+
+    if (refund.gt(0)) {
+      await creditWallet(
+        {
+          userId: membership.userId,
+          amount: refund,
+          reason: "REFUND",
+          description: `استرداد عضوية ${membership.planName}`,
+        },
+        tx
+      );
+    }
+
+    await tx.activityLog.create({
+      data: {
+        userId: params.adminId,
+        action: `إنهاء عضوية — ${membership.planName}`,
+        entityType: "membership",
+        entityId: membership.id,
+        details: { reason: params.reason, refund: refund.toString(), patientId: membership.userId },
+      },
+    });
+
+    await tx.notification.create({
+      data: {
+        userId: membership.userId,
+        title: "تم إنهاء عضويتك",
+        body:
+          refund.gt(0)
+            ? `${membership.planName} — أُعيد ${refund.toString()} د.ع إلى محفظتك`
+            : membership.planName,
+        type: "membership",
+      },
+    });
+
+    return { membership: updated, refunded: refund };
+  }, TX_OPTIONS);
 }
 
 /* -------------------------------- spending -------------------------------- */

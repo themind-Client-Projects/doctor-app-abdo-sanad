@@ -1214,6 +1214,13 @@ model PatientFeedback {
   patient User   @relation(fields: [patientId], references: [id])
   order   Order? @relation(fields: [orderId], references: [id])
 
+  /// One rating per patient per order — a second submission edits the first.
+  ///
+  /// Only an order's own patient may rate it, so in practice this is one per
+  /// order. Compound rather than `orderId @unique` so the Order side stays a
+  /// list and `/api/orders/[id]`'s `feedbacks` keeps its shape. Without it, a
+  /// double-tap on the stars counted as two ratings and moved the average.
+  @@unique([orderId, patientId])
   @@index([orderId])
   @@index([patientId, createdAt(sort: Desc)])
 }

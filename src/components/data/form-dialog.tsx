@@ -25,6 +25,7 @@ export function FormDialog({
   submitTone = "primary",
   isPending,
   submitDisabled,
+  readOnly = false,
   children,
 }: {
   open: boolean;
@@ -43,6 +44,15 @@ export function FormDialog({
    * only possible answer is an error toast.
    */
   submitDisabled?: boolean;
+  /**
+   * A view, not a form: one "إغلاق" button and no <form> element.
+   *
+   * For a detail panel there is nothing to submit, and rendering a form anyway
+   * produced two buttons that both closed it. Just as important, it means a
+   * panel can hold its own actions without nesting a <form> inside a <form> —
+   * where React bubbles the inner submit up to the outer handler.
+   */
+  readOnly?: boolean;
   children?: React.ReactNode;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -130,6 +140,20 @@ export function FormDialog({
           </button>
         </div>
 
+        {readOnly ? (
+          <>
+            <div className="space-y-4">{children}</div>
+            <div className="mt-6">
+              <button
+                type="button"
+                onClick={onClose}
+                className="h-11 w-full rounded-xl border border-border text-sm font-semibold text-foreground transition-colors hover:bg-accent"
+              >
+                إغلاق
+              </button>
+            </div>
+          </>
+        ) : (
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -159,6 +183,7 @@ export function FormDialog({
             </button>
           </div>
         </form>
+        )}
       </div>
     </div>
   );

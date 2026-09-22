@@ -22,6 +22,8 @@ import {
   UserCog,
   Wallet,
   ArrowLeftRight,
+  Crown,
+  TicketPercent,
 } from "lucide-react";
 
 /**
@@ -69,7 +71,12 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     items: [
       { label: "الإعلانات", href: "/admin/banners", icon: Megaphone, ready: true },
       { label: "الاشتراكات والباقات", href: "/admin/plans", icon: Layers, ready: true },
+      // What was SOLD, beside what is offered. /admin/plans prices the packages;
+      // this is who bought one, what it brought in, and stepping in on one.
+      { label: "العضويات المُباعة", href: "/admin/memberships", icon: Crown, ready: true },
       { label: "العروض والحملات", href: "/admin/offers", icon: PercentSquare, ready: true },
+      // A code the patient types, which is not a campaign — see the page header.
+      { label: "الكوبونات", href: "/admin/coupons", icon: TicketPercent, ready: true },
       { label: "التخصصات الطبية", href: "/admin/specialties", icon: Stethoscope, ready: true },
     ],
   },

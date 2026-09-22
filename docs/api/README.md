@@ -893,7 +893,7 @@ method is the group that may call it.
 | `/api/complexes/[id]` | `GET` ROLES.OPERATIONS<br>`PATCH` ROLES.ADMIN<br>`DELETE` ROLES.ADMIN |
 | `/api/complexes/[id]/stats` | `GET` ROLES.ADMIN |
 | `/api/complexes` | `GET` ROLES.OPERATIONS<br>`POST` ROLES.ADMIN |
-| `/api/coupons/[id]` | `PUT` ROLES.ADMIN<br>`DELETE` ROLES.ADMIN |
+| `/api/coupons/[id]` | `GET` ROLES.ADMIN<br>`PUT` ROLES.ADMIN<br>`DELETE` ROLES.ADMIN |
 | `/api/coupons` | `GET` ROLES.ADMIN<br>`POST` ROLES.ADMIN |
 | `/api/dashboard/admin-overview` | `GET` ROLES.OPERATIONS |
 | `/api/dashboard/alerts` | `GET` ROLES.STAFF |
@@ -913,6 +913,8 @@ method is the group that may call it.
 | `/api/lab-samples/[id]` | `GET` ROLES.CLINICAL<br>`PATCH` ROLES.CLINICAL |
 | `/api/lab-samples` | `GET` ROLES.CLINICAL<br>`POST` ROLES.CLINICAL |
 | `/api/medical-records/[patientId]` | `GET` AUTHENTICATED<br>`PUT` RECORD_WRITE_ROLES |
+| `/api/memberships/[id]/terminate` | `POST` ROLES.ADMIN |
+| `/api/memberships` | `GET` ROLES.ADMIN<br>`POST` ROLES.ADMIN |
 | `/api/notifications/[id]/read` | `PATCH` AUTHENTICATED |
 | `/api/notifications` | `GET` AUTHENTICATED |
 | `/api/notifications/send` | `POST` ROLES.OPERATIONS |
@@ -968,6 +970,7 @@ method is the group that may call it.
 | `/api/specialties` | `GET` ROLES.ADMIN<br>`POST` ROLES.ADMIN |
 | `/api/system-monitoring` | `GET` ROLES.ADMIN |
 | `/api/transactions` | `GET` ROLES.STAFF |
+| `/api/users/[id]/password` | `POST` ROLES.ADMIN |
 | `/api/users/[id]/role` | `PUT` ROLES.ADMIN |
 | `/api/users/[id]` | `GET` ROLES.ADMIN<br>`PATCH` ROLES.ADMIN<br>`DELETE` ROLES.ADMIN |
 | `/api/users` | `GET` ROLES.ADMIN<br>`POST` ROLES.ADMIN |
@@ -976,7 +979,9 @@ method is the group that may call it.
 | `/api/v1/me/appointments` | `GET` AUTHENTICATED |
 | `/api/v1/me/bookings/[id]/cancel` | `POST` AUTHENTICATED |
 | `/api/v1/me/bookings` | `GET` AUTHENTICATED<br>`POST` AUTHENTICATED |
+| `/api/v1/me/membership` | `GET` AUTHENTICATED<br>`POST` AUTHENTICATED |
 | `/api/v1/me/notifications` | `GET` AUTHENTICATED |
+| `/api/v1/me/orders/[id]/feedback` | `GET` AUTHENTICATED<br>`POST` AUTHENTICATED |
 | `/api/v1/me/orders/[id]/timeline` | `GET` AUTHENTICATED |
 | `/api/v1/me/orders` | `GET` AUTHENTICATED |
 | `/api/v1/me/profile` | `PATCH` AUTHENTICATED |
@@ -984,7 +989,8 @@ method is the group that may call it.
 | `/api/v1/me/wallet` | `GET` AUTHENTICATED |
 | `/api/v1/me/wallet/topup` | `GET` AUTHENTICATED<br>`POST` AUTHENTICATED |
 | `/api/v1/specialties` | `GET` AUTHENTICATED |
-| `/api/wallets/[partnerId]/debts` | `GET` ROLES.ADMIN |
+| `/api/wallets/[partnerId]/debts/[debtId]` | `PATCH` ROLES.ADMIN |
+| `/api/wallets/[partnerId]/debts` | `GET` ROLES.ADMIN<br>`POST` ROLES.ADMIN |
 | `/api/wallets/[partnerId]/invoices` | `GET` ROLES.ADMIN |
 | `/api/wallets/[partnerId]` | `GET` ROLES.ADMIN |
 | `/api/wallets/[partnerId]/transfers` | `GET` ROLES.ADMIN<br>`POST` ROLES.ADMIN |

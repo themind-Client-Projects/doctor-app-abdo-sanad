@@ -7,6 +7,7 @@ import {
   load,
   snapshot,
   subscribe,
+  type ResponseMeta,
   type Snapshot,
 } from "@/lib/request-cache";
 
@@ -29,6 +30,8 @@ interface UseDashboardDataOptions {
 
 interface UseDashboardDataReturn<T> {
   data: T | null;
+  /** The envelope's `meta` — page info and any server-side `summary`. */
+  meta: ResponseMeta | null;
   isLoading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
@@ -106,6 +109,8 @@ export function useDashboardData<T>({
 
   return {
     data: store.data,
+    /** `meta.summary` is an aggregate over the whole filtered set, not the page. */
+    meta: store.meta,
     // Only a load with nothing to show is "loading". A revalidation over
     // existing data is deliberately silent, so lists do not blink every poll.
     isLoading: active && store.isEmpty && store.error === null,
@@ -114,4 +119,4 @@ export function useDashboardData<T>({
   };
 }
 
-const EMPTY: Snapshot<unknown> = { data: null, error: null, isFetching: false, isEmpty: true };
+const EMPTY: Snapshot<unknown> = { data: null, meta: null, error: null, isFetching: false, isEmpty: true };

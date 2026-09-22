@@ -6,6 +6,7 @@ import { Droplet, Send, Users } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { useCrudDialogs } from "@/hooks/use-crud-dialogs";
 import { useServerFilters } from "@/hooks/use-server-filters";
+import { ServerFilterBar } from "@/components/data/server-filter-bar";
 import { apiFetch, useMutation } from "@/hooks/use-mutation";
 import { DataTable, type Column } from "@/components/data/data-table";
 import { Field, FormDialog, fieldClass } from "@/components/data/form-dialog";
@@ -356,7 +357,37 @@ export default function BloodBankPage() {
           deliberately not used here — they would narrow the loaded page only,
           which for a paged history means answering "none" for records that
           exist. */}
-      <FilterBar filters={filters} />
+      <ServerFilterBar
+        idPrefix="bb"
+        search={{ placeholder: "بحث بالاسم أو الهاتف أو نوع العملية..." }}
+        selects={[
+          {
+            key: "requestType",
+            label: "نوع الاستمارة",
+            placeholder: "الكل",
+            options: [
+              { value: "REQUESTER", label: "طالبو الدم" },
+              { value: "DONOR", label: "المتبرعون" },
+            ],
+          },
+          {
+            key: "status",
+            label: "الحالة",
+            placeholder: "كل الحالات",
+            options: Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label })),
+          },
+          {
+            key: "bloodType",
+            label: "الفصيلة",
+            placeholder: "كل الفصائل",
+            options: Object.entries(BLOOD_LABELS).map(([value, label]) => ({ value, label })),
+          },
+        ]}
+        values={filters.values}
+        onChange={(key, value) => filters.set(key as keyof typeof EMPTY_FILTERS, value)}
+        isActive={filters.isActive}
+        onReset={filters.reset}
+      />
 
       <DataTable
         rows={requests}
@@ -611,109 +642,6 @@ export default function BloodBankPage() {
         submitLabel="حذف"
         submitTone="danger"
       />
-    </div>
-  );
-}
-
-/* -------------------------------- filters -------------------------------- */
-
-function FilterBar({
-  filters,
-}: {
-  filters: ReturnType<typeof useServerFilters<typeof EMPTY_FILTERS>>;
-}) {
-  return (
-    <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-3 lg:flex-row lg:items-center">
-      <div className="min-w-0 flex-1">
-        <label htmlFor="bb-q" className="sr-only">
-          بحث بالاسم أو الهاتف أو نوع العملية
-        </label>
-        <input
-          id="bb-q"
-          type="search"
-          value={filters.values.q}
-          onChange={(e) => filters.set("q", e.target.value)}
-          placeholder="بحث بالاسم أو الهاتف أو نوع العملية..."
-          className={fieldClass}
-        />
-      </div>
-
-      <FilterSelect
-        id="bb-f-type"
-        label="نوع الاستمارة"
-        value={filters.values.requestType}
-        onChange={(v) => filters.set("requestType", v)}
-        placeholder="الكل"
-        options={[
-          { value: "REQUESTER", label: "طالبو الدم" },
-          { value: "DONOR", label: "المتبرعون" },
-        ]}
-      />
-
-      <FilterSelect
-        id="bb-f-status"
-        label="الحالة"
-        value={filters.values.status}
-        onChange={(v) => filters.set("status", v)}
-        placeholder="كل الحالات"
-        options={Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }))}
-      />
-
-      <FilterSelect
-        id="bb-f-blood"
-        label="الفصيلة"
-        value={filters.values.bloodType}
-        onChange={(v) => filters.set("bloodType", v)}
-        placeholder="كل الفصائل"
-        options={Object.entries(BLOOD_LABELS).map(([value, label]) => ({ value, label }))}
-      />
-
-      {filters.isActive ? (
-        <button
-          type="button"
-          onClick={filters.reset}
-          className="shrink-0 rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-        >
-          مسح
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
-function FilterSelect({
-  id,
-  label,
-  value,
-  onChange,
-  placeholder,
-  options,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-  options: { value: string; label: string }[];
-}) {
-  return (
-    <div className="shrink-0">
-      <label htmlFor={id} className="sr-only">
-        {label}
-      </label>
-      <select
-        id={id}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={`${fieldClass} w-auto min-w-[9rem]`}
-      >
-        <option value="">{placeholder}</option>
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
     </div>
   );
 }
