@@ -1,6 +1,5 @@
 "use client";
 
-import { MoreHorizontal } from "lucide-react";
 
 interface Column {
   key: string;
@@ -54,7 +53,6 @@ export function CurrentTasksTable({
                     {col.label}
                   </th>
                 ))}
-                <th className="w-10" />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -69,11 +67,6 @@ export function CurrentTasksTable({
                       {col.render ? col.render(row[col.key], row) : String(row[col.key] ?? "—")}
                     </td>
                   ))}
-                  <td className="px-2">
-                    <button className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent transition-colors" aria-label="المزيد">
-                      <MoreHorizontal size={14} />
-                    </button>
-                  </td>
                 </tr>
               ))}
             </tbody>

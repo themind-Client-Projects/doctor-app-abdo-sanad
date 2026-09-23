@@ -40,6 +40,17 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  /**
+   * Where the build output goes.
+   *
+   * `next build` writes over `.next`, which is the same directory a running
+   * `next dev` is serving from — so verifying a change with a build takes the
+   * dev server down with it, mid-session, for whoever was using it. Setting
+   * `NEXT_DIST_DIR` sends a verification build somewhere else and leaves the
+   * dev server alone. Unset, this is exactly the default.
+   */
+  distDir: process.env.NEXT_DIST_DIR || ".next",
+
   images: {
     remotePatterns: [
       {

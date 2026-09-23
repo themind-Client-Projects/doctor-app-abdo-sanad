@@ -1,38 +1,41 @@
 "use client";
 
+import { signOut } from "next-auth/react";
+
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import {
-  Search,
-  Bell,
-  Moon,
-  Sun,
-  User,
-  ChevronDown,
-  LogOut,
-  Settings,
-} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Search, Moon, Sun, ChevronDown, LogOut, Settings } from "lucide-react";
 import { useDarkMode } from "@/hooks/use-dark-mode";
+import { NotificationBell } from "@/components/shared/header-menus";
 
 interface HeaderProps {
   entityName: string;
   userName: string;
   avatarUrl?: string;
-  notificationCount?: number;
-  onSearch?: (query: string) => void;
+  /**
+   * Where the search box sends a query, e.g. "/dashboard/patients".
+   *
+   * Omitted for a role with nothing to search — a driver holds trips, not
+   * patients — and the box is then not rendered at all. The previous version
+   * took an `onSearch` callback that the layout never passed, so every partner
+   * had a search field that did nothing on submit. (`/api/search` is not the
+   * answer here either: it crosses tenants and is OPERATIONS-only by design.)
+   */
+  searchHref?: string;
 }
 
 export function DashboardHeader({
   entityName,
   userName,
   avatarUrl,
-  notificationCount = 0,
-  onSearch,
+  searchHref,
 }: HeaderProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [showProfile, setShowProfile] = useState(false);
   const { isDark, toggle, mounted } = useDarkMode();
   const profileRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -47,7 +50,9 @@ export function DashboardHeader({
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    onSearch?.(searchQuery);
+    const q = searchQuery.trim();
+    if (!searchHref || !q) return;
+    router.push(`${searchHref}?q=${encodeURIComponent(q)}`);
   };
 
   return (
@@ -64,31 +69,27 @@ export function DashboardHeader({
         <span className="text-sm text-muted-foreground hidden md:inline">{entityName}</span>
       </div>
 
-      {/* Center: Global search (req L11 "البحث الشامل") */}
+      {/* Center: search within this partner's own records (req L11) */}
       <div className="flex-1 max-w-md mx-4">
-        <form onSubmit={handleSearch} className="relative">
-          <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="البحث الشامل..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full h-9 rounded-lg border border-input bg-background pr-9 pl-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-shadow"
-          />
-        </form>
+        {searchHref ? (
+          <form onSubmit={handleSearch} className="relative">
+            <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="search"
+              placeholder="ابحث في مرضاك..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              aria-label="بحث"
+              className="w-full h-9 rounded-lg border border-input bg-background pr-9 pl-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-shadow"
+            />
+          </form>
+        ) : null}
       </div>
 
       {/* Left: Actions (req L12-14) */}
       <div className="flex items-center gap-1">
         {/* Notifications (req L12) */}
-        <button className="relative flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" aria-label="الإشعارات">
-          <Bell size={18} />
-          {notificationCount > 0 && (
-            <span className="absolute -top-0.5 -left-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
-              {notificationCount > 9 ? "9+" : notificationCount}
-            </span>
-          )}
-        </button>
+        <NotificationBell viewAllHref="/dashboard/notifications" />
 
         {/* Dark mode toggle (req L13) */}
         <button
@@ -124,16 +125,24 @@ export function DashboardHeader({
 
           {showProfile && (
             <div className="absolute left-0 top-full mt-1 w-48 rounded-lg border border-border bg-card shadow-lg py-1 animate-in fade-in-0 zoom-in-95">
-              <Link href="/dashboard/profile" className="flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors">
-                <User size={14} />
-                <span>الملف الشخصي</span>
-              </Link>
-              <Link href="/dashboard/settings" className="flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors">
+              {/* "الملف الشخصي" pointed at /dashboard/profile, which has never
+                  existed — the link 404'd. The account IS the settings page:
+                  it shows the name, contact, role and partner record, and is
+                  where the password is changed. */}
+              <Link
+                href="/dashboard/settings"
+                onClick={() => setShowProfile(false)}
+                className="flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors"
+              >
                 <Settings size={14} />
                 <span>الإعدادات</span>
               </Link>
               <hr className="my-1 border-border" />
-              <button className="flex w-full items-center gap-2 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 transition-colors">
+              <button
+                type="button"
+                onClick={() => void signOut({ callbackUrl: "/login" })}
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 transition-colors"
+              >
                 <LogOut size={14} />
                 <span>تسجيل الخروج</span>
               </button>

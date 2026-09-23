@@ -2,9 +2,8 @@
 
 import { useCallback } from "react";
 import { Field, fieldClass } from "@/components/data/form-dialog";
+import { MedicationRows, readMedications } from "@/components/features/clinical/medication-rows";
 import {
-  MEDICATION_FORMS,
-  MEDICATION_FORM_LABELS,
   RADIOLOGY_EXAMS,
   RADIOLOGY_EXAM_LABELS,
   type ReferralKind,
@@ -212,124 +211,17 @@ function YesNo({
 
 /* ------------------------------- RX — وصفة -------------------------------- */
 
-type Medication = {
-  name: string;
-  form: string;
-  dose: string;
-  route: string;
-  duration: string;
-  notes?: string;
-};
-
-const BLANK_MED: Medication = {
-  name: "",
-  form: "tablet",
-  dose: "",
-  route: "",
-  duration: "",
-};
-
 function PharmacyFields({ value, set }: { value: ClinicalDraft; set: SetFn }) {
-  const meds = ((value.medications as Medication[]) ?? []) as Medication[];
-  const update = (i: number, patch: Partial<Medication>) =>
-    set("medications", meds.map((m, index) => (index === i ? { ...m, ...patch } : m)));
-
+  // The same table the doctor's own prescription screen writes — see
+  // `components/features/clinical/medication-rows`. Two copies of it would
+  // drift, and a drug row accepted by one screen and refused by the other is
+  // the bug that follows.
   return (
     <>
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <p className="text-[13px] font-semibold text-foreground">الأدوية الموصوفة</p>
-          <button
-            type="button"
-            onClick={() => set("medications", [...meds, { ...BLANK_MED }])}
-            className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
-          >
-            إضافة دواء
-          </button>
-        </div>
-
-        {meds.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
-            لا أدوية بعد — الوصفة لا تُرسل فارغة
-          </p>
-        ) : null}
-
-        <div className="space-y-3">
-          {meds.map((med, i) => (
-            <div key={i} className="rounded-xl border border-border p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-xs font-semibold text-muted-foreground">دواء {i + 1}</span>
-                <button
-                  type="button"
-                  onClick={() => set("medications", meds.filter((_, index) => index !== i))}
-                  className="text-xs text-muted-foreground hover:text-destructive"
-                  aria-label={`إزالة الدواء ${i + 1}`}
-                >
-                  إزالة
-                </button>
-              </div>
-
-              {/* Every one of these is a column on the client's printed table,
-                  and every one is required by the server. A prescription that
-                  reaches a pharmacy without a dose has to be phoned in. */}
-              <div className="grid gap-2 sm:grid-cols-2">
-                <input
-                  className={fieldClass}
-                  placeholder="اسم الدواء والتركيز"
-                  value={med.name}
-                  onChange={(e) => update(i, { name: e.target.value })}
-                  maxLength={160}
-                  aria-label={`اسم الدواء ${i + 1}`}
-                />
-                <select
-                  className={fieldClass}
-                  value={med.form}
-                  onChange={(e) => update(i, { form: e.target.value })}
-                  aria-label={`الشكل الدوائي ${i + 1}`}
-                >
-                  {MEDICATION_FORMS.map((f) => (
-                    <option key={f} value={f}>
-                      {MEDICATION_FORM_LABELS[f]}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  className={fieldClass}
-                  placeholder="الجرعة — 1 قرص"
-                  value={med.dose}
-                  onChange={(e) => update(i, { dose: e.target.value })}
-                  maxLength={80}
-                  aria-label={`الجرعة ${i + 1}`}
-                />
-                <input
-                  className={fieldClass}
-                  placeholder="طريقة الاستخدام — كل 12 ساعة"
-                  value={med.route}
-                  onChange={(e) => update(i, { route: e.target.value })}
-                  maxLength={120}
-                  aria-label={`طريقة الاستخدام ${i + 1}`}
-                />
-                <input
-                  className={fieldClass}
-                  placeholder="المدة — 7 أيام"
-                  value={med.duration}
-                  onChange={(e) => update(i, { duration: e.target.value })}
-                  maxLength={80}
-                  aria-label={`المدة ${i + 1}`}
-                />
-                <input
-                  className={fieldClass}
-                  placeholder="ملاحظات — بعد الأكل (اختياري)"
-                  value={med.notes ?? ""}
-                  onChange={(e) => update(i, { notes: e.target.value })}
-                  maxLength={240}
-                  aria-label={`ملاحظات الدواء ${i + 1}`}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      <MedicationRows
+        value={readMedications(value.medications)}
+        onChange={(next) => set("medications", next)}
+      />
 
       <Field label="ملاحظات الطبيب" htmlFor="rx-notes" hint="اختياري">
         <textarea

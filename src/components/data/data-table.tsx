@@ -71,6 +71,7 @@ export function DataTable<T extends { id: string }>({
   actions,
   toolbar,
   pageSize = PAGE_SIZE,
+  initialQuery = "",
 }: {
   rows: T[] | null | undefined;
   columns: Column<T>[];
@@ -86,8 +87,14 @@ export function DataTable<T extends { id: string }>({
   actions?: (row: T) => React.ReactNode;
   toolbar?: React.ReactNode;
   pageSize?: number;
+  /**
+   * Seeds the search box — for a screen reached from elsewhere with a query,
+   * e.g. the header search landing on مرضاي with `?q=`. The box stays fully
+   * editable afterwards; this is an initial value, not a controlled one.
+   */
+  initialQuery?: string;
 }) {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [active, setActive] = useState<Record<string, string>>({});
   const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" } | null>(null);
   const [page, setPage] = useState(1);

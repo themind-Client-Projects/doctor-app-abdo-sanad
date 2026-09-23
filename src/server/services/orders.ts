@@ -34,6 +34,24 @@ export const TIMELINE_STEPS = [
 
 export type TimelineStepCode = (typeof TIMELINE_STEPS)[number]["code"];
 
+/**
+ * The steps a PROVIDER records about their own work on an order.
+ *
+ * Contacting the patient, travelling, arriving, starting, finishing, and
+ * uploading results are reports of work the nurse, driver or lab did — so they
+ * are theirs to record. The others are decisions about the order: accepting and
+ * assigning it (dispatch), telling the patient it is done, and completing it
+ * (which settles the money). Those stay with operations.
+ */
+export const PROVIDER_STEPS = [
+  "CONTACTED",
+  "IN_TRANSIT",
+  "ARRIVED",
+  "STARTED",
+  "SERVICE_DONE",
+  "RESULTS_UPLOADED",
+] as const satisfies readonly TimelineStepCode[];
+
 const STEP_BY_CODE = new Map(TIMELINE_STEPS.map((s) => [s.code, s]));
 
 /**
@@ -327,4 +345,46 @@ export async function getTimeline(orderId: string) {
       description: row?.description ?? null,
     };
   });
+}
+
+/**
+ * Record a step on a linked order, but never fail the caller if it cannot.
+ *
+ * A lab marking a result ready, or a centre attaching a report, is genuinely
+ * the order's "تم رفع النتائج" — and nothing connected the two, so a patient
+ * watching their tracking screen saw the order frozen at "بدأ التنفيذ" while
+ * the result sat finished in the lab's queue.
+ *
+ * Best-effort on purpose. `advanceOrder` is strict: it refuses a step whose
+ * predecessors are missing, and a walk-in sample attached to an order that
+ * operations has not moved along yet is an ordinary, expected case. The
+ * clinical record is the source of truth and must be saved either way — so the
+ * outcome is REPORTED rather than thrown, and the screen can say "النتيجة
+ * محفوظة، ولم يتقدّم الطلب" instead of pretending one of the two happened.
+ */
+export async function advanceOrderQuietly(params: {
+  orderId: string | null;
+  stepCode: TimelineStepCode;
+  actorId?: string;
+  description?: string;
+}): Promise<{ advanced: boolean; reason: string | null }> {
+  if (!params.orderId) return { advanced: false, reason: null };
+
+  try {
+    await advanceOrder({
+      orderId: params.orderId,
+      stepCode: params.stepCode,
+      actorId: params.actorId,
+      description: params.description,
+    });
+    return { advanced: true, reason: null };
+  } catch (error) {
+    // Already recorded is not a problem worth reporting: the order is where
+    // this wanted to put it.
+    if (error instanceof OrderError) {
+      if (error.code === "STEP_ALREADY_DONE") return { advanced: true, reason: null };
+      return { advanced: false, reason: error.message };
+    }
+    throw error;
+  }
 }

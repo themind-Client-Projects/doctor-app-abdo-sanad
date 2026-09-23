@@ -25,10 +25,33 @@ export function useServerFilters<T extends Record<string, string>>(
   initial: T,
   delayMs = 300
 ) {
+  // Seeded from the URL, once, so a screen reached from the global search with
+  // `?q=...` opens already filtered instead of showing the unfiltered list and
+  // silently dropping the query. Read with the platform guard because this hook
+  // also runs in tests and on the server during the first render pass.
+  //
+  // `useState`'s initializer runs once, which is exactly the intent: this is a
+  // starting point, not a binding. Typing afterwards must not be fought by the
+  // URL, and `reset` clears to `initial`, not back to the seed.
+  const seeded = useState<T>(() => {
+    if (typeof window === "undefined") return initial;
+    const params = new URLSearchParams(window.location.search);
+    const next = { ...initial };
+    let changed = false;
+    for (const key of Object.keys(initial)) {
+      const value = params.get(key);
+      if (value) {
+        (next as Record<string, string>)[key] = value;
+        changed = true;
+      }
+    }
+    return changed ? next : initial;
+  })[0];
+
   /** What the controls show — updated on every keystroke. */
-  const [values, setValues] = useState<T>(initial);
+  const [values, setValues] = useState<T>(seeded);
   /** What the server is asked for — updated once typing stops. */
-  const [settled, setSettled] = useState<T>(initial);
+  const [settled, setSettled] = useState<T>(seeded);
 
   useEffect(() => {
     const timer = setTimeout(() => setSettled(values), delayMs);

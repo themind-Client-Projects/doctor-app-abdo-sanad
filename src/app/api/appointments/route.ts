@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { APPOINTMENT_ROLES, appointmentScope, withAuth } from "@/lib/api-auth";
 import { ErrorCode, fail, keysetArgs, ok, okList, toPage } from "@/lib/api-response";
 import { nonEmpty, paginationSchema, parseBody, parseQuery } from "@/lib/validation";
+import { withPatients } from "@/server/services/patient-contacts";
 
 // Appointment.status is a free-text `String` column; `type` is a real enum
 // (`AppointmentType` in prisma/schema.prisma).
@@ -84,7 +85,11 @@ export const GET = withAuth(
       });
 
       const { items, page: pageMeta } = toPage(rows, take);
-      return okList(items, pageMeta, { requestId });
+      // `patientId` is a bare String column with no relation to `include`, so
+      // the doctor's book arrived as a list of times with nobody's name on it.
+      // Hydrated after `toPage` so the extra row a keyset fetch takes to detect
+      // `hasMore` is not looked up and then thrown away.
+      return okList(await withPatients(items), pageMeta, { requestId });
     }
 
     // Legacy offset mode — response shape and `date desc` ordering unchanged.
@@ -100,7 +105,7 @@ export const GET = withAuth(
     ]);
 
     return okList(
-      appointments,
+      await withPatients(appointments),
       { nextCursor: null, hasMore: page * pageSize < total, limit: pageSize },
       { requestId, legacy: { total, page, pageSize } }
     );

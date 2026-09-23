@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
+import { Suspense, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { Users } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { useRole } from "@/hooks/use-role";
@@ -49,8 +50,19 @@ const SUBTITLES: Record<string, string> = {
   NURSE: "المرضى الذين خدمتهم فعلاً — من طلباتك والإحالات إليك",
 };
 
+// `useSearchParams` suspends, and this page is the header search's landing
+// spot, so the boundary is required rather than defensive.
 export default function PatientsPage() {
+  return (
+    <Suspense fallback={null}>
+      <PatientsTable />
+    </Suspense>
+  );
+}
+
+function PatientsTable() {
   const { role, isLoading: isRoleLoading } = useRole();
+  const initialQuery = useSearchParams().get("q") ?? "";
   const { data, isLoading, error, refetch } = useDashboardData<Patient[]>({
     url: "/api/dashboard/patients",
   });
@@ -152,6 +164,7 @@ export default function PatientsPage() {
         onRetry={refetch}
         searchable={(r) => `${r.name ?? ""} ${r.phone ?? ""}`}
         searchPlaceholder="بحث بالاسم أو الهاتف..."
+        initialQuery={initialQuery}
         filters={[
           {
             key: "status",

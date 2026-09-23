@@ -47,6 +47,11 @@ type CompleteResult = {
   settlementError: string | null;
 };
 
+/** What POST /api/orders/[id]/cancel answers with. */
+type CancelResult = {
+  refund: { refunded: boolean; amount: string | null; reason: string | null } | null;
+};
+
 export function useOrderActions(onDone?: () => void) {
   // Held in a stable callback so every mutation below keeps one identity for
   // the component's life — these are passed to memoized rows, and a new
@@ -70,6 +75,42 @@ export function useOrderActions(onDone?: () => void) {
   const hold = useMutation(
     async (id: string) => apiFetch(`/api/orders/${id}/hold`, { method: "POST", body: "{}" }),
     { successMessage: "تم تعليق الطلب", onSuccess: done }
+  );
+
+  /**
+   * Cancel an order already in flight — which `reject` cannot do.
+   *
+   * `reject` writes the accept/reject decision onto timeline step 2, so it only
+   * makes sense before a provider is assigned. Once one is, an order that has
+   * to be stopped had no way to stop, and the queue kept it forever.
+   *
+   * The toast reports the REFUND rather than assuming one: the fee only comes
+   * back when it was taken from the wallet in the first place, and saying
+   * "تم الاسترجاع" on a cash order would be a lie about money.
+   */
+  const cancel = useMutation<CancelResult, [string, string?]>(
+    async (id: string, reason?: string) =>
+      apiFetch(`/api/orders/${id}/cancel`, {
+        method: "POST",
+        body: JSON.stringify(reason ? { reason } : {}),
+      }),
+    {
+      successMessage: null,
+      onSuccess: (result) => {
+        if (result?.refund?.refunded) {
+          toast.success("أُلغي الطلب واسترُجعت الرسوم للمحفظة");
+        } else {
+          toast.success("تم إلغاء الطلب");
+        }
+        done();
+      },
+    }
+  );
+
+  const create = useMutation(
+    async (body: Record<string, unknown>) =>
+      apiFetch("/api/orders", { method: "POST", body: JSON.stringify(body) }),
+    { successMessage: "تم إنشاء الطلب", onSuccess: done }
   );
 
   const transfer = useMutation(
@@ -143,6 +184,8 @@ export function useOrderActions(onDone?: () => void) {
       accept: accept.mutate,
       price: price.mutate,
       reject: reject.mutate,
+      cancel: cancel.mutate,
+      create: create.mutate,
       hold: hold.mutate,
       transfer: transfer.mutate,
       assign: assign.mutate,
@@ -152,6 +195,8 @@ export function useOrderActions(onDone?: () => void) {
         accept.isPending ||
         price.isPending ||
         reject.isPending ||
+        cancel.isPending ||
+        create.isPending ||
         hold.isPending ||
         transfer.isPending ||
         assign.isPending ||
@@ -162,6 +207,8 @@ export function useOrderActions(onDone?: () => void) {
       accept.mutate, accept.isPending,
       price.mutate, price.isPending,
       reject.mutate, reject.isPending,
+      cancel.mutate, cancel.isPending,
+      create.mutate, create.isPending,
       hold.mutate, hold.isPending,
       transfer.mutate, transfer.isPending,
       assign.mutate, assign.isPending,
@@ -184,6 +231,7 @@ export function allowedActions(status: string): {
   canHold: boolean;
   canAssign: boolean;
   canComplete: boolean;
+  canCancel: boolean;
 } {
   const isNew = status === "NEW";
   const isOpen = !["COMPLETED", "CANCELLED"].includes(status);
@@ -193,5 +241,8 @@ export function allowedActions(status: string): {
     canHold: isOpen && status !== "DELAYED",
     canAssign: ["ACCEPTED", "ASSIGNED", "DELAYED"].includes(status),
     canComplete: ["IN_PROGRESS", "ARRIVED"].includes(status),
+    // `reject` covers the two statuses before a provider is involved; cancel is
+    // for everything after, which is where the screen previously had nothing.
+    canCancel: isOpen && !isNew && status !== "ACCEPTED",
   };
 }

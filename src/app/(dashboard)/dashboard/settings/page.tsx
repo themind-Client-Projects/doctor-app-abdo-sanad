@@ -1,7 +1,11 @@
 "use client";
 
-import { Building2, Phone, Settings as SettingsIcon, ShieldCheck } from "lucide-react";
+import { useState } from "react";
+import { signOut } from "next-auth/react";
+import { Building2, KeyRound, Phone, Settings as SettingsIcon, ShieldCheck } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
+import { apiFetch, useMutation } from "@/hooks/use-mutation";
+import { Field, fieldClass } from "@/components/data/form-dialog";
 import { PageHeader, Pill, toneForStatus } from "@/components/data/crud-kit";
 import {
   CHANNEL_LABELS,
@@ -100,6 +104,8 @@ export default function PartnerSettingsPage() {
         )}
       </section>
 
+      {user?.id ? <PasswordCard userId={user.id} /> : null}
+
       {partner ? (
         <>
           <section className="rounded-xl border border-border bg-card p-5">
@@ -163,5 +169,117 @@ export default function PartnerSettingsPage() {
         مع إدارة وريد.
       </p>
     </div>
+  );
+}
+
+/* --------------------------- تغيير كلمة المرور ---------------------------- */
+
+/**
+ * The one thing on this page a partner may actually change.
+ *
+ * `POST /api/users/[id]/password` was ADMIN-only, so a partner handed their
+ * password by the platform — over the phone, in a message — had no way to
+ * replace it, ever. It now accepts a self-change that proves knowledge of the
+ * current one.
+ *
+ * Every session ends on success, this one included, which is the correct
+ * behaviour and has to be said out loud before the button is pressed rather
+ * than discovered as a sudden sign-out.
+ */
+function PasswordCard({ userId }: { userId: string }) {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+
+  const { mutate: change, isPending } = useMutation(
+    async () =>
+      apiFetch(`/api/users/${userId}/password`, {
+        method: "POST",
+        body: JSON.stringify({ currentPassword: current, password: next }),
+      }),
+    {
+      successMessage: "تم تغيير كلمة المرور — سيُطلب منك تسجيل الدخول من جديد",
+      onSuccess: () => {
+        setCurrent("");
+        setNext("");
+        setConfirm("");
+        // The server ended every session, this one included. Staying on a dead
+        // session would hand the partner a 401 on their next click instead.
+        void signOut({ callbackUrl: "/login" });
+      },
+    }
+  );
+
+  const mismatch = confirm !== "" && next !== confirm;
+  const ready = current !== "" && next.length >= 10 && next === confirm;
+
+  return (
+    <section className="rounded-xl border border-border bg-card p-5">
+      <h2 className="mb-1 flex items-center gap-2 text-base font-semibold text-foreground">
+        <KeyRound size={18} className="text-primary" aria-hidden />
+        كلمة المرور
+      </h2>
+      <p className="mb-4 text-xs leading-relaxed text-muted-foreground">
+        ١٠ أحرف على الأقل. بعد التغيير تُغلق كل الجلسات المفتوحة بحسابك — بما فيها
+        هذه — ويُطلب منك تسجيل الدخول من جديد.
+      </p>
+
+      <form
+        className="space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (ready) void change();
+        }}
+      >
+        <Field label="كلمة المرور الحالية" htmlFor="pw-current">
+          <input
+            id="pw-current"
+            type="password"
+            autoComplete="current-password"
+            className={fieldClass}
+            value={current}
+            onChange={(e) => setCurrent(e.target.value)}
+          />
+        </Field>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="كلمة المرور الجديدة" htmlFor="pw-next" hint="١٠ أحرف على الأقل">
+            <input
+              id="pw-next"
+              type="password"
+              autoComplete="new-password"
+              className={fieldClass}
+              value={next}
+              onChange={(e) => setNext(e.target.value)}
+              minLength={10}
+              maxLength={72}
+            />
+          </Field>
+          <Field
+            label="تأكيد كلمة المرور"
+            htmlFor="pw-confirm"
+            hint={mismatch ? "الكلمتان غير متطابقتين" : undefined}
+          >
+            <input
+              id="pw-confirm"
+              type="password"
+              autoComplete="new-password"
+              className={fieldClass}
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              maxLength={72}
+            />
+          </Field>
+        </div>
+
+        <button
+          type="submit"
+          disabled={!ready || isPending}
+          className="flex h-11 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isPending ? "جارِ الحفظ..." : "تغيير كلمة المرور"}
+        </button>
+      </form>
+    </section>
   );
 }

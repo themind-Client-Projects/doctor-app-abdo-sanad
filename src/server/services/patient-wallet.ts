@@ -215,3 +215,77 @@ export async function payOrderFromWallet(orderId: string) {
 
   return wallet;
 }
+
+/**
+ * Give the money back when an order is cancelled.
+ *
+ * `payOrderFromWallet` takes the fee the moment an order is priced, and nothing
+ * ever put it back: a wallet-paid order that operations or the patient then
+ * cancelled left the balance short by the full amount, with a DEBIT in the
+ * ledger and no matching CREDIT. The patient's statement showed them paying for
+ * a service that never happened.
+ *
+ * Only refunds what this platform actually took: an order paid in CASH has no
+ * wallet debit to reverse, and one already REFUNDED is left alone.
+ *
+ * **Idempotent** — it looks for an existing REFUND transaction against the same
+ * order before crediting. A cancel pressed twice, or a retried request, must
+ * not pay the fee back twice; the status flip alone is not enough of a guard
+ * because the credit and the flip could interleave.
+ *
+ * Returns what happened rather than throwing, so a cancellation is never
+ * blocked by a refund that could not be made — the service is cancelled either
+ * way, and an unreturned fee is a finance problem, not a reason to leave the
+ * order live.
+ */
+export async function refundOrderToWallet(params: {
+  orderId: string;
+  description?: string;
+}): Promise<{ refunded: boolean; amount: string | null; reason: string | null }> {
+  const order = await prisma.order.findUnique({
+    where: { id: params.orderId },
+    select: {
+      id: true,
+      patientId: true,
+      totalAmount: true,
+      paymentStatus: true,
+      paymentMethod: true,
+    },
+  });
+
+  if (!order) return { refunded: false, amount: null, reason: "الطلب غير موجود" };
+  if (order.paymentMethod !== "WALLET" || order.paymentStatus !== "PAID") {
+    // Nothing was taken from the wallet, so there is nothing to give back.
+    return { refunded: false, amount: null, reason: null };
+  }
+  if (!order.totalAmount || new D(order.totalAmount).lte(0)) {
+    return { refunded: false, amount: null, reason: null };
+  }
+
+  const already = await prisma.patientTransaction.findFirst({
+    where: { orderId: order.id, type: "CREDIT", reason: "REFUND" },
+    select: { id: true },
+  });
+  if (already) return { refunded: false, amount: null, reason: null };
+
+  const amount = new D(order.totalAmount);
+
+  await prisma.$transaction(async (tx) => {
+    await creditWallet(
+      {
+        userId: order.patientId,
+        amount,
+        reason: "REFUND",
+        orderId: order.id,
+        description: params.description ?? "استرجاع رسوم طلب ملغي",
+      },
+      tx
+    );
+    await tx.order.update({
+      where: { id: order.id },
+      data: { paymentStatus: "REFUNDED" },
+    });
+  }, TX_OPTIONS);
+
+  return { refunded: true, amount: amount.toString(), reason: null };
+}

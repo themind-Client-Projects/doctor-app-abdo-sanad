@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
 import { ok } from "@/lib/api-response";
+import { orderScopeFor } from "@/lib/order-slots";
 
 type Alert = {
   id: string;
@@ -11,20 +12,46 @@ type Alert = {
   isRead: boolean;
 };
 
-// GET /api/dashboard/alerts — Active alerts (req L60-68)
+/**
+ * GET /api/dashboard/alerts — Active alerts (req L60-68)
+ *
+ * SCOPED TO THE CALLER. The two order queries had no `where` on ownership, so
+ * every partner's home screen listed the platform's critical and delayed
+ * orders — with patient names — including orders they have nothing to do with.
+ * A lab read a nurse's patients; a driver read a clinic's. That is a PHI leak
+ * on the first screen after sign-in, and it also buried each partner's own
+ * alerts under other people's noise.
+ *
+ * `orderScopeFor` is the same rule the worklists use: a platform role sees
+ * everything, a partner sees only orders in their own assignment slot, and it
+ * fails closed for anyone who can hold no assignment.
+ */
 export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
 
   // Get critical/urgent orders and recent issues
   const [criticalOrders, delayedOrders, unreadAlerts] = await Promise.all([
     prisma.order.findMany({
-      where: { priority: "CRITICAL", status: { not: "COMPLETED" } },
+      where: {
+        AND: [
+          orderScopeFor(identity),
+          {
+            priority: "CRITICAL",
+            // CANCELLED was counted as an open urgent order, so a cancelled
+            // job kept raising an alarm nobody could clear.
+            status: { notIn: ["COMPLETED", "CANCELLED"] },
+            deletedAt: null,
+          },
+        ],
+      },
       select: { id: true, orderNumber: true, patientName: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
       take: 5,
     }),
     prisma.order.findMany({
-      where: { status: "DELAYED" },
+      where: { AND: [orderScopeFor(identity), { status: "DELAYED", deletedAt: null }] },
       select: { id: true, orderNumber: true, patientName: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
       take: 5,
     }),
     // The result of this query used to be discarded. It is now emitted below —

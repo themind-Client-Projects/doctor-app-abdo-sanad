@@ -19,6 +19,22 @@ const ENTITY_NAMES: Record<UserRole, string> = {
   PATIENT: "وريد",
 };
 
+/**
+ * Where the header's search box sends a query, per role.
+ *
+ * "مرضاي" is the only list a partner holds that is worth searching from the
+ * chrome, and a DRIVER does not have one — their work is trips, and a driver
+ * is deliberately outside clinical scope everywhere else in the app. A role
+ * with no entry gets no search box rather than one that leads nowhere.
+ */
+const SEARCH_HREF: Partial<Record<UserRole, string>> = {
+  DOCTOR: "/dashboard/patients",
+  LAB: "/dashboard/patients",
+  PHARMACY: "/dashboard/patients",
+  NURSE: "/dashboard/patients",
+  RADIOLOGY: "/dashboard/patients",
+};
+
 function DashboardShell({ children }: { children: React.ReactNode }) {
   const { role, userName, isLoading } = useRole();
 
@@ -51,6 +67,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
         <DashboardHeader
           entityName={entityName}
           userName={userName}
+          searchHref={SEARCH_HREF[role]}
         />
         <main className="flex-1 p-6">
           {children}

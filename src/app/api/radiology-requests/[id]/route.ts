@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { assertPartnerScope, isPlatformRole, withAuth } from "@/lib/api-auth";
 import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { nonEmpty, parseBody } from "@/lib/validation";
+import { advanceOrderQuietly } from "@/server/services/orders";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -72,7 +73,7 @@ export const PATCH = withAuth<Ctx>({ roles: RADIOLOGY_ROLES }, async (req, { par
 
   const existing = await prisma.radiologyRequest.findUnique({
     where: { id },
-    select: { id: true, centerId: true },
+    select: { id: true, centerId: true, orderId: true, status: true },
   });
   if (!existing) {
     return fail(ErrorCode.NOT_FOUND, 404, "غير موجود", { requestId });
@@ -98,5 +99,18 @@ export const PATCH = withAuth<Ctx>({ roles: RADIOLOGY_ROLES }, async (req, { par
     },
   });
 
-  return ok(data, { requestId });
+  // The report being ready IS the order's "تم رفع النتائج" — see the same
+  // bridge on lab samples. Best-effort: the study is saved regardless, and the
+  // caller is told plainly whether the order moved with it.
+  const order =
+    input.status === "report_ready" && existing.status !== "report_ready"
+      ? await advanceOrderQuietly({
+          orderId: existing.orderId,
+          stepCode: "RESULTS_UPLOADED",
+          actorId: identity.userId,
+          description: "التقرير جاهز في مركز الأشعة",
+        })
+      : { advanced: false, reason: null };
+
+  return ok({ ...data, order }, { requestId });
 });

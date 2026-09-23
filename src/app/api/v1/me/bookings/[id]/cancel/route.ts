@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { withAuth } from "@/lib/api-auth";
 import { ErrorCode, fail, ok } from "@/lib/api-response";
+import { refundOrderToWallet } from "@/server/services/patient-wallet";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -94,5 +95,15 @@ export const POST = withAuth<Ctx>({}, async (req, { params }, identity) => {
     }),
   ]);
 
-  return ok(updated, { requestId });
+  // Give the fee back. `payOrderFromWallet` charges the wallet as soon as the
+  // order is priced, and cancelling never reversed it — so a patient who
+  // cancelled before anyone set out was still charged in full, with a DEBIT in
+  // their statement and no matching CREDIT.
+  //
+  // Outside the transaction above and deliberately non-fatal: the booking is
+  // cancelled either way, and the refund is idempotent, so a retry cannot pay
+  // it back twice.
+  const refund = await refundOrderToWallet({ orderId: id });
+
+  return ok({ ...updated, refund }, { requestId });
 });

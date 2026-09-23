@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { ROLES, assertPartnerScope, isPlatformRole, withAuth } from "@/lib/api-auth";
 import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { jsonValue, nonEmpty, parseBody } from "@/lib/validation";
+import { advanceOrderQuietly } from "@/server/services/orders";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -58,7 +59,7 @@ export const PATCH = withAuth<Ctx>({ roles: ROLES.CLINICAL }, async (req, { para
 
   const existing = await prisma.labSample.findUnique({
     where: { id },
-    select: { id: true, labId: true },
+    select: { id: true, labId: true, orderId: true, status: true },
   });
   if (!existing) {
     return fail(ErrorCode.NOT_FOUND, 404, "غير موجود", { requestId });
@@ -85,5 +86,20 @@ export const PATCH = withAuth<Ctx>({ roles: ROLES.CLINICAL }, async (req, { para
     },
   });
 
-  return ok(data, { requestId });
+  // The result becoming ready IS the order's "تم رفع النتائج". Nothing carried
+  // it across, so a patient watching their tracking screen saw the order stuck
+  // at "بدأ التنفيذ" with the finished result sitting in the lab's queue.
+  // Best-effort — the clinical record is saved regardless, and the caller is
+  // told plainly whether the order moved with it.
+  const order =
+    input.status === "ready" && existing.status !== "ready"
+      ? await advanceOrderQuietly({
+          orderId: existing.orderId,
+          stepCode: "RESULTS_UPLOADED",
+          actorId: identity.userId,
+          description: "النتيجة جاهزة في المختبر",
+        })
+      : { advanced: false, reason: null };
+
+  return ok({ ...data, order }, { requestId });
 });

@@ -31,10 +31,15 @@ function assertPrescriptionAccess(
 ): void {
   if (isPlatformRole(identity.role)) return;
 
-  const partnerId = identity.partnerId;
-  if (partnerId) {
-    if (identity.role === "DOCTOR" && row.doctorId === partnerId) return;
-    if (identity.role === "PHARMACY" && row.pharmacyId === partnerId) return;
+  // A doctor is matched on `doctorProfileId`, NOT `partnerId`:
+  // `Prescription.doctorId` is a foreign key to `DoctorProfile.id`, so a
+  // Partner id could never equal it and the prescribing doctor was locked out
+  // of their own prescription — they could not open or correct one.
+  if (identity.role === "DOCTOR" && identity.doctorProfileId && row.doctorId === identity.doctorProfileId) {
+    return;
+  }
+  if (identity.role === "PHARMACY" && identity.partnerId && row.pharmacyId === identity.partnerId) {
+    return;
   }
 
   throw new AuthError(403, "ليس لديك صلاحية للوصول إلى هذا المورد");
@@ -115,6 +120,26 @@ export const PATCH = withAuth<Ctx>({ roles: PRESCRIPTION_ROLES }, async (req, { 
   // the platform. A pharmacy must not be able to reassign the work it holds.
   const mayRoute = isPlatformRole(identity.role) || identity.role === "DOCTOR";
 
+  // The DRUGS are the prescriber's. The route's own comment says a forged
+  // dosage is a patient-safety issue, but `medications` was written from the
+  // body for whoever passed the ownership check — so the dispensing pharmacy
+  // could change the dose or the drug after the doctor signed it, then hand
+  // over what it had just written. Same for `orderId`, which let a pharmacy
+  // relink a prescription to a different order.
+  if (!mayRoute) {
+    if (input.medications !== undefined) {
+      return fail(
+        ErrorCode.FORBIDDEN,
+        403,
+        "قائمة الأدوية يعدّلها الطبيب المُعالج فقط",
+        { requestId }
+      );
+    }
+    if (input.orderId !== undefined) {
+      return fail(ErrorCode.FORBIDDEN, 403, "ربط الوصفة بطلب يتم من الطبيب أو الإدارة", { requestId });
+    }
+  }
+
   // "صالحة لمدة 30 يوماً" is printed on the paper, so dispensing against an
   // expired one has to be refused rather than merely discouraged.
   const expired = existing.expiresAt !== null && existing.expiresAt.getTime() < Date.now();
@@ -140,10 +165,10 @@ export const PATCH = withAuth<Ctx>({ roles: PRESCRIPTION_ROLES }, async (req, { 
   const data = await prisma.prescription.update({
     where: { id },
     data: {
-      medications: input.medications as Prisma.InputJsonValue | undefined,
+      medications: mayRoute ? (input.medications as Prisma.InputJsonValue | undefined) : undefined,
       status: input.status,
       pharmacyId: mayRoute ? input.pharmacyId : undefined,
-      orderId: input.orderId,
+      orderId: mayRoute ? input.orderId : undefined,
       notes: input.notes,
       pharmacistName: input.pharmacistName,
       ...(dispensing ? { dispensedAt: new Date(), dispensedById: identity.userId } : {}),

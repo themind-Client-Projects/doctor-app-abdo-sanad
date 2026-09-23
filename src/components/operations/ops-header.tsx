@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Search, Bell, Moon, Sun, User, Clock } from "lucide-react";
+import { Moon, Sun, Clock } from "lucide-react";
 import { useDarkMode } from "@/hooks/use-dark-mode";
-import { useNotifications } from "@/hooks/use-notifications";
+import { GlobalSearch, NotificationBell } from "@/components/shared/header-menus";
 import { formatDateTime } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
@@ -29,7 +29,6 @@ const statusConfig: Record<EmployeeStatus, { label: string; color: string }> = {
 
 export function OpsHeader({ employeeName, role, newOrders, delayedOrders }: OpsHeaderProps) {
   const { isDark, toggle, mounted } = useDarkMode();
-  const { unreadCount } = useNotifications(null);
   const [status, setStatus] = useState<EmployeeStatus>("available");
   const [currentTime, setCurrentTime] = useState("");
 
@@ -79,17 +78,12 @@ export function OpsHeader({ employeeName, role, newOrders, delayedOrders }: OpsH
         </div>
       </div>
 
-      {/* Left: search, notifications, dark mode (L282-284) */}
-      <div className="flex items-center gap-2">
-        <button className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent transition-colors">
-          <Search size={16} />
-        </button>
-        <button className="relative flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent transition-colors">
-          <Bell size={16} />
-          {unreadCount > 0 && (
-            <span className="absolute -top-0.5 -left-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">{unreadCount > 9 ? "9+" : unreadCount}</span>
-          )}
-        </button>
+      {/* Left: search, notifications, dark mode (L282-284)
+          Both were bare buttons with no handler — and the bell carried a REAL
+          unread count, so operations saw a red badge it could not open. */}
+      <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
+        <GlobalSearch />
+        <NotificationBell />
         <button onClick={toggle} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent transition-colors">
           {!mounted ? (
             <span className="block h-[16px] w-[16px]" aria-hidden="true" />

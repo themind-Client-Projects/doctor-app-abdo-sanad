@@ -6,6 +6,7 @@ import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { useOrderActions } from "@/hooks/use-order-actions";
 import { DataTable, type Column } from "@/components/data/data-table";
 import { PageHeader, Pill, toneForStatus } from "@/components/data/crud-kit";
+import { ProviderLadder, type TimelineRow } from "@/components/features/orders/provider-ladder";
 import { ORDER_STATUS_LABELS, SERVICE_TYPE_LABELS, labelOf, optionsOf } from "@/lib/labels";
 import { formatRelative } from "@/lib/format";
 
@@ -16,6 +17,12 @@ import { formatRelative } from "@/lib/format";
 // showed a skeleton forever. `/api/orders` returns exactly this — and is now
 // scoped server-side, so a nurse receives only the orders assigned
 // to them and never another partner's queue.
+//
+// The three hand-rolled buttons here keyed off `status`, which cannot express
+// تم التواصل (step 4 shares the ASSIGNED status with step 3) and had no rung
+// for إنهاء الخدمة at all — so a visit could be started and never finished.
+// `ProviderLadder` reads the order's own timeline instead and offers exactly
+// the step the server will accept.
 // ─────────────────────────────────────────────────────────────
 
 type Job = {
@@ -29,6 +36,7 @@ type Job = {
   address: string | null;
   createdAt: string;
   governorate: { name: string } | null;
+  timeline: TimelineRow[] | null;
 };
 
 /** Still to do — a finished job belongs in history, not the worklist. */
@@ -134,38 +142,12 @@ export default function Page() {
         ]}
         emptyMessage="لا مهام مسندة إليك حالياً"
         actions={(r) => (
-          <div className="flex items-center justify-end gap-1">
-            {r.status === "ASSIGNED" ? (
-              <button
-                type="button"
-                disabled={isPending}
-                onClick={() => void advance(r.id, "IN_TRANSIT")}
-                className="whitespace-nowrap rounded-lg bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-40"
-              >
-                في الطريق
-              </button>
-            ) : null}
-            {r.status === "IN_TRANSIT" ? (
-              <button
-                type="button"
-                disabled={isPending}
-                onClick={() => void advance(r.id, "ARRIVED")}
-                className="whitespace-nowrap rounded-lg bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-40"
-              >
-                وصلت
-              </button>
-            ) : null}
-            {r.status === "ARRIVED" ? (
-              <button
-                type="button"
-                disabled={isPending}
-                onClick={() => void advance(r.id, "STARTED")}
-                className="whitespace-nowrap rounded-lg bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-40"
-              >
-                بدء التنفيذ
-              </button>
-            ) : null}
-          </div>
+          <ProviderLadder
+            timeline={r.timeline}
+            disabled={isPending}
+            label={`زيارة ${r.patientName}`}
+            onAdvance={(step, description) => void advance(r.id, step, description)}
+          />
         )}
       />
     </div>

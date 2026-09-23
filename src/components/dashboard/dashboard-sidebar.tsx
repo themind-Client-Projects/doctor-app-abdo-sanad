@@ -1,5 +1,7 @@
 "use client";
 
+import { signOut } from "next-auth/react";
+
 import { useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
@@ -179,7 +181,15 @@ export function DashboardSidebar({ role, userName, entityName, avatarUrl }: Side
                 <span className="text-xs text-muted-foreground">{role}</span>
               </div>
             </div>
-            <button className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors" aria-label="تسجيل الخروج">
+            {/* Had no handler: no partner could end their session. On a shared
+                clinic or lab workstation the next person inherited the previous
+                user's access to patient data. */}
+            <button
+              type="button"
+              onClick={() => void signOut({ callbackUrl: "/login" })}
+              className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+              aria-label="تسجيل الخروج"
+            >
               <LogOut size={16} />
             </button>
           </div>

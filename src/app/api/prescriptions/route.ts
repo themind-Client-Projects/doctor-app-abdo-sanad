@@ -1,8 +1,10 @@
 import { z } from "zod";
 import type { Prisma, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { resolvePatientForCaller } from "@/server/services/patient-access";
+import { withPatients } from "@/server/services/patient-contacts";
 import { AuthError, isPlatformRole, partnerScope, withAuth } from "@/lib/api-auth";
-import { keysetArgs, ok, okList, toPage } from "@/lib/api-response";
+import { ErrorCode, fail, keysetArgs, ok, okList, toPage } from "@/lib/api-response";
 import { nonEmpty, paginationSchema, parseBody, parseQuery } from "@/lib/validation";
 import { medicationSchema, prescriptionExpiry } from "@/server/services/referral-forms";
 
@@ -92,9 +94,11 @@ export const GET = withAuth({ roles: PRESCRIPTION_ROLES }, async (req, _ctx, ide
     where.id = "";
   }
 
-  // The worklist has to say WHO the sample belongs to. Without this join the
-  // screen has an order id and nothing else, which is why it displayed invented
-  // `patientName` / `testType` fields that the model does not have.
+  // The worklist has to say WHO the prescription is for. The order carries the
+  // contact details as given at booking — but `orderId` is OPTIONAL, and every
+  // prescription a doctor writes in clinic has none. Those rows rendered
+  // "بلا طلب مرتبط" and no patient at all, so `withPatients` below fills the
+  // name in from the account for exactly those.
   const include = {
     order: {
       select: { id: true, orderNumber: true, patientName: true, patientPhone: true },
@@ -115,7 +119,7 @@ export const GET = withAuth({ roles: PRESCRIPTION_ROLES }, async (req, _ctx, ide
     });
 
     const { items, page: pageMeta } = toPage(rows, take);
-    return okList(items, pageMeta, { requestId });
+    return okList(await withPatients(items), pageMeta, { requestId });
   }
 
   // Legacy offset mode — response shape unchanged for existing callers.
@@ -131,7 +135,7 @@ export const GET = withAuth({ roles: PRESCRIPTION_ROLES }, async (req, _ctx, ide
   ]);
 
   return okList(
-    data,
+    await withPatients(data),
     { nextCursor: null, hasMore: page * pageSize < total, limit: pageSize },
     { requestId, legacy: { total, page, pageSize } }
   );
@@ -142,14 +146,53 @@ export const POST = withAuth({ roles: PRESCRIPTION_ROLES }, async (req, _ctx, id
   const requestId = req.headers.get("x-request-id") ?? undefined;
   const input = await parseBody(req, createPrescriptionSchema);
 
+  // A PHARMACY must not write prescriptions.
+  //
+  // It was in this route's role list with the body's `doctorId` trusted, so a
+  // pharmacy could mint a prescription under any doctor's name, for any
+  // patient, routed to itself — and then "dispense" it. Prescribing is the
+  // doctor's act; the pharmacy's half of this record is the dispensing fields
+  // on PATCH.
+  if (identity.role === "PHARMACY") {
+    throw new AuthError(403, "الوصفة يكتبها الطبيب — الصيدلية تسجّل الصرف فقط");
+  }
+
   // A doctor prescribes as themselves — the body's `doctorId` is not trusted,
   // otherwise a prescription could be written under another doctor's name.
+  //
+  // `doctorProfileId`, NOT `partnerId`: `Prescription.doctorId` is a foreign
+  // key to `DoctorProfile.id`, and a Partner id there failed the constraint on
+  // every insert. A doctor could not write a single prescription — the request
+  // came back 409 "مرجع غير صالح" every time.
   let doctorId = input.doctorId;
   if (identity.role === "DOCTOR") {
-    if (!identity.partnerId) {
-      throw new AuthError(403, "ليس لديك صلاحية للوصول إلى هذا المورد");
+    if (!identity.doctorProfileId) {
+      throw new AuthError(403, "لا يوجد ملف طبيب مرتبط بحسابك");
     }
-    doctorId = identity.partnerId;
+    doctorId = identity.doctorProfileId;
+
+    // Prescribing for someone you are not treating would make this an oracle
+    // over the patient table, and a prescription nobody asked for.
+    const patient = await resolvePatientForCaller(identity, input.patientId);
+    if (!patient) {
+      return fail(
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+        422,
+        "لا يمكن وصف دواء لمريض ليس لديك معه حجز أو موعد أو إحالة",
+        { requestId }
+      );
+    }
+  } else {
+    // Operations writing one on a doctor's behalf: the id must name a real
+    // doctor, or the insert fails the same foreign key with a 409 the caller
+    // cannot act on.
+    const exists = await prisma.doctorProfile.findUnique({
+      where: { id: doctorId },
+      select: { id: true },
+    });
+    if (!exists) {
+      return fail(ErrorCode.INVALID_REFERENCE, 422, "الطبيب غير موجود", { requestId });
+    }
   }
 
   const data = await prisma.prescription.create({

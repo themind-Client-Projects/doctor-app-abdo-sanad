@@ -57,19 +57,24 @@ export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
     }),
   ]);
 
+  // `href` has to name a route that EXISTS. Two of these three pointed at
+  // detail pages that were never built — `/operations/orders/[id]` and
+  // `/admin/users/[id]` — so following a search result 404'd. Both resources
+  // live on a list screen that takes `?q=`, which is where they now go.
   const results = [
     ...orders.map((o) => ({
       type: "order" as const,
       id: o.id,
       title: `طلب #${o.orderNumber}`,
       subtitle: `${o.patientName} — ${o.serviceType}`,
-      href: `/operations/orders/${o.id}`,
+      href: `/operations/orders?q=${encodeURIComponent(o.orderNumber)}`,
     })),
     ...partners.map((p) => ({
       type: "partner" as const,
       id: p.id,
       title: p.name,
       subtitle: p.type,
+      // The one detail page that does exist.
       href: `/admin/partners/${p.id}`,
     })),
     ...users.map((u) => ({
@@ -77,7 +82,7 @@ export const GET = withAuth({ roles: ROLES.OPERATIONS }, async (req) => {
       id: u.id,
       title: u.name || u.phone || "مستخدم",
       subtitle: u.role,
-      href: `/admin/users/${u.id}`,
+      href: `/admin/users?q=${encodeURIComponent(u.name || u.phone || "")}`,
     })),
   ];
 
