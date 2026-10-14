@@ -38,8 +38,11 @@ const PRESENTATION: Record<string, { icon: typeof Bell; color: string }> = {
   reminder: { icon: Clock, color: 'bg-blue-100 text-blue-600' },
   result_ready: { icon: Stethoscope, color: 'bg-purple-100 text-purple-600' },
   medical: { icon: Stethoscope, color: 'bg-purple-100 text-purple-600' },
-  // Types the staff-side services already emit — mapped so a shared inbox does
-  // not quietly render half its rows as an unlabelled grey tick.
+  // Written by the SEEDS (prisma/seed.ts, prisma/seed-patient-notifications.ts)
+  // and by the free-text ops sender at /api/notifications/send, which accepts
+  // any `type` string — NOT by any service. The previous comment here claimed
+  // the services emit them, and none of these fifteen keys intersected the
+  // four a service actually writes.
   order: { icon: CalendarCheck, color: 'bg-emerald-100 text-emerald-600' },
   appointment: { icon: Clock, color: 'bg-blue-100 text-blue-600' },
   lab: { icon: Stethoscope, color: 'bg-purple-100 text-purple-600' },
@@ -47,6 +50,17 @@ const PRESENTATION: Record<string, { icon: typeof Bell; color: string }> = {
   report: { icon: Megaphone, color: 'bg-amber-100 text-amber-600' },
   critical: { icon: Megaphone, color: 'bg-red-100 text-red-600' },
   wallet: { icon: CheckCircle2, color: 'bg-emerald-100 text-emerald-600' },
+
+  // The four the services DO write today: membership.ts:285/378 (a patient
+  // reaches these through /api/v1/me/membership), referrals/route.ts:300,
+  // referrals/[id]/route.ts:199, partner-wallet.ts:153. Every one of them was
+  // falling through to the grey FALLBACK — so the only notification a patient
+  // can actually receive was also the one rendered as unrecognised.
+  membership: { icon: CheckCircle2, color: 'bg-emerald-100 text-emerald-600' },
+  referral_new: { icon: Stethoscope, color: 'bg-purple-100 text-purple-600' },
+  referral_update: { icon: Stethoscope, color: 'bg-purple-100 text-purple-600' },
+  // Red, not amber: a debt is a liability notice, not a promotion.
+  debt: { icon: Megaphone, color: 'bg-red-100 text-red-600' },
 };
 
 /** An unrecognised type still renders, rather than crashing on a missing key. */
@@ -118,11 +132,15 @@ export default function NotificationsPage() {
               <button
                 key={notif.id}
                 type="button"
+                // A read row has nothing left to do — tapping it only re-marks
+                // it read. It looked tappable and was in the tab order; it is a
+                // record, not a control.
+                disabled={!unread}
                 onClick={() => open(notif)}
                 aria-label={`${notif.title}${unread ? ' — غير مقروء' : ''}`}
-                className={`w-full text-start p-4 rounded-[1.5rem] border flex gap-4 transition-colors active:scale-95 cursor-pointer ${
+                className={`w-full text-start p-4 rounded-[1.5rem] border flex gap-4 transition-colors ${
                   unread
-                    ? 'bg-white border-primary/20 shadow-sm'
+                    ? 'bg-white border-primary/20 shadow-sm cursor-pointer active:scale-95'
                     : 'bg-gray-50/50 border-gray-100 opacity-80'
                 }`}
               >

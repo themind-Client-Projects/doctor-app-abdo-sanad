@@ -29,6 +29,7 @@ import { useBookingDrawer } from '@/hooks/use-booking-drawer';
 import { useStorefront, type Channel } from '@/hooks/use-storefront';
 import { useFeatureFlags } from '@/hooks/use-feature-flags';
 import { useDashboardData } from '@/hooks/use-dashboard-data';
+import { LoadError, loadFailed } from '@/components/shared/load-error';
 
 /** Cover images live in /public and are keyed by position — the DB stores no
  *  complex artwork, so cycling them keeps the strip looking designed rather
@@ -56,7 +57,11 @@ export function DoctorsBrowse({ channel = 'DIRECT' }: { channel?: Channel }) {
   // a discount those providers never agreed to.
   const activeChannel: Channel = canOfferSanad && sanadOn ? 'SANAD' : channel;
 
-  const { paginatedDoctors, totalCount, itemsPerPage, isLoading } = useDoctors({ channel: activeChannel });
+  const { allDoctors, paginatedDoctors, totalCount, itemsPerPage, isLoading, error, refetch } =
+    useDoctors({ channel: activeChannel });
+  // `allDoctors`, not `totalCount`: totalCount is the FILTERED count, so an
+  // active search term would look like a failed fetch.
+  const failed = loadFailed(error, allDoctors.length);
   const { storefront } = useStorefront(activeChannel);
   // Real complexes, scoped to the same storefront the visitor is browsing.
   const { data: complexAds } = useDashboardData<ComplexAd[]>({
@@ -152,10 +157,12 @@ export function DoctorsBrowse({ channel = 'DIRECT' }: { channel?: Channel }) {
         <section className="px-4 space-y-4">
           <div className="flex justify-between items-center mb-2">
             <h2 className="text-base font-bold text-gray-800">الأطباء المتاحين</h2>
-            <span className="text-xs text-gray-500 font-medium">{totalCount} طبيب</span>
+            <span className="text-xs text-gray-500 font-medium">{failed ? '' : `${totalCount} طبيب`}</span>
           </div>
 
-          {isLoading ? (
+          {failed ? (
+            <LoadError message="تعذّر تحميل قائمة الأطباء" onRetry={() => void refetch()} />
+          ) : isLoading ? (
             <div className="space-y-4">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="h-32 rounded-3xl bg-white border border-gray-100 animate-pulse" />
@@ -193,6 +200,10 @@ export function DoctorsBrowse({ channel = 'DIRECT' }: { channel?: Channel }) {
         doctor={selectedDoctor}
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
+        // `activeChannel`, not the prop — same as DoctorCard above. With the
+        // سند toggle on, the prop is still DIRECT, so the patient browsed سند
+        // prices and the booking was posted (and priced) as DIRECT.
+        channel={activeChannel}
       />
 
       <CitySelectorDrawer />

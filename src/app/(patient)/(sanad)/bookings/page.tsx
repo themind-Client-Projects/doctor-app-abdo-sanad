@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useMemo } from 'react';
 import { CalendarClock, MapPin, Check, X, Clock, Stethoscope, TestTubes, Building2, Activity, Star } from 'lucide-react';
 import { FlexibleHeader } from '@/components/shared/flexible-header';
 import { useDashboardData } from '@/hooks/use-dashboard-data';
 import { apiFetch, useMutation } from '@/hooks/use-mutation';
 import { formatCurrency, formatDate } from '@/lib/format';
-import { SERVICE_TYPE_LABELS, labelOf } from '@/lib/labels';
+import { APPOINTMENT_TYPE_LABELS, SERVICE_TYPE_LABELS, labelOf } from '@/lib/labels';
+import { getBookingStatusConfig } from '@/components/features/patient/booking-status';
 
 import {
   Drawer,
@@ -19,6 +20,8 @@ import {
 } from '@/components/ui/drawer';
 import { Calendar } from '@/components/ui/calendar';
 import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
+import { invalidate } from '@/lib/request-cache';
 import {
   Dialog,
   DialogContent,
@@ -39,6 +42,8 @@ import {
 type BookingCard = {
   id: string;
   kind: 'appointment' | 'order';
+  /** `DoctorProfile.id` on an appointment card; null on an order. */
+  doctorId?: string | null;
   providerName: string;
   subtitle: string;
   date: string;
@@ -53,80 +58,113 @@ type BookingCard = {
   canRate: boolean;
   /** The patient's own rating, if given. */
   rating: number | null;
+  /** `AppointmentType` for an appointment, null for an order. */
+  appointmentType: string | null;
 };
 
-const availableTimes = [
-  { time: '09:00 ص', available: true },
-  { time: '09:30 ص', available: false },
-  { time: '10:00 ص', available: true },
-  { time: '10:30 ص', available: true },
-  { time: '11:00 ص', available: false },
-  { time: '11:30 ص', available: true },
-  { time: '12:00 م', available: false },
-  { time: '01:00 م', available: true },
-  { time: '02:00 م', available: true },
-  { time: '04:00 م', available: true },
-  { time: '04:30 م', available: false },
-  { time: '05:30 م', available: true },
-];
+// `availableTimes` removed. It was twelve fixed times with four of them
+// marked «غير متاح» for every provider on every day — an availability pattern
+// nobody had recorded. Slots now come from the doctor's own DoctorSchedule
+// window; see `timeSlots` below.
 
 // ─── Helpers ────────────────────────────────────────────────────────────
-function getStatusConfig(status: BookingCard['status']) {
-  switch (status) {
-    case 'confirmed':
-      return { label: 'مؤكد', bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-100', icon: <Check className="w-3 h-3" /> };
-    case 'pending':
-      return { label: 'بانتظار التأكيد', bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-100', icon: <Clock className="w-3 h-3" /> };
-    case 'completed':
-      return { label: 'مكتمل', bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-200', icon: <Check className="w-3 h-3" /> };
-    case 'cancelled':
-      return { label: 'ملغي', bg: 'bg-red-50', text: 'text-red-500', border: 'border-red-100', icon: <X className="w-3 h-3" /> };
-  }
-}
+/** Shared with the سند home, which now renders the same real bookings. */
+const getStatusConfig = getBookingStatusConfig;
+
+/**
+ * A card's icon, keyed by what the API actually sends.
+ *
+ * Both helpers used to switch on 'doctor' | 'lab' | 'physio'. Only the first
+ * is ever sent: an order card carries `o.serviceType`, a `ServiceType` enum
+ * member — LAB_TEST, PHARMACY_DISPENSE, TAXI and the rest — and 'lab' and
+ * 'physio' are members of nothing. So every order card, on both the list chip
+ * and the card face, rendered NO icon at all: the switch fell through and
+ * returned undefined.
+ *
+ * Grouped by what the patient is waiting for rather than one icon per member,
+ * and a stethoscope as the fallback so an unmapped member degrades to a
+ * clinical glyph instead of a hole.
+ */
+const TYPE_ICON: Record<string, typeof Stethoscope> = {
+  // Appointments — `type: "doctor"` is a literal the bookings feed sets.
+  doctor: Stethoscope,
+  IN_PERSON_CONSULT: Stethoscope,
+  ONLINE_CONSULT: Stethoscope,
+  // Samples and imaging.
+  LAB_TEST: TestTubes,
+  HOME_LAB_TEST: TestTubes,
+  HOME_BLOOD_DRAW: TestTubes,
+  BLOOD_BANK: TestTubes,
+  RADIOLOGY: Activity,
+  // Someone comes to you, or you are taken somewhere.
+  HOME_VISIT: Building2,
+  NURSING: Building2,
+  PHYSIOTHERAPY: Building2,
+  SURGERY: Building2,
+  TAXI: MapPin,
+  // The pharmacy.
+  PHARMACY_DISPENSE: Clock,
+  MEDICINE_DELIVERY: Clock,
+};
+
+const TYPE_ICON_TONE: Record<string, string> = {
+  doctor: 'text-primary',
+  IN_PERSON_CONSULT: 'text-primary',
+  ONLINE_CONSULT: 'text-primary',
+  LAB_TEST: 'text-purple-500',
+  HOME_LAB_TEST: 'text-purple-500',
+  HOME_BLOOD_DRAW: 'text-purple-500',
+  BLOOD_BANK: 'text-purple-500',
+  RADIOLOGY: 'text-purple-500',
+  HOME_VISIT: 'text-teal-500',
+  NURSING: 'text-teal-500',
+  PHYSIOTHERAPY: 'text-teal-500',
+  SURGERY: 'text-teal-500',
+  TAXI: 'text-amber-500',
+  PHARMACY_DISPENSE: 'text-emerald-500',
+  MEDICINE_DELIVERY: 'text-emerald-500',
+};
 
 function getTypeIcon(type: string) {
-  switch (type) {
-    case 'doctor': return <Stethoscope className="w-4 h-4 text-primary" />;
-    case 'lab': return <TestTubes className="w-4 h-4 text-purple-500" />;
-    case 'physio': return <Building2 className="w-4 h-4 text-teal-500" />;
-  }
+  const Icon = TYPE_ICON[type] ?? Stethoscope;
+  return <Icon className={`w-4 h-4 ${TYPE_ICON_TONE[type] ?? 'text-primary'}`} />;
 }
 
 function getTypeCardIcon(type: string) {
-  switch (type) {
-    case 'doctor': return <Stethoscope className="w-6 h-6 text-primary" />;
-    case 'lab': return <TestTubes className="w-6 h-6 text-purple-500" />;
-    case 'physio': return <Building2 className="w-6 h-6 text-teal-500" />;
-  }
+  const Icon = TYPE_ICON[type] ?? Stethoscope;
+  return <Icon className={`w-6 h-6 ${TYPE_ICON_TONE[type] ?? 'text-primary'}`} />;
 }
 
-function getTypeLabel(type: string) {
+/**
+ * A card's `type` comes from TWO vocabularies, and only one of them is a
+ * ServiceType.
+ *
+ * `/api/v1/me/bookings` sets `type: o.serviceType` for an order but the
+ * literal `"doctor"` for an appointment, and `labelOf` returns its key
+ * verbatim when it misses — so every doctor-appointment card printed the Latin
+ * word "doctor" inside an Arabic chip. This function already existed and
+ * already handled it; nothing called it.
+ */
+function getTypeLabel(type: string, appointmentType?: string | null) {
+  // An appointment's real axis is HOW it happens — the chip must separate a
+  // video call from a clinic visit.
+  if (appointmentType) {
+    return labelOf(APPOINTMENT_TYPE_LABELS, appointmentType);
+  }
   switch (type) {
     case 'doctor': return 'عيادة';
     case 'lab': return 'مختبر';
     case 'physio': return 'علاج طبيعي';
+    default: return labelOf(SERVICE_TYPE_LABELS, type);
   }
 }
 
-// Dates that are "available" for rescheduling (mock)
-const availableDates = [
-  new Date(2026, 4, 13),
-  new Date(2026, 4, 14),
-  new Date(2026, 4, 15),
-  new Date(2026, 4, 18),
-  new Date(2026, 4, 19),
-  new Date(2026, 4, 20),
-  new Date(2026, 4, 21),
-  new Date(2026, 4, 25),
-  new Date(2026, 4, 26),
-  new Date(2026, 4, 27),
-];
+// `availableDates` removed. It was ten literal dates in MAY 2026; today is
+// October, so every one failed the calendar's own `d < today` guard and every
+// other day failed `!isDateAvailable(d)` — the result was a calendar in which
+// no date in any month could be selected, forwards or backwards, so إعادة
+// جدولة could never be completed by anybody.
 
-function isDateAvailable(day: Date) {
-  return availableDates.some(
-    (d) => d.getFullYear() === day.getFullYear() && d.getMonth() === day.getMonth() && d.getDate() === day.getDate()
-  );
-}
 
 // ─── Component ──────────────────────────────────────────────────────────
 export default function BookingsPage() {
@@ -142,6 +180,59 @@ export default function BookingsPage() {
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<BookingCard | null>(null);
   const timeSectionRef = useRef<HTMLDivElement>(null);
+
+  // The doctor's own working week, for the booking being rescheduled. Replaces
+  // the May-2026 literal array: `/api/public/doctors/[id]` already returns
+  // `schedules`, one active row per weekday with real start and end times.
+  const { data: rescheduleDoctor } = useDashboardData<{
+    schedules: { dayOfWeek: number; startTime: string; endTime: string }[];
+  }>({
+    url: rescheduleTarget?.doctorId ? `/api/public/doctors/${rescheduleTarget.doctorId}` : '',
+    enabled: Boolean(rescheduleTarget?.doctorId),
+  });
+
+  const scheduleFor = useCallback(
+    (d: Date) => rescheduleDoctor?.schedules?.find((r) => r.dayOfWeek === d.getDay()) ?? null,
+    [rescheduleDoctor]
+  );
+
+  /** Half-hours inside the doctor's real window for the chosen day.
+   *
+   *  The 30-minute step is a default rather than a client decision, and
+   *  already-booked slots are not yet subtracted — but nothing here is
+   *  invented, which the previous twelve-slot array was. */
+  const timeSlots = useMemo(() => {
+    if (!date) return [];
+    const row = scheduleFor(date);
+    if (!row) return [];
+    const [sh, sm] = row.startTime.split(':').map(Number);
+    const [eh, em] = row.endTime.split(':').map(Number);
+    if ([sh, sm, eh, em].some((n) => Number.isNaN(n))) return [];
+    const out: string[] = [];
+    for (let mins = sh * 60 + sm; mins + 30 <= eh * 60 + em; mins += 30) {
+      out.push(`${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`);
+    }
+    return out;
+  }, [date, scheduleFor]);
+
+  /** The next 60 days this doctor actually works — drives the calendar. */
+  const availableDates = useMemo(() => {
+    if (!rescheduleDoctor?.schedules?.length) return [];
+    const days: Date[] = [];
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    for (let i = 0; i < 60; i += 1) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      if (scheduleFor(d)) days.push(d);
+    }
+    return days;
+  }, [rescheduleDoctor, scheduleFor]);
+
+  const isDateAvailable = useCallback(
+    (d: Date) => scheduleFor(d) !== null,
+    [scheduleFor]
+  );
 
   const openReschedule = (booking: BookingCard) => {
     setRescheduleTarget(booking);
@@ -161,14 +252,66 @@ export default function BookingsPage() {
   const { data, isLoading, error, refetch } = useDashboardData<{
     upcoming: BookingCard[];
     past: BookingCard[];
+    /** The feed is capped per source; true when something was left out. */
+    truncated: boolean;
   }>({ url: '/api/v1/me/bookings' });
 
   const bookings = (activeTab === 'upcoming' ? data?.upcoming : data?.past) ?? [];
 
-  const { mutate: cancelBooking, isPending: cancelling } = useMutation(
+  // إعادة جدولة, for real. «تأكيد الموعد الجديد» used to call
+  // `setDrawerOpen(false)` and nothing else: the drawer closed and the booking
+  // kept its original date, with no error and no sign the change was dropped.
+  // `PATCH /api/appointments/[id]` already accepts { date, time } and checks
+  // the caller is a party to the appointment.
+  const { mutate: reschedule, isPending: rescheduling } = useMutation<
+    { id: string },
+    [string, Date, string]
+  >(
+    async (id: string, newDate: Date, newTime: string) =>
+      apiFetch(`/api/appointments/${id}`, {
+        method: 'PATCH',
+        // Local components, not toISOString — Baghdad is UTC+3, so slicing a
+        // UTC string moves a late-evening choice to the previous day.
+        body: JSON.stringify({
+          date: `${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}-${String(newDate.getDate()).padStart(2, '0')}`,
+          time: newTime,
+        }),
+      }),
+    {
+      successMessage: 'تم تغيير موعدك',
+      onSuccess: () => {
+        invalidate('/api/v1/me');
+        void refetch();
+      },
+    }
+  );
+
+  const { mutate: cancelBooking, isPending: cancelling } = useMutation<
+    { refund?: { refunded: boolean; amount: string | null } | null },
+    [string]
+  >(
     async (id: string) =>
       apiFetch(`/api/v1/me/bookings/${id}/cancel`, { method: 'POST' }),
-    { successMessage: 'تم إلغاء الحجز', onSuccess: () => void refetch() }
+    {
+      // The endpoint refunds a wallet-paid booking and SAYS SO in its response.
+      // The page threw that away, so a patient whose money had just come back
+      // was told only «تم إلغاء الحجز» — the refund was invisible.
+      successMessage: null,
+      onSuccess: (result) => {
+        if (result?.refund?.refunded) {
+          toast.success('تم إلغاء الحجز واسترجاع المبلغ إلى محفظتك');
+        } else {
+          toast.success('تم إلغاء الحجز');
+        }
+        // `/api/v1/me`, not the bookings key. `invalidate` is a PREFIX match,
+        // and `refetch()` passes `/api/v1/me/bookings` — which never matches
+        // the shorter `/api/v1/me` the header's wallet chip reads. So the chip
+        // kept showing the pre-refund balance until a full reload: the money
+        // was back and the screen said otherwise.
+        invalidate('/api/v1/me');
+        void refetch();
+      },
+    }
   );
 
   // Confirmed through the existing dialog, then closed on success — the button
@@ -184,9 +327,13 @@ export default function BookingsPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50/50 pb-24 font-sans">
+      {/* The count only once `data` has landed. `?? 0` printed «0 حجوزات
+          قادمة» on first paint and again after a failed load — the header sits
+          above the body's own error branch, so it told a patient with a visit
+          tomorrow they had none while «تعذّر تحميل الحجوزات» showed below. */}
       <FlexibleHeader 
         title="حجوزاتي" 
-        subtitle={`${data?.upcoming.length ?? 0} حجوزات قادمة`} 
+        subtitle={data ? `${data.upcoming.length} حجوزات قادمة` : undefined} 
         icon={<Activity className="w-6 h-6" />} 
         showWallet 
       />
@@ -201,7 +348,7 @@ export default function BookingsPage() {
                 : 'text-gray-500 hover:text-gray-700'
             }`}
           >
-            القادمة ({data?.upcoming.length ?? 0})
+            القادمة{data ? ` (${data.upcoming.length})` : ''}
           </button>
           <button
             onClick={() => setActiveTab('past')}
@@ -211,7 +358,7 @@ export default function BookingsPage() {
                 : 'text-gray-500 hover:text-gray-700'
             }`}
           >
-            السابقة ({data?.past.length ?? 0})
+            السابقة{data ? ` (${data.past.length})` : ''}
           </button>
         </div>
 
@@ -294,7 +441,7 @@ export default function BookingsPage() {
                   <div className="flex items-center justify-between pt-2 border-t border-gray-100">
                     <div className="flex items-center gap-1.5 text-xs text-gray-500 font-medium">
                       {getTypeIcon(booking.type)}
-                      <span>{labelOf(SERVICE_TYPE_LABELS, booking.type)}</span>
+                      <span>{getTypeLabel(booking.type, booking.appointmentType)}</span>
                       <span className="mx-1 text-gray-300">|</span>
                       <span className="text-gray-400">#{booking.reference}</span>
                     </div>
@@ -307,15 +454,22 @@ export default function BookingsPage() {
                 {/* Action Buttons */}
                 {isUpcoming ? (
                   <div className="flex gap-3">
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => openReschedule(booking)}
-                      onKeyDown={(e) => e.key === 'Enter' && openReschedule(booking)}
-                      className="flex-1 bg-primary/10 hover:bg-primary/20 text-primary py-3 rounded-xl text-sm font-bold transition-colors text-center cursor-pointer select-none"
-                    >
-                      إعادة جدولة
-                    </div>
+                    {/* Only an APPOINTMENT can be rescheduled. `Order` has no
+                        date and no time column at all, so there is nothing on
+                        an order card for a new date to be written to — the
+                        drawer would have collected a date and silently
+                        discarded it. Orders keep إلغاء, which they support. */}
+                    {booking.kind === 'appointment' ? (
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => openReschedule(booking)}
+                        onKeyDown={(e) => e.key === 'Enter' && openReschedule(booking)}
+                        className="flex-1 bg-primary/10 hover:bg-primary/20 text-primary py-3 rounded-xl text-sm font-bold transition-colors text-center cursor-pointer select-none"
+                      >
+                        إعادة جدولة
+                      </div>
+                    ) : null}
                     <div
                       role="button"
                       tabIndex={0}
@@ -347,6 +501,17 @@ export default function BookingsPage() {
               </div>
             );
           })}
+
+          {/* The feed is capped at 50 per source and the server SAYS so — the
+              page dropped the flag, so a patient with a longer history saw it
+              silently cut, and the tab counters above plateau at the cap. The
+              counters are left as they are (they count what is shown); this
+              states plainly that there is more. */}
+          {!isLoading && !error && data?.truncated ? (
+            <p className="py-6 text-center text-xs font-medium leading-relaxed text-gray-500">
+              تعرض هذه الصفحة أحدث حجوزاتك فقط — لديك سجل أطول مما هو ظاهر هنا.
+            </p>
+          ) : null}
         </div>
       </main>
 
@@ -423,18 +588,19 @@ export default function BookingsPage() {
                     <Clock className="w-5 h-5 text-primary" />
                     الأوقات المتاحة
                   </h4>
+                  {timeSlots.length === 0 ? (
+                    <p className="text-sm text-gray-500">لا توجد أوقات متاحة في هذا اليوم.</p>
+                  ) : null}
                   <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                    {availableTimes.map(({ time, available }) => (
+                    {timeSlots.map((time) => (
                       <button
                         key={time}
-                        disabled={!available}
+                        type="button"
                         onClick={() => setSelectedTime(time)}
                         className={`py-2.5 sm:py-3 px-1.5 sm:px-2 rounded-xl text-sm sm:text-base font-bold border transition-colors ${
-                          !available
-                            ? 'bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed line-through'
-                            : selectedTime === time
-                              ? 'bg-primary text-white border-primary shadow-md shadow-primary/20 scale-[1.02]'
-                              : 'bg-white text-gray-600 border-gray-200 hover:border-primary/50 hover:bg-primary/5'
+                          selectedTime === time
+                            ? 'bg-primary text-white border-primary shadow-md shadow-primary/20 scale-[1.02]'
+                            : 'bg-white text-gray-600 border-gray-200 hover:border-primary/50 hover:bg-primary/5'
                         }`}
                       >
                         {time}
@@ -463,10 +629,16 @@ export default function BookingsPage() {
             <DrawerFooter>
               <Button
                 className="w-full rounded-xl py-6 font-bold text-base"
-                disabled={!date || !selectedTime}
-                onClick={() => setDrawerOpen(false)}
+                disabled={!date || !selectedTime || rescheduling}
+                onClick={async () => {
+                  if (!rescheduleTarget || !date || !selectedTime) return;
+                  const result = await reschedule(rescheduleTarget.id, date, selectedTime);
+                  // Kept open on failure so the error toast is read against
+                  // the booking it refers to — same rule as إلغاء.
+                  if (result !== undefined) setDrawerOpen(false);
+                }}
               >
-                تأكيد الموعد الجديد
+                {rescheduling ? 'جاري الحفظ...' : 'تأكيد الموعد الجديد'}
               </Button>
               <DrawerClose asChild>
                 <Button variant="outline" className="w-full rounded-xl py-6 font-bold">

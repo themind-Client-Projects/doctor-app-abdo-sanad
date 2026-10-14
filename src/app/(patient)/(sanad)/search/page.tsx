@@ -1,15 +1,48 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Search, X, Clock, MapPin, Star, Stethoscope, Microscope, Pill, Syringe, Activity, ChevronLeft, SearchX } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
-import { buildSearchPool, DEFAULT_RECENT_SEARCHES } from '@/lib/constants/demo-data';
+import { LoadError, loadFailed } from '@/components/shared/load-error';
+import { useDashboardData } from '@/hooks/use-dashboard-data';
+import { doctorProfilePath, storefrontCategories, type StorefrontChannel } from '@/lib/channel-routes';
 import type { SearchResult, SearchCategory } from '@/types/patient';
 
-// ─── Category Config ────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────
+// البحث — now against the database.
+//
+// The pool was `buildSearchPool()` from `src/lib/constants/demo-data.ts`:
+// fourteen invented doctors plus three invented labs and three invented
+// pharmacies, with invented ratings and invented addresses. Every search any
+// patient ran returned those and only those — a real doctor on the platform
+// could not be found by name, and a result that was tapped went to
+// `/doctors/{specialtySlug}`, a specialty listing, never to the doctor.
+//
+// Three real reads replace it, one per category, each skipped when its tab is
+// not showing. The 400ms `setTimeout` that used to "simulate network delay"
+// is gone; there is a network now.
+//
+// «عمليات البحث الأخيرة» was five hardcoded phrases presented as the reader's
+// own history, identical on every device and on a first-ever visit. It is now
+// this browser's actual history, and starts empty.
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * `/search` serves BOTH storefronts. It used to hardcode DIRECT, so a search
+ * started from the سند home — where the home search box now passes
+ * `?channel=SANAD` — returned the public pool, linked to public profiles and
+ * quoted public prices, with nothing on screen saying the patient had left
+ * سند.
+ */
+function readChannel(value: string | null): StorefrontChannel {
+  return value === 'SANAD' || value === 'COMPLEX' ? value : 'DIRECT';
+}
+
+const RECENT_KEY = 'warid:recent-searches';
+const RECENT_LIMIT = 8;
 
 interface CategoryTab {
   id: SearchCategory;
@@ -24,13 +57,19 @@ const CATEGORY_TABS: CategoryTab[] = [
   { id: 'pharmacies', label: 'صيدليات', icon: <Pill className="w-4 h-4" /> },
 ];
 
-const BROWSE_CATEGORIES = [
-  { name: 'أطباء', icon: <Stethoscope className="w-7 h-7" />, color: 'bg-blue-50 text-blue-600', href: '/doctors' },
-  { name: 'مختبرات', icon: <Microscope className="w-7 h-7" />, color: 'bg-purple-50 text-purple-600', href: '/labs' },
-  { name: 'صيدليات', icon: <Pill className="w-7 h-7" />, color: 'bg-emerald-50 text-emerald-600', href: '/pharmacies' },
-  { name: 'تمريض', icon: <Syringe className="w-7 h-7" />, color: 'bg-rose-50 text-rose-600', href: '/nursing' },
-  { name: 'علاج طبيعي', icon: <Activity className="w-7 h-7" />, color: 'bg-amber-50 text-amber-600', href: '/physiotherapy' },
-];
+/** Built per render, because the channel decides where each one goes. */
+function browseCategories(routes: ReturnType<typeof storefrontCategories>) {
+  return [
+    { name: 'أطباء', icon: <Stethoscope className="w-7 h-7" />, color: 'bg-blue-50 text-blue-600', href: routes.doctors },
+    { name: 'مختبرات', icon: <Microscope className="w-7 h-7" />, color: 'bg-purple-50 text-purple-600', href: routes.labs },
+    { name: 'صيدليات', icon: <Pill className="w-7 h-7" />, color: 'bg-emerald-50 text-emerald-600', href: routes.pharmacies },
+    { name: 'تمريض', icon: <Syringe className="w-7 h-7" />, color: 'bg-rose-50 text-rose-600', href: routes.nursing },
+    { name: 'علاج طبيعي', icon: <Activity className="w-7 h-7" />, color: 'bg-amber-50 text-amber-600', href: routes.physiotherapy },
+  ]
+};
+
+/** Generic phrases that seed a search — suggestions, not platform statistics. */
+const SEARCH_SUGGESTIONS = ['طبيب أطفال', 'تحليل دم شامل', 'صيدلية', 'طبيب عيون'];
 
 function getCategoryIcon(category: SearchCategory) {
   switch (category) {
@@ -59,68 +98,172 @@ function getCategoryLabel(category: SearchCategory) {
   }
 }
 
-// ─── Component ──────────────────────────────────────────────────────────
+type DoctorRow = {
+  id: string;
+  name: string;
+  specialty: string;
+  rating: number;
+  location: string;
+  clinic: string;
+};
 
-export default function SearchPage() {
-  const router = useRouter();
-  const searchPool = useMemo(() => buildSearchPool(), []);
+type PartnerRow = {
+  id: string;
+  name: string;
+  rating: number;
+  location: string;
+  address: string;
+};
 
-  const [query, setQuery] = useState('');
+function SearchScreen() {
+  // Arriving from a home-screen search box, which passes `?q=` and, inside
+  // سند, `?channel=SANAD`.
+  const params = useSearchParams();
+  const seedQuery = params.get('q') ?? '';
+  const CHANNEL = readChannel(params.get('channel'));
+  const ROUTES = useMemo(() => storefrontCategories(CHANNEL), [CHANNEL]);
+
+  const [query, setQuery] = useState(seedQuery);
   const [activeCategory, setActiveCategory] = useState<SearchCategory>('all');
-  const [recentSearches, setRecentSearches] = useState<string[]>(DEFAULT_RECENT_SEARCHES);
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
-
-  // ── Debounced search ──
-  const performSearch = useCallback((searchQuery: string, category: SearchCategory) => {
-    if (!searchQuery.trim()) {
-      setResults([]);
-      setHasSearched(false);
-      return;
-    }
-
-    setIsLoading(true);
-    setHasSearched(true);
-
-    // Simulate network delay for realistic feel
-    const timer = setTimeout(() => {
-      const normalizedQuery = searchQuery.trim().toLowerCase();
-      const filtered = searchPool.filter((item) => {
-        const matchesQuery =
-          item.name.toLowerCase().includes(normalizedQuery) ||
-          item.subtitle.toLowerCase().includes(normalizedQuery) ||
-          item.location.toLowerCase().includes(normalizedQuery);
-        const matchesCategory = category === 'all' || item.category === category;
-        return matchesQuery && matchesCategory;
-      });
-      setResults(filtered);
-      setIsLoading(false);
-    }, 400);
-
-    return () => clearTimeout(timer);
-  }, [searchPool]);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  // What the SERVER is asked for, settled after typing stops. Without this the
+  // page fires a request per keystroke over a mobile connection.
+  const [settled, setSettled] = useState(seedQuery.trim());
 
   useEffect(() => {
-    const cleanup = performSearch(query, activeCategory);
-    return cleanup;
-  }, [query, activeCategory, performSearch]);
+    const timer = setTimeout(() => setSettled(query.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [query]);
 
-  // ── Recent search handlers ──
+  // This browser's own history. Reads are guarded: Safari private mode throws
+  // on access rather than returning null.
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(RECENT_KEY);
+      if (!raw) return;
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setRecentSearches(parsed.filter((t): t is string => typeof t === 'string').slice(0, RECENT_LIMIT));
+      }
+    } catch {
+      // No history available — the section simply does not render.
+    }
+  }, []);
+
+  const persistRecent = useCallback((next: string[]) => {
+    setRecentSearches(next);
+    try {
+      window.localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+    } catch {
+      // Storage unavailable; the list still works for this visit.
+    }
+  }, []);
+
+  const hasQuery = settled.length > 0;
+  const wantsDoctors = activeCategory === 'all' || activeCategory === 'doctors';
+  const wantsLabs = activeCategory === 'all' || activeCategory === 'labs';
+  const wantsPharmacies = activeCategory === 'all' || activeCategory === 'pharmacies';
+
+  const doctors = useDashboardData<DoctorRow[]>({
+    url: '/api/public/doctors',
+    params: { channel: CHANNEL, q: settled, limit: '20' },
+    enabled: hasQuery && wantsDoctors,
+  });
+  const labs = useDashboardData<PartnerRow[]>({
+    url: '/api/public/partners',
+    params: { channel: CHANNEL, type: 'LAB', q: settled, limit: '20' },
+    enabled: hasQuery && wantsLabs,
+  });
+  const pharmacies = useDashboardData<PartnerRow[]>({
+    url: '/api/public/partners',
+    params: { channel: CHANNEL, type: 'PHARMACY', q: settled, limit: '20' },
+    enabled: hasQuery && wantsPharmacies,
+  });
+
+  const results = useMemo<SearchResult[]>(() => {
+    if (!hasQuery) return [];
+    const out: SearchResult[] = [];
+
+    if (wantsDoctors) {
+      for (const d of doctors.data ?? []) {
+        out.push({
+          id: `doctor-${d.id}`,
+          name: d.name,
+          subtitle: d.specialty || d.clinic || '',
+          category: 'doctors',
+          rating: d.rating,
+          location: d.location || d.clinic || '',
+          // The doctor's own profile. The demo pool pointed at the specialty
+          // listing, so tapping a named doctor opened a list of strangers.
+          href: doctorProfilePath(CHANNEL, d.id),
+        });
+      }
+    }
+    // Neither labs nor pharmacies have a detail route, so the browse list is
+    // the honest destination rather than a link that 404s.
+    if (wantsLabs) {
+      for (const l of labs.data ?? []) {
+        out.push({
+          id: `lab-${l.id}`,
+          name: l.name,
+          // Was «مختبر معتمد» — "accredited lab". Nothing in the schema
+          // records accreditation, so a lab with no address was given a
+          // credential instead of a blank. Falls back to what the row has.
+          subtitle: l.address || l.location || '',
+          category: 'labs',
+          rating: l.rating,
+          location: l.location,
+          href: ROUTES.labs,
+        });
+      }
+    }
+    if (wantsPharmacies) {
+      for (const p of pharmacies.data ?? []) {
+        out.push({
+          id: `pharmacy-${p.id}`,
+          name: p.name,
+          subtitle: p.address || p.location || '',
+          category: 'pharmacies',
+          rating: p.rating,
+          location: p.location,
+          href: ROUTES.pharmacies,
+        });
+      }
+    }
+    return out;
+    // CHANNEL and ROUTES belong here now that they are derived per render from
+    // `?channel=` rather than being module constants — without them a channel
+    // switch would keep serving the previous storefront's hrefs.
+  }, [hasQuery, wantsDoctors, wantsLabs, wantsPharmacies, doctors.data, labs.data, pharmacies.data, CHANNEL, ROUTES]);
+
+  const active = [
+    ...(wantsDoctors ? [doctors] : []),
+    ...(wantsLabs ? [labs] : []),
+    ...(wantsPharmacies ? [pharmacies] : []),
+  ];
+  const isLoading = hasQuery && active.some((s) => s.isLoading);
+  // A failed read must not be reported as "no results" — that is a claim about
+  // the platform, made on the strength of a request that never answered.
+  // `loadFailed` takes the row count on purpose: the cache keeps serving the
+  // previous rows while it revalidates, so an error alongside results is a
+  // background refresh that failed, not a screen that has nothing to show.
+  const failed = hasQuery && !isLoading && active.some((s) => loadFailed(s.error, results.length));
+
+  const retryAll = useCallback(() => {
+    for (const s of active) void s.refetch();
+    // `active` is rebuilt every render; depending on it would re-create the
+    // callback each time for no benefit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doctors.refetch, labs.refetch, pharmacies.refetch, wantsDoctors, wantsLabs, wantsPharmacies]);
+
   const addToRecent = (searchTerm: string) => {
-    if (!searchTerm.trim()) return;
-    setRecentSearches((prev) => {
-      const filtered = prev.filter((s) => s !== searchTerm);
-      return [searchTerm, ...filtered].slice(0, 8);
-    });
+    const term = searchTerm.trim();
+    if (!term) return;
+    persistRecent([term, ...recentSearches.filter((s) => s !== term)].slice(0, RECENT_LIMIT));
   };
 
   const removeFromRecent = (term: string) => {
-    setRecentSearches((prev) => prev.filter((s) => s !== term));
-  };
-
-  const clearAllRecent = () => {
-    setRecentSearches([]);
+    persistRecent(recentSearches.filter((s) => s !== term));
   };
 
   const handleRecentClick = (term: string) => {
@@ -128,20 +271,14 @@ export default function SearchPage() {
     addToRecent(term);
   };
 
-  const handleSearchSubmit = () => {
-    if (query.trim()) {
-      addToRecent(query.trim());
-    }
-  };
-
-  const showBrowseMode = !query.trim() && !hasSearched;
+  const showBrowseMode = !query.trim();
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50/50 pb-24 font-sans">
       {/* Page Title */}
       <div className="px-5 pt-2 pb-4">
         <h1 className="text-xl font-extrabold text-gray-900 mb-4">البحث</h1>
-        
+
         {/* Search Bar */}
         <div className="relative flex gap-2">
           <div className="relative flex-1">
@@ -152,13 +289,15 @@ export default function SearchPage() {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearchSubmit()}
+              onKeyDown={(e) => e.key === 'Enter' && addToRecent(query)}
               className="w-full bg-white text-gray-900 rounded-2xl py-3.5 ps-11 pe-10 outline-none border border-gray-200 focus:border-primary focus:ring-1 focus:ring-primary shadow-sm text-sm font-medium placeholder:text-gray-400 transition-colors"
               placeholder="ابحث عن طبيب، تخصص، مختبر..."
             />
             {query && (
               <button
-                onClick={() => { setQuery(''); setHasSearched(false); }}
+                type="button"
+                onClick={() => setQuery('')}
+                aria-label="مسح البحث"
                 className="absolute inset-y-0 end-0 flex items-center pe-3"
               >
                 <X className="w-4 h-4 text-gray-400 hover:text-gray-600 transition-colors" />
@@ -176,6 +315,7 @@ export default function SearchPage() {
             {CATEGORY_TABS.map((tab) => (
               <button
                 key={tab.id}
+                type="button"
                 onClick={() => setActiveCategory(tab.id)}
                 className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-colors flex-shrink-0 ${
                   activeCategory === tab.id
@@ -191,12 +331,13 @@ export default function SearchPage() {
         )}
 
         {/* Loading State */}
-        {isLoading && (
-          <LoadingSkeleton variant="search-result" count={4} />
-        )}
+        {isLoading && <LoadingSkeleton variant="search-result" count={4} />}
+
+        {/* Read failed — not the same as "nothing matched" */}
+        {failed && <LoadError message="تعذّر تحميل نتائج البحث" onRetry={retryAll} />}
 
         {/* Search Results */}
-        {!isLoading && hasSearched && results.length > 0 && (
+        {!isLoading && !failed && hasQuery && results.length > 0 && (
           <section>
             <p className="text-xs text-gray-500 font-medium mb-3 px-1">
               {results.length} نتيجة
@@ -213,16 +354,24 @@ export default function SearchPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <h4 className="font-bold text-gray-800 text-sm truncate">{result.name}</h4>
-                    <p className="text-xs text-gray-500 truncate mt-0.5">{result.subtitle}</p>
+                    {result.subtitle ? (
+                      <p className="text-xs text-gray-500 truncate mt-0.5">{result.subtitle}</p>
+                    ) : null}
                     <div className="flex items-center gap-3 mt-1.5">
-                      <div className="flex items-center gap-1 text-xs">
-                        <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
-                        <span className="font-bold text-gray-700">{result.rating}</span>
-                      </div>
-                      <div className="flex items-center gap-1 text-xs text-gray-400">
-                        <MapPin className="w-3 h-3" />
-                        <span className="truncate">{result.location}</span>
-                      </div>
+                      {/* A rating of 0 means "not rated yet", so printing "0"
+                          beside a star would read as a bad review. */}
+                      {result.rating > 0 && (
+                        <div className="flex items-center gap-1 text-xs">
+                          <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
+                          <span className="font-bold text-gray-700">{result.rating.toFixed(1)}</span>
+                        </div>
+                      )}
+                      {result.location ? (
+                        <div className="flex items-center gap-1 text-xs text-gray-400">
+                          <MapPin className="w-3 h-3" />
+                          <span className="truncate">{result.location}</span>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-1 flex-shrink-0">
@@ -238,18 +387,18 @@ export default function SearchPage() {
         )}
 
         {/* Empty Results */}
-        {!isLoading && hasSearched && results.length === 0 && (
+        {!isLoading && !failed && hasQuery && results.length === 0 && (
           <EmptyState
             icon={SearchX}
             title="لا توجد نتائج"
-            description={`لم نجد نتائج تطابق "${query}". جرّب كلمات بحث مختلفة.`}
+            description={`لم نجد نتائج تطابق "${settled}". جرّب كلمات بحث مختلفة.`}
           />
         )}
 
         {/* Browse Mode (when no query) */}
         {showBrowseMode && (
           <>
-            {/* Recent Searches */}
+            {/* Recent Searches — this browser's own, absent until there are any */}
             {recentSearches.length > 0 && (
               <section>
                 <div className="flex justify-between items-center mb-3">
@@ -258,7 +407,8 @@ export default function SearchPage() {
                     عمليات البحث الأخيرة
                   </h3>
                   <button
-                    onClick={clearAllRecent}
+                    type="button"
+                    onClick={() => persistRecent([])}
                     className="text-xs text-primary font-bold hover:text-primary/70 transition-colors"
                   >
                     مسح الكل
@@ -268,9 +418,10 @@ export default function SearchPage() {
                   {recentSearches.map((term) => (
                     <div
                       key={term}
-                      className="bg-white border border-gray-200 px-3 py-2 rounded-xl text-xs text-gray-600 shadow-sm flex items-center gap-2 hover:border-primary/30 transition-colors group cursor-pointer"
+                      className="bg-white border border-gray-200 px-3 py-2 rounded-xl text-xs text-gray-600 shadow-sm flex items-center gap-2 hover:border-primary/30 transition-colors group"
                     >
                       <button
+                        type="button"
                         onClick={() => handleRecentClick(term)}
                         className="flex items-center gap-1.5"
                       >
@@ -278,7 +429,9 @@ export default function SearchPage() {
                         <span className="font-medium">{term}</span>
                       </button>
                       <button
+                        type="button"
                         onClick={(e) => { e.stopPropagation(); removeFromRecent(term); }}
+                        aria-label={`إزالة ${term}`}
                         className="opacity-0 group-hover:opacity-100 transition-opacity"
                       >
                         <X className="w-3 h-3 text-gray-400 hover:text-red-500" />
@@ -293,7 +446,7 @@ export default function SearchPage() {
             <section>
               <h3 className="font-bold text-gray-800 text-sm mb-3">تصفح الأقسام</h3>
               <div className="grid grid-cols-3 gap-3">
-                {BROWSE_CATEGORIES.map((cat) => (
+                {browseCategories(ROUTES).map((cat) => (
                   <Link
                     key={cat.name}
                     href={cat.href}
@@ -308,18 +461,21 @@ export default function SearchPage() {
               </div>
             </section>
 
-            {/* Trending / Quick Access */}
+            {/* Suggestions — phrases that seed a search, not platform statistics.
+                The heading used to read «الأكثر بحثاً», which claimed these were
+                the most-searched terms; nothing counts searches. */}
             <section>
-              <h3 className="font-bold text-gray-800 text-sm mb-3">الأكثر بحثاً</h3>
+              <h3 className="font-bold text-gray-800 text-sm mb-3">اقتراحات للبحث</h3>
               <div className="space-y-2">
-                {['طبيب أطفال بغداد', 'تحليل دم شامل', 'صيدلية قريبة', 'طبيب عيون'].map((term, i) => (
+                {SEARCH_SUGGESTIONS.map((term) => (
                   <button
                     key={term}
+                    type="button"
                     onClick={() => handleRecentClick(term)}
                     className="w-full bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex items-center gap-3 hover:border-primary/30 transition-colors text-right"
                   >
-                    <div className="w-8 h-8 bg-gray-50 rounded-lg flex items-center justify-center text-xs font-bold text-gray-400">
-                      {i + 1}
+                    <div className="w-8 h-8 bg-gray-50 rounded-lg flex items-center justify-center text-gray-400">
+                      <Search className="w-4 h-4" />
                     </div>
                     <span className="text-sm font-medium text-gray-700 flex-1">{term}</span>
                     <ChevronLeft className="w-4 h-4 text-gray-300" />
@@ -337,5 +493,22 @@ export default function SearchPage() {
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}} />
     </div>
+  );
+}
+
+export default function SearchPage() {
+  // `useSearchParams` reads the `?q=` the home search boxes pass; a client
+  // component that calls it needs a boundary to prerender.
+  return (
+    <Suspense
+      fallback={
+        <div className="flex flex-col min-h-screen bg-gray-50/50 pb-24 px-5 pt-2">
+          <h1 className="text-xl font-extrabold text-gray-900 mb-4">البحث</h1>
+          <div className="h-12 rounded-2xl bg-white border border-gray-200 animate-pulse" />
+        </div>
+      }
+    >
+      <SearchScreen />
+    </Suspense>
   );
 }

@@ -14,7 +14,7 @@ import {
   useStageCounts,
   type Stage,
 } from "@/components/data/status-pipeline";
-import { formatDateTime, formatNumber } from "@/lib/format";
+import { formatDateTime, formatNumber, toDateTimeInput } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────
 // إدارة بنك الدم (req L433-443)
@@ -100,8 +100,6 @@ const EMPTY: FormState = {
 
 const statusOf = (r: BloodRequest) => r.status;
 
-/** `datetime-local` wants "YYYY-MM-DDTHH:mm" with no zone. */
-const toLocalInput = (iso: string | null) => (iso ? iso.slice(0, 16) : "");
 
 export default function BloodBankPage() {
   const { data, isLoading, error, refetch } = useDashboardData<BloodRequest[]>({
@@ -141,7 +139,7 @@ export default function BloodBankPage() {
     setForm({
       status: r.status,
       donorName: r.donorName ?? "",
-      drawAppointment: toLocalInput(r.drawAppointment),
+      drawAppointment: toDateTimeInput(r.drawAppointment),
       testStatus: r.testStatus ?? "",
       deliveryStatus: r.deliveryStatus ?? "",
     });
@@ -319,13 +317,23 @@ export default function BloodBankPage() {
         onClose={close}
         onSubmit={() => {
           if (!editing) return;
+          const initialDraw = toDateTimeInput(editing.drawAppointment);
           void save(editing.id, {
             status: form.status,
             donorName: form.donorName.trim(),
-            // "" clears the appointment — the endpoint accepts that explicitly.
-            drawAppointment: form.drawAppointment
-              ? new Date(form.drawAppointment).toISOString()
-              : "",
+            // Untouched → omit it entirely. The patch schema is `.partial()`
+            // and Prisma leaves an `undefined` column alone, so an employee
+            // updating only حالة التحاليل no longer rewrites a real patient's
+            // draw time. The input has minute precision, so even a correct
+            // resend would shave the seconds off.
+            ...(form.drawAppointment === initialDraw
+              ? {}
+              : {
+                  // "" clears the appointment — the endpoint accepts that explicitly.
+                  drawAppointment: form.drawAppointment
+                    ? new Date(form.drawAppointment).toISOString()
+                    : "",
+                }),
             testStatus: form.testStatus.trim(),
             deliveryStatus: form.deliveryStatus.trim(),
           });

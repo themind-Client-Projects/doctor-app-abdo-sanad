@@ -21,6 +21,8 @@ type Ctx = { params: Promise<{ id: string }> };
 
 const querySchema = z.object({
   channel: z.enum(["DIRECT", "SANAD", "COMPLEX"]).default("DIRECT"),
+  /** Which consultation is being quoted — see the list sibling. */
+  service: z.enum(["IN_PERSON_CONSULT", "ONLINE_CONSULT"]).default("IN_PERSON_CONSULT"),
 });
 
 function toGender(value: string | null): "male" | "female" {
@@ -30,7 +32,7 @@ function toGender(value: string | null): "male" | "female" {
 export const GET = withPublic<Ctx>(async (req, { params }) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
-  const { channel } = parseQuery(req.nextUrl.searchParams, querySchema);
+  const { channel, service } = parseQuery(req.nextUrl.searchParams, querySchema);
 
   const d = await prisma.doctorProfile.findFirst({
     where: {
@@ -65,6 +67,9 @@ export const GET = withPublic<Ctx>(async (req, { params }) => {
           governorate: { select: { name: true } },
           partner: {
             select: {
+              // `Partner.id` — the booking endpoint's `providerId`. See the
+              // list sibling: this payload is keyed by `DoctorProfile.id`.
+              id: true,
               rating: true,
               totalTasks: true,
               address: true,
@@ -82,7 +87,7 @@ export const GET = withPublic<Ctx>(async (req, { params }) => {
   if (!d) return fail(ErrorCode.NOT_FOUND, 404, "الطبيب غير موجود", { requestId });
 
   const price = await prisma.priceConfig.findUnique({
-    where: { serviceType: "IN_PERSON_CONSULT" },
+    where: { serviceType: service },
     select: { basePrice: true, sanadPrice: true, complexPrice: true },
   });
   // The channel decides the quote, exactly as the list and `quoteService` do —
@@ -101,16 +106,20 @@ export const GET = withPublic<Ctx>(async (req, { params }) => {
     {
       // The `Doctor` shape the existing cards and drawer already render.
       id: d.id,
+      partnerId: d.user.partner?.id ?? null,
       name: d.user.name ?? "",
       specialty: d.specialty?.name ?? "",
       specialtyId: d.specialty?.slug ?? "",
       rating: d.user.partner?.rating ?? 0,
-      reviewCount: d.user.partner?.totalTasks ?? 0,
+      /** `Partner.totalTasks` — COMPLETED TASKS. Nothing in the schema counts
+     *  reviews, and this was served as `reviewCount`, which two screens then
+     *  printed as «مراجعة» and «من N زائر». Renamed for what it holds. */
+    completedTasks: d.user.partner?.totalTasks ?? 0,
       location: d.user.governorate?.name ?? "",
       clinic: d.user.partner?.address ?? "",
       phone: d.user.phone ?? "",
       price: quoted === null ? "" : String(quoted),
-      isAvailable: services.some((s) => s.serviceType === "IN_PERSON_CONSULT"),
+      isAvailable: services.some((s) => s.serviceType === service),
       experience: d.experience === null ? "" : String(d.experience),
       gender: toGender(d.gender),
       image: d.user.image ?? undefined,

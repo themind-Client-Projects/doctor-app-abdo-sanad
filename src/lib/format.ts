@@ -1,3 +1,4 @@
+import { BAGHDAD_TZ } from "@/lib/time";
 /**
  * Number, money and date formatting.
  *
@@ -42,6 +43,30 @@ export function formatNumber(value: Numeric, fallback = "—"): string {
   return n === null ? fallback : n.toLocaleString(LOCALE);
 }
 
+/**
+ * An instant → the "YYYY-MM-DDTHH:mm" a `datetime-local` input expects.
+ *
+ * It must be the BROWSER's wall clock for that instant, because that is what
+ * the control both renders and parses. Slicing the API's ISO string instead —
+ * `iso.slice(0, 16)` — hands it the UTC wall clock, which the browser then
+ * reads as local: a draw stored at 09:00 Baghdad displayed as 06:00, and
+ * `new Date(value).toISOString()` on submit re-stored that 06:00 as Baghdad
+ * local, three hours earlier. Every save, compounding.
+ *
+ * These getters are deliberately the local ones. `lib/time.ts` pins Baghdad
+ * for the SERVER, where the runtime zone is UTC and must not be trusted; in a
+ * browser the local zone IS the user's, and this is the inverse of
+ * `new Date(value)` on the same machine — which is what makes the round trip
+ * lossless.
+ */
+export function toDateTimeInput(value: Numeric | Date | null | undefined): string {
+  if (value === null || value === undefined || value === "") return "";
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 /** Format money. Whole dinars by default — IQD has no practical subunit. */
 export function formatCurrency(
   value: Numeric,
@@ -64,6 +89,20 @@ export function formatPercent(value: Numeric, fallback = "—"): string {
   return n === null ? fallback : `${n.toLocaleString(LOCALE)}%`;
 }
 
+/**
+ * Every date in this product is rendered in BAGHDAD, not in the runtime's zone.
+ *
+ * On a dashboard this was invisible — an Iraqi browser is already UTC+3. But
+ * two surfaces are SERVER components: the printed referral
+ * (`(print)/referrals/[id]/print`) and the public page its QR code opens
+ * (`verify/[reference]`). A Vercel function runs in UTC with no TZ set, so a
+ * referral issued between 00:00 and 03:00 Baghdad printed the PREVIOUS
+ * calendar date, its expiry could print a day early, and the pharmacist's
+ * verification screen disagreed with the paper in their hand by three hours.
+ *
+ * Pinned here rather than at the six call sites, so the next server component
+ * cannot reintroduce it, and so client and server render a date identically.
+ */
 type DateInput = Date | string | number | null | undefined;
 
 function toDate(value: DateInput): Date | null {
@@ -77,7 +116,12 @@ export function formatDate(value: DateInput, fallback = "—"): string {
   const d = toDate(value);
   return d === null
     ? fallback
-    : d.toLocaleDateString(LOCALE, { year: "numeric", month: "long", day: "numeric" });
+    : d.toLocaleDateString(LOCALE, {
+        timeZone: BAGHDAD_TZ,
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
 }
 
 /** Date and time — "29 تموز 2026، 2:30 م". */
@@ -86,6 +130,7 @@ export function formatDateTime(value: DateInput, fallback = "—"): string {
   return d === null
     ? fallback
     : d.toLocaleString(LOCALE, {
+        timeZone: BAGHDAD_TZ,
         year: "numeric",
         month: "short",
         day: "numeric",
@@ -99,7 +144,7 @@ export function formatTime(value: DateInput, fallback = "—"): string {
   const d = toDate(value);
   return d === null
     ? fallback
-    : d.toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" });
+    : d.toLocaleTimeString(LOCALE, { timeZone: BAGHDAD_TZ, hour: "2-digit", minute: "2-digit" });
 }
 
 /** Relative age, e.g. "قبل 5 دقائق". Arabic plurals are not a simple s/plural. */

@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { Plus, Minus, ShoppingCart } from 'lucide-react';
+import { Plus, Minus, ShoppingCart, Package } from 'lucide-react';
 import { useCartStore } from '@/stores/ecommerce/cart.store';
 import type { Product } from '@/types/patient';
 import { formatNumber } from "@/lib/format";
@@ -19,12 +19,26 @@ export function ProductCard({ product }: ProductCardProps) {
   return (
     <div className="bg-white rounded-3xl p-3 shadow-sm border border-gray-100 flex flex-col h-full group hover:shadow-md transition-shadow">
       <div className="relative w-full aspect-square rounded-2xl overflow-hidden bg-gray-50 mb-3 flex-shrink-0">
-        <Image 
-          src={product.image} 
-          alt={product.name} 
-          fill 
-          className="object-cover group-hover:scale-105 transition-transform duration-500" 
-        />
+        {/* `Product.imageUrl` is nullable and there is no stock photo to stand
+            in for a medicine, so an unphotographed product gets a plain mark
+            rather than <Image src=""> — which renders a broken frame. */}
+        {product.image ? (
+          <Image
+            src={product.image}
+            alt={product.name}
+            fill
+            className="object-cover group-hover:scale-105 transition-transform duration-500"
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Package className="w-10 h-10 text-gray-300" aria-hidden />
+          </div>
+        )}
+        {product.requiresRx && (
+          <span className="absolute top-2 start-2 bg-amber-500/95 text-white text-[9px] font-bold px-2 py-0.5 rounded-lg shadow-sm">
+            بوصفة طبية
+          </span>
+        )}
         {!product.inStock && (
           <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px] flex items-center justify-center">
             <span className="bg-gray-900 text-white text-[10px] font-bold px-2 py-1 rounded-lg">نفذت الكمية</span>

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { ROLES, isPlatformRole, withAuth } from "@/lib/api-auth";
 import { ok } from "@/lib/api-response";
 import { startOfBaghdadDay } from "@/lib/time";
+import { withPatients } from "@/server/services/patient-contacts";
 
 // GET /api/dashboard/calendar — Today's appointments only (req L79-82 "مواعيد اليوم فقط")
 export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) => {
@@ -30,5 +31,18 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) 
     orderBy: { time: "asc" },
   });
 
-  return ok(appointments, { requestId });
+  // `patientId` is a bare String with no relation, so the widget was rendering
+  // an empty name beside every time — today's calendar with nobody on it.
+  const hydrated = await withPatients(appointments);
+
+  return ok(
+    hydrated.map((a) => ({
+      id: a.id,
+      patientName: a.patient?.name ?? "حساب غير متاح",
+      time: a.time,
+      type: a.type,
+      status: a.status,
+    })),
+    { requestId }
+  );
 });

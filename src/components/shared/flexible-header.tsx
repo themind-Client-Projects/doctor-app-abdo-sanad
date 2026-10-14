@@ -3,7 +3,7 @@
 import { ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ChevronRight, Wallet, MapPin, ChevronDown, Search } from 'lucide-react';
+import { ChevronRight, Wallet, MapPin, ChevronDown } from 'lucide-react';
 import { useLocationStore } from '@/stores/patient/location.store';
 import { useMe } from '@/hooks/use-me';
 import { formatNumber } from '@/lib/format';
@@ -20,8 +20,6 @@ interface FlexibleHeaderProps {
   showBackButton?: boolean;
   showWallet?: boolean;
   showCitySelector?: boolean;
-  showSearch?: boolean;
-  searchPlaceholder?: string;
   isCompact?: boolean;
   onBack?: () => void;
 }
@@ -33,20 +31,21 @@ export function FlexibleHeader({
   showBackButton = false,
   showWallet = false,
   showCitySelector = false,
-  showSearch = false,
-  searchPlaceholder = 'ابحث...',
   isCompact = false,
   onBack,
 }: FlexibleHeaderProps) {
   const router = useRouter();
   const { selectedCity, openCitySelector } = useLocationStore();
-  const { user, balance, isSignedIn, isLoading } = useMe();
+  const { user, balance, isSignedIn, isLoading, error } = useMe();
 
   // A caller-supplied title always wins ("أطباء بغداد", "المختبرات"). Only when
   // a screen omits it does the header fall back to greeting the actual user.
-  const resolvedTitle = title ?? user?.name ?? (isLoading ? '' : 'زائر');
+  // «زائر» only for a SETTLED anonymous read. `isLoading` goes false once a
+  // request has failed, so a signed-in patient whose /api/v1/me errored was
+  // greeted by name as a visitor — and had their wallet chip removed with it.
+  const resolvedTitle = title ?? user?.name ?? (isLoading || error ? '' : 'زائر');
 
-  const hasMiddleRow = !isCompact && (showCitySelector || (title && (showCitySelector || showSearch)));
+  const hasMiddleRow = !isCompact && showCitySelector;
 
   return (
     <div className="sticky top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md shadow-sm border-b border-gray-100" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
@@ -98,7 +97,16 @@ export function FlexibleHeader({
             {showWallet && isSignedIn && (
               <Link href="/wallet" className="flex items-center gap-1.5 bg-[#eaf6ef] text-[#10b981] px-3 py-1.5 rounded-full border border-[#10b981]/20 shrink-0 cursor-pointer active:scale-95 transition-transform hover:bg-[#dcf0e6]">
                 <span className="font-bold text-sm mt-0.5 whitespace-nowrap">
-                  {formatNumber(balance ?? 0)} د.ع
+                  {/* «—», not 0. `balance` is null when the patient has NO
+                      PatientWallet row at all (the live account "Ahmed MH" is
+                      one such), and null again when the request failed —
+                      `isLoading` goes false on error, so the error path reaches
+                      here too. Three different states were collapsing into the
+                      single confident claim «0 د.ع», and 0 is itself a real
+                      balance, so it cannot double as "unknown". The guard two
+                      lines up already hides the chip from a visitor for exactly
+                      this reason; an unknown balance deserves the same care. */}
+                  {balance === null ? '—' : formatNumber(balance)} د.ع
                 </span>
                 <Wallet className="w-5 h-5 stroke-[2.5]" />
               </Link>
@@ -129,19 +137,11 @@ export function FlexibleHeader({
           </div>
         )}
 
-        {/* Bottom Row: Search Row */}
-        {showSearch && (
-          <div className="relative">
-            <div className="absolute inset-y-0 start-0 flex items-center ps-4 pointer-events-none">
-              <Search className="w-4 h-4 text-gray-400" />
-            </div>
-            <input
-              type="text"
-              className="w-full bg-gray-50 border border-gray-100 text-gray-900 rounded-2xl py-3 ps-11 pe-4 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors text-sm font-medium"
-              placeholder={searchPlaceholder}
-            />
-          </div>
-        )}
+        {/* The «showSearch» row is gone: it rendered an <input> with no
+            value, no handler and no form — typing in it did nothing — and no
+            screen in the app ever passed the prop, so it was unreachable dead
+            code advertising a search that did not exist. Real search lives in
+            HomeSearchBox and the browse toolbar. */}
 
       </div>
     </div>

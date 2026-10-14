@@ -13,6 +13,14 @@ const createCommissionSchema = z
     complexShare: percentage.default(0),
     nurseShare: percentage.default(0),
     driverShare: percentage.default(0),
+    // The SIXTH share. The dialog has always sent it (default "0"), the column
+    // has always existed with @default(0), and PUT has always accepted it —
+    // only this schema did not, and it is `.strict()`. So every single
+    // "قاعدة نسب جديدة" submit came back 400 "بيانات غير صالحة", which made it
+    // impossible to price a service added to a contract after onboarding, or
+    // to re-add a rule after DELETE closed its version. Those orders then hit
+    // NO_RULE at settlement and were never paid out.
+    referralShare: percentage.default(0),
   })
   .strict()
   // Enforced at SAVE time, not only at settlement. A rule totalling 120% used
@@ -20,7 +28,15 @@ const createCommissionSchema = z
   // only as a string inside a 200 OK, so revenue silently stopped moving.
   .refine(
     (v) =>
-      v.partnerShare + v.waridShare + v.complexShare + v.nurseShare + v.driverShare === 100,
+      v.partnerShare +
+        v.waridShare +
+        v.complexShare +
+        v.nurseShare +
+        v.driverShare +
+        // Counted here too, or POST could store a 120% rule that PUT's own
+        // merged check forbids and that settlement cannot pay out.
+        v.referralShare ===
+      100,
     { message: "مجموع النسب يجب أن يساوي 100%", path: ["partnerShare"] }
   );
 
@@ -108,8 +124,19 @@ export const POST = withAuth({ roles: ROLES.ADMIN }, async (req) => {
       complexShare: input.complexShare,
       nurseShare: input.nurseShare,
       driverShare: input.driverShare,
+      referralShare: input.referralShare,
     },
   });
 
   return ok(data, { status: 201, requestId });
 });
+
+/**
+ * Exported so the body contract can be asserted without a database.
+ *
+ * This schema and the admin dialog disagreed for the whole life of the
+ * referrer share, and nothing caught it: `tsc` cannot see that a form sends a
+ * key a `.strict()` Zod object will reject, and there was no test that parsed
+ * the real body. `tests/commission-create-schema.test.ts` now does.
+ */
+export { createCommissionSchema };

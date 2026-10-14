@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { signOut } from 'next-auth/react';
@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { FlexibleHeader } from '@/components/shared/flexible-header';
 import { useMe } from '@/hooks/use-me';
+import { ProfileEditDrawer } from '@/components/features/patient/profile-edit-drawer';
 import { formatNumber } from '@/lib/format';
 
 /**
@@ -34,28 +35,41 @@ type MenuItem = {
   bg: string;
   href?: string;
   external?: boolean;
+  /** Opens something on this page rather than navigating. */
+  action?: 'edit';
   /** No screen behind it yet — rendered dimmed and not tappable. */
   soon?: boolean;
 };
 
 const MENU: MenuItem[] = [
-  { id: 1, title: 'تعديل المعلومات', icon: UserCog, color: 'text-gray-700', bg: 'bg-gray-100', soon: true },
+  { id: 1, title: 'تعديل المعلومات', icon: UserCog, color: 'text-gray-700', bg: 'bg-gray-100', action: 'edit' },
   { id: 2, title: 'تغيير كلمة المرور', icon: KeyRound, color: 'text-gray-700', bg: 'bg-gray-100', soon: true },
-  { id: 3, title: 'المحفظة والاشتراكات', icon: Wallet, color: 'text-emerald-600', bg: 'bg-emerald-100', href: '/wallet' },
-  { id: 4, title: 'سجلات المعاملات', icon: ReceiptText, color: 'text-blue-600', bg: 'bg-blue-100', href: '/wallet' },
+  // Row 3 said «المحفظة والاشتراكات» but opened /wallet, which has no
+  // subscriptions on it at all — while /memberships, the real عضويات screen,
+  // was reachable from nowhere in this menu. Rows 3 and 4 also pointed at the
+  // same href, so one of them was a duplicate.
+  { id: 3, title: 'المحفظة', icon: Wallet, color: 'text-emerald-600', bg: 'bg-emerald-100', href: '/wallet' },
+  { id: 4, title: 'عضوياتي', icon: ReceiptText, color: 'text-blue-600', bg: 'bg-blue-100', href: '/memberships' },
   { id: 5, title: 'المفضلات', icon: Heart, color: 'text-rose-600', bg: 'bg-rose-100', soon: true },
   { id: 6, title: 'مركز المساعدة', icon: ShieldQuestion, color: 'text-green-600', bg: 'bg-green-100', href: 'https://wa.me/9647701234567', external: true },
   { id: 7, title: 'حول التطبيق', icon: Info, color: 'text-amber-600', bg: 'bg-amber-100', soon: true },
 ];
 
 export default function ProfilePage() {
-  const { user, stats, isSignedIn, isLoading } = useMe();
+  const { user, stats, isSignedIn, isLoading, error, refetch } = useMe();
+  const [editing, setEditing] = useState(false);
 
+  // «—» for an unknown count, a number only for a known one. `?? 0` printed a
+  // confident 0/0/0 while /api/v1/me was in flight AND after it failed —
+  // `isLoading` goes false on error — so a patient with records was told they
+  // had none.
   const tiles = useMemo(
     () => [
-      { value: stats?.completedOrders ?? 0, label: 'حجز مكتمل' },
-      { value: stats?.prescriptions ?? 0, label: 'وصفات طبية' },
-      { value: stats?.labReports ?? 0, label: 'تقارير مختبر' },
+      // `null`, so `formatNumber` falls through to its own «—» fallback
+      // (src/lib/format.ts:41-44) rather than this screen inventing one.
+      { value: stats ? stats.completedOrders : null, label: 'حجز مكتمل' },
+      { value: stats ? stats.prescriptions : null, label: 'وصفات طبية' },
+      { value: stats ? stats.labReports : null, label: 'تقارير مختبر' },
     ],
     [stats]
   );
@@ -80,17 +94,20 @@ export default function ProfilePage() {
               )}
             </div>
             <h2 className="text-xl font-extrabold text-gray-800">
-              {isLoading ? '—' : (user?.name ?? 'زائر')}
+              {/* A failed /api/v1/me is not a signed-out visitor. Naming the
+                  reader «زائر» on an error path tells a signed-in patient they
+                  are not signed in. */}
+              {isLoading ? '—' : error ? '—' : (user?.name ?? 'زائر')}
             </h2>
             <p className="text-sm text-gray-500 mb-4 font-medium" dir="ltr">
               {user?.phone ?? user?.email ?? (isLoading ? '' : 'لم تسجّل الدخول')}
             </p>
             {isSignedIn ? (
               <button
-                disabled
-                className="w-full bg-primary/40 text-primary-foreground py-3 rounded-xl text-sm font-bold cursor-not-allowed"
+                onClick={() => setEditing(true)}
+                className="w-full bg-primary text-primary-foreground py-3 rounded-xl text-sm font-bold shadow-sm hover:bg-primary/90 transition-colors active:scale-[0.98]"
               >
-                تعديل الحساب — قريباً
+                تعديل الحساب
               </button>
             ) : (
               // A visitor got an "تعديل الحساب" button for an account they do
@@ -146,6 +163,18 @@ export default function ProfilePage() {
               );
 
               if (item.soon) return <div key={item.id}>{content}</div>;
+              if (item.action === 'edit') {
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setEditing(true)}
+                    className="w-full text-start"
+                  >
+                    {content}
+                  </button>
+                );
+              }
               if (item.external) {
                 return (
                   <a key={item.id} href={item.href} target="_blank" rel="noopener noreferrer">
@@ -173,6 +202,15 @@ export default function ProfilePage() {
           </button>
         ) : null}
       </main>
+
+      {user ? (
+        <ProfileEditDrawer
+          open={editing}
+          onOpenChange={setEditing}
+          user={user}
+          onSaved={() => void refetch()}
+        />
+      ) : null}
     </div>
   );
 }

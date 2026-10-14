@@ -13,6 +13,7 @@ import {
   ScanLine,
   Pill,
 } from "lucide-react";
+import { OpsSidebarFooter } from "@/components/operations/ops-sidebar-footer";
 
 const opsMenu = [
   { label: "الرئيسية", icon: <LayoutDashboard size={18} />, href: "/operations" },
@@ -37,7 +38,7 @@ export default function OperationsLayout({
     <SessionProvider>
       <div className="min-h-screen bg-background" dir="rtl">
         {/* Operations Sidebar */}
-        <aside className="fixed right-0 top-0 z-40 h-screen w-64 border-l border-border bg-card overflow-y-auto">
+        <aside className="fixed right-0 top-0 z-40 flex h-screen w-64 flex-col border-l border-border bg-card">
           {/* Header */}
           <div className="flex h-16 items-center gap-2 border-b border-border px-4">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white font-bold text-lg">
@@ -47,7 +48,7 @@ export default function OperationsLayout({
           </div>
 
           {/* Nav */}
-          <nav className="flex flex-col gap-1 p-3">
+          <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
             {opsMenu.map((item) => (
               <Link
                 key={item.href}
@@ -59,6 +60,9 @@ export default function OperationsLayout({
               </Link>
             ))}
           </nav>
+
+          {/* The portal had no sign-out anywhere — see the component. */}
+          <OpsSidebarFooter />
         </aside>
 
         {/* Main */}

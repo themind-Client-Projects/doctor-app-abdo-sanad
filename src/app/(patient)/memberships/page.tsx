@@ -18,6 +18,8 @@ import { useStorefront, type StorefrontPlan, type StorefrontPlanBenefit } from '
 import { useDashboardData } from '@/hooks/use-dashboard-data';
 import { apiFetch, useMutation } from '@/hooks/use-mutation';
 import { formatDate, formatNumber } from '@/lib/format';
+import { LoadError, loadFailed } from '@/components/shared/load-error';
+import { toast } from 'sonner';
 
 /**
  * عضويات وريد وسند — "عضوية واحدة .. كل الخدمات".
@@ -49,6 +51,8 @@ type Entitlement = {
 
 type Membership = {
   id: string;
+  /** The plan it was bought from. Matched on THIS, never on `planName`. */
+  planId: string;
   planName: string;
   discountPercent: number;
   expiresAt: string;
@@ -109,7 +113,8 @@ function durationLabel(days: number): string {
 }
 
 export default function MembershipsPage() {
-  const { storefront, isLoading } = useStorefront();
+  const { storefront, isLoading, error: storefrontError, refetch: refetchStorefront } = useStorefront();
+  const plansFailed = loadFailed(storefrontError, storefront.plans.length);
   const {
     data: membership,
     refetch: refetchMembership,
@@ -122,15 +127,24 @@ export default function MembershipsPage() {
 
   const { mutate: subscribe } = useMutation(
     (planId: string) =>
-      apiFetch<{ message: string }>('/api/v1/me/membership', {
+      apiFetch<{ message: string; renewed: boolean }>('/api/v1/me/membership', {
         method: 'POST',
         body: JSON.stringify({ planId }),
       }),
     {
-      successMessage: 'تم تفعيل عضويتك',
-      onSuccess: () => {
+      // The server already distinguishes «تم تجديد عضويتك» from «تم تفعيل
+      // عضويتك» and returns 200 vs 201 to match. A constant here announced an
+      // activation for every renewal — the one path the renew flow exists for.
+      successMessage: null,
+      onSuccess: (data) => {
+        toast.success(data?.message ?? 'تم تفعيل عضويتك');
         // Both change together — the balance dropped and the membership
         // appeared — so refetching one would leave the screen half-updated.
+        //
+        // Rendered from the refetched GET, never from this POST body: the GET
+        // adds the computed `remaining` and `daysRemaining` that the card
+        // shows, and the POST does not — feeding it in would print
+        // «متبقٍ undefined يوم».
         void refetchMembership();
         void refetchWallet();
       },
@@ -164,7 +178,13 @@ export default function MembershipsPage() {
       />
 
       <main className="p-4 space-y-4">
-        {membership ? <ActiveMembershipCard membership={membership} /> : null}
+        {membership ? (
+          <ActiveMembershipCard
+            membership={membership}
+            isPending={pendingPlanId === membership.planId}
+            onRenew={() => void handleSubscribe(membership.planId)}
+          />
+        ) : null}
 
         <WalletStrip balance={balance} />
 
@@ -178,7 +198,9 @@ export default function MembershipsPage() {
           </p>
         </div>
 
-        {isLoading ? (
+        {plansFailed ? (
+          <LoadError message="تعذّر تحميل الباقات" onRetry={() => void refetchStorefront()} />
+        ) : isLoading ? (
           [1, 2, 3, 4].map((i) => (
             <div key={i} className="h-64 animate-pulse rounded-[1.75rem] border border-gray-100 bg-white" />
           ))
@@ -193,7 +215,21 @@ export default function MembershipsPage() {
               key={plan.id}
               plan={plan}
               balance={balance}
-              isCurrent={membership?.planName === plan.name}
+              held={
+                membership
+                  ? {
+                      planId: membership.planId,
+                      planName: membership.planName,
+                      expiresAt: membership.expiresAt,
+                    }
+                  : null
+              }
+              // `planId`, not `planName`: the name is a deliberate SNAPSHOT
+              // of what the card said on the day of purchase (see the schema's
+              // own comment), so renaming a plan would silently stop matching
+              // and the holder would be offered «اشتراك» on the plan they are
+              // already on.
+              isCurrent={membership?.planId === plan.id}
               isPending={pendingPlanId === plan.id}
               onSubscribe={handleSubscribe}
             />
@@ -209,7 +245,22 @@ export default function MembershipsPage() {
 
 /* ----------------------------- active membership --------------------------- */
 
-function ActiveMembershipCard({ membership }: { membership: Membership }) {
+function ActiveMembershipCard({
+  membership,
+  isPending,
+  onRenew,
+}: {
+  membership: Membership;
+  isPending: boolean;
+  onRenew: () => void;
+}) {
+  // Defensive, on a money screen, across a network boundary: the declared type
+  // says this is always an array, and it arrived `undefined` in production —
+  // `.some` threw and took the whole page down to the error boundary. The root
+  // cause was the envelope unwrap (see lib/api-envelope), fixed there; this
+  // keeps a malformed payload from costing the patient the screen.
+  const entitlements = membership.entitlements ?? [];
+
   return (
     <section className="rounded-[1.75rem] bg-gradient-to-br from-emerald-600 to-emerald-700 p-5 text-white shadow-sm">
       <div className="mb-3 flex items-start justify-between gap-3">
@@ -234,9 +285,9 @@ function ActiveMembershipCard({ membership }: { membership: Membership }) {
         متبقٍ {membership.daysRemaining} يوم
       </p>
 
-      {membership.entitlements.some((e) => e.quota !== null) ? (
+      {entitlements.some((e) => e.quota !== null) ? (
         <div className="mt-4 space-y-1.5 border-t border-white/15 pt-3.5">
-          {membership.entitlements
+          {entitlements
             .filter((e) => e.quota !== null && e.state === 'AVAILABLE')
             .map((entitlement) => (
               <div key={entitlement.id} className="flex items-center justify-between gap-3">
@@ -250,6 +301,21 @@ function ActiveMembershipCard({ membership }: { membership: Membership }) {
             ))}
         </div>
       ) : null}
+
+      {/* Renewing the SAME plan is the one purchase the server allows while a
+          membership is live — it skips the ALREADY_MEMBER guard and extends
+          the period. The control belongs here as well as on the plan card,
+          because a plan that has left the storefront (deactivated, or on
+          another channel) has no card at all — and without this its holder
+          would have no way to renew from anywhere. */}
+      <button
+        type="button"
+        onClick={onRenew}
+        disabled={isPending}
+        className="mt-4 w-full rounded-2xl bg-white/15 py-3 text-sm font-bold text-white transition-colors hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {isPending ? 'جارٍ التنفيذ…' : 'تجديد العضوية'}
+      </button>
     </section>
   );
 }
@@ -275,12 +341,15 @@ function WalletStrip({ balance }: { balance: number }) {
 function PlanCard({
   plan,
   balance,
+  held,
   isCurrent,
   isPending,
   onSubscribe,
 }: {
   plan: StorefrontPlan;
   balance: number;
+  /** The membership the patient already holds, if any. */
+  held: { planId: string; planName: string; expiresAt: string } | null;
   isCurrent: boolean;
   isPending: boolean;
   onSubscribe: (planId: string) => void;
@@ -288,6 +357,11 @@ function PlanCard({
   const accent = accentOf(plan.accent);
   const shortfall = plan.price - balance;
   const affordable = shortfall <= 0;
+  // Holding one membership blocks buying a DIFFERENT one: the server refuses
+  // it outright (`ALREADY_MEMBER`), because switching would forfeit days the
+  // patient has already paid for. The card used to offer «اشتراك» anyway, so
+  // every other plan was a live button whose only possible answer was a 422.
+  const blocked = held !== null && held.planId !== plan.id;
 
   return (
     <section
@@ -341,14 +415,29 @@ function PlanCard({
               // Disabled on affordability too, not just while pending: the
               // wallet is the only payment method, so a tap that can only
               // return "رصيدك لا يكفي" is a dead control.
-              disabled={isPending || !affordable}
+              disabled={isPending || blocked || !affordable}
               onClick={() => onSubscribe(plan.id)}
               className={`w-full rounded-2xl py-3.5 text-sm font-bold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${accent.button}`}
             >
-              {isPending ? 'جارٍ التنفيذ…' : isCurrent ? 'تجديد العضوية' : 'اشتراك'}
+              {isPending
+                ? 'جارٍ التنفيذ…'
+                : blocked
+                  ? 'لديك عضوية سارية'
+                  : isCurrent
+                    ? 'تجديد العضوية'
+                    : 'اشتراك'}
             </button>
 
-            {!affordable ? (
+            {blocked ? (
+              // The server's own reason, not the money one. A blocked card the
+              // patient also cannot afford used to print «ينقصك N د.ع» — a true
+              // number given as a false reason, since money is not why that tap
+              // fails.
+              <p className="mt-2.5 text-center text-[11px] leading-relaxed text-gray-500">
+                لديك عضوية «{held.planName}» سارية حتى {formatDate(held.expiresAt)} — يمكنك
+                تجديدها أو انتظار انتهائها قبل الاشتراك بباقة أخرى
+              </p>
+            ) : !affordable ? (
               // The number, not just a refusal. The admin tops wallets up by
               // hand, so "اشحن 12,000" is the actual next step.
               <p className="mt-2.5 flex items-center justify-center gap-1.5 text-[11px] text-amber-700">

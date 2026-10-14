@@ -3,12 +3,21 @@ import type { LucideIcon } from 'lucide-react';
 // ─── Core Entity Types ──────────────────────────────────────────────────
 
 export interface Doctor {
+  /** `DoctorProfile.id`. */
   id: string;
+  /**
+   * `Partner.id` — a different id space, and the one the booking endpoint
+   * prices against. Nullable: a doctor profile whose partner row is missing
+   * cannot be charged, and the drawer refuses rather than posting the wrong
+   * id. Three shipped defects in this codebase came from conflating the two.
+   */
+  partnerId?: string | null;
   name: string;
   specialty: string;
   specialtyId: string;
   rating: number;
-  reviewCount: number;
+  /** Completed tasks, not reviews — the platform records no reviews. */
+  completedTasks: number;
   location: string;
   clinic: string;
   phone: string;
@@ -113,7 +122,15 @@ export interface Product {
   name: string;
   category: string;
   price: number;
-  image: string;
+  /** Nullable: `Product.imageUrl` is optional, and the card draws a
+   *  placeholder rather than pointing <Image> at an empty string. */
+  image?: string | null;
   inStock: boolean;
-  pharmacyId: number;
+  /** `pharmacyId` was `number`, which is why the detail page ran
+   *  `Number(routeParam)` on a cuid and got NaN. It is a `Partner.id`. */
+  pharmacyId: string;
+  /** يحتاج وصفة طبية — shown on the card; dispensing policy is the
+   *  pharmacy's. */
+  requiresRx?: boolean;
+  description?: string | null;
 }

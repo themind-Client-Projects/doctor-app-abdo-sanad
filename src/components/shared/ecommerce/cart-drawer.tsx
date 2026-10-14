@@ -1,38 +1,39 @@
 'use client';
 
-import { ShoppingBag, X, Plus, Minus, Trash2 } from 'lucide-react';
+import { ShoppingBag, X, Plus, Minus, Trash2, Package, Phone } from 'lucide-react';
 import Image from 'next/image';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter, DrawerClose } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
 import { useCartStore } from '@/stores/ecommerce/cart.store';
-import { useState } from 'react';
 import { formatNumber } from "@/lib/format";
 
 interface CartDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** The pharmacy this basket belongs to — the only party that can fill it. */
+  pharmacyName?: string;
+  pharmacyPhone?: string | null;
 }
 
-export function CartDrawer({ open, onOpenChange }: CartDrawerProps) {
+export function CartDrawer({ open, onOpenChange, pharmacyName, pharmacyPhone }: CartDrawerProps) {
   const { items, updateQuantity, removeFromCart, getTotalPrice, getTotalItems, clearCart } = useCartStore();
-  const [isCheckingOut, setIsCheckingOut] = useState(false);
-  const [success, setSuccess] = useState(false);
 
-  const handleCheckout = () => {
-    setIsCheckingOut(true);
-    // Simulate API / Wayl payment integration
-    setTimeout(() => {
-      setIsCheckingOut(false);
-      setSuccess(true);
-      setTimeout(() => {
-        clearCart();
-        setSuccess(false);
-        onOpenChange(false);
-      }, 2000);
-    }, 1500);
-  };
+  // NO CHECKOUT. This used to be a 1.5s `setTimeout` that flipped `success`
+  // and told the patient «تم الطلب بنجاح! تم تجهيز طلبك وسيتم تحضيره من
+  // الصيدلية» — for an order that was never created, never priced, never paid
+  // and never sent to any pharmacy. The basket was then cleared, so nothing
+  // remained to show that nothing had happened.
+  //
+  // An `Order` carries a `serviceType` and totals but has no line items —
+  // there is no `OrderItem` model — so a basket of products cannot be
+  // represented in the database at all. Placing one for real needs that
+  // model plus the pricing, payment (Wayl) and prescription rules that go
+  // with dispensing medicine, all of which are the client's to decide.
+  //
+  // Until then the basket is a list the patient builds and takes to the
+  // pharmacy by phone, and it says exactly that.
 
-  if (items.length === 0 && !success) {
+  if (items.length === 0) {
     return (
       <Drawer open={open} onOpenChange={onOpenChange}>
         <DrawerContent className="max-h-[85vh]">
@@ -70,19 +71,16 @@ export function CartDrawer({ open, onOpenChange }: CartDrawerProps) {
           </DrawerHeader>
 
           <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-            {success ? (
-              <div className="flex flex-col items-center justify-center h-full text-center">
-                <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mb-4">
-                  <ShoppingBag className="w-10 h-10 text-emerald-500" />
-                </div>
-                <h3 className="text-xl font-extrabold text-gray-900 mb-2">تم الطلب بنجاح!</h3>
-                <p className="text-sm text-gray-500">تم تجهيز طلبك وسيتم تحضيره من الصيدلية.</p>
-              </div>
-            ) : (
-              items.map((item) => (
+            {items.map((item) => (
                 <div key={item.id} className="flex gap-4 bg-white border border-gray-100 rounded-2xl p-3 shadow-sm">
                   <div className="relative w-20 h-20 bg-gray-50 rounded-xl overflow-hidden flex-shrink-0">
-                    <Image src={item.image} alt={item.name} fill className="object-cover" />
+                    {item.image ? (
+                      <Image src={item.image} alt={item.name} fill className="object-cover" />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <Package className="w-7 h-7 text-gray-300" aria-hidden />
+                      </div>
+                    )}
                   </div>
                   <div className="flex-1 flex flex-col justify-between py-1">
                     <div className="flex justify-between items-start">
@@ -119,25 +117,42 @@ export function CartDrawer({ open, onOpenChange }: CartDrawerProps) {
                     </div>
                   </div>
                 </div>
-              ))
-            )}
+            ))}
           </div>
 
-          {!success && (
-            <DrawerFooter className="border-t border-gray-100 px-5 py-4 bg-white">
-              <div className="flex justify-between items-center mb-4">
-                <span className="text-gray-500 font-bold">المجموع الإجمالي</span>
-                <span className="text-xl font-extrabold text-gray-900">{formatNumber(getTotalPrice())} <span className="text-sm font-normal text-gray-500">د.ع</span></span>
-              </div>
-              <Button
-                onClick={handleCheckout}
-                disabled={isCheckingOut || items.length === 0}
-                className="w-full rounded-2xl py-6 font-bold text-lg bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/20 active:scale-95 transition-colors"
+          <DrawerFooter className="border-t border-gray-100 px-5 py-4 bg-white">
+            <div className="flex justify-between items-center mb-3">
+              <span className="text-gray-500 font-bold">المجموع التقديري</span>
+              <span className="text-xl font-extrabold text-gray-900">{formatNumber(getTotalPrice())} <span className="text-sm font-normal text-gray-500">د.ع</span></span>
+            </div>
+            {/* Prices are the pharmacy's own catalogue prices; the total is
+                what the basket adds up to, not a quote the pharmacy has
+                confirmed. */}
+            <p className="text-xs text-gray-500 mb-3 leading-relaxed">
+              الدفع الإلكتروني غير متاح بعد. تواصل مع {pharmacyName ?? 'الصيدلية'} لتأكيد التوفر والسعر النهائي وطريقة الاستلام.
+            </p>
+            {pharmacyPhone ? (
+              // `Button` has no `asChild`, so the anchor carries the styling.
+              <a
+                href={`tel:${pharmacyPhone}`}
+                className="w-full rounded-2xl py-4 font-bold text-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/20 active:scale-95 transition-colors flex items-center justify-center gap-2"
               >
-                {isCheckingOut ? 'جاري التحويل للدفع...' : 'متابعة الدفع (Wayl)'}
+                <Phone className="w-5 h-5" aria-hidden />
+                اتصل بالصيدلية
+              </a>
+            ) : (
+              <Button disabled className="w-full rounded-2xl py-6 font-bold text-lg">
+                لا يوجد رقم تواصل للصيدلية
               </Button>
-            </DrawerFooter>
-          )}
+            )}
+            <Button
+              variant="ghost"
+              onClick={clearCart}
+              className="w-full rounded-2xl font-bold text-gray-500"
+            >
+              إفراغ السلة
+            </Button>
+          </DrawerFooter>
         </div>
       </DrawerContent>
     </Drawer>

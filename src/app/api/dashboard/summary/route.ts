@@ -179,7 +179,7 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) 
       kpis = [
         { key: "todaySamples", label: "عينات اليوم", value: todaySamples, change: calcChange(todaySamples, yesterdaySamples), color: "blue", icon: "flask", href: "/dashboard/samples" },
         { key: "inTesting", label: "قيد الفحص", value: inTesting, change: null, color: "yellow", icon: "loader", href: "/dashboard/samples?status=testing" },
-        { key: "readyResults", label: "النتائج الجاهزة", value: readyResults, change: null, color: "green", icon: "check-circle", href: "/dashboard/results" },
+        { key: "readyResults", label: "النتائج الجاهزة", value: readyResults, change: null, color: "green", icon: "check-circle", href: "/dashboard/samples" },
         { key: "labEarnings", label: "الأرباح", value: decimalToNumber(labEarnings._sum.amount), change: null, color: "purple", icon: "wallet", href: "/dashboard/finance", isCurrency: true },
       ];
       break;
@@ -273,9 +273,9 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) 
       ]);
 
       kpis = [
-        { key: "todayRequests", label: "طلبات اليوم", value: todayRequests, change: null, color: "blue", icon: "scan", href: "/dashboard/requests" },
-        { key: "inImaging", label: "قيد التصوير", value: inImaging, change: null, color: "yellow", icon: "loader", href: "/dashboard/requests?status=imaging" },
-        { key: "readyReports", label: "التقارير الجاهزة", value: readyReports, change: null, color: "green", icon: "check-circle", href: "/dashboard/reports" },
+        { key: "todayRequests", label: "طلبات اليوم", value: todayRequests, change: null, color: "blue", icon: "scan", href: "/dashboard/imaging" },
+        { key: "inImaging", label: "قيد التصوير", value: inImaging, change: null, color: "yellow", icon: "loader", href: "/dashboard/imaging" },
+        { key: "readyReports", label: "التقارير الجاهزة", value: readyReports, change: null, color: "green", icon: "check-circle", href: "/dashboard/imaging" },
         { key: "radEarnings", label: "الأرباح", value: decimalToNumber(radEarnings._sum.amount), change: null, color: "purple", icon: "wallet", href: "/dashboard/finance", isCurrency: true },
       ];
       break;

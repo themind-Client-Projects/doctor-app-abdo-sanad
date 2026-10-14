@@ -8,11 +8,12 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import { SPECIALIZATIONS } from '@/lib/constants/specializations';
-import { DEMO_DOCTORS } from '@/lib/constants/demo-data';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from '@/components/ui/drawer';
 import { FlexibleHeader } from '@/components/shared/flexible-header';
 import type { Doctor } from '@/types/patient';
 import { useDoctors } from '@/hooks/use-doctors';
+import { formatCurrency } from '@/lib/format';
+import { LoadError, loadFailed } from '@/components/shared/load-error';
 
 const AREAS = [
   { id: 'all', name: 'كل المناطق' },
@@ -40,7 +41,8 @@ function DoctorsDirectoryContent() {
   const [copiedDoctorId, setCopiedDoctorId] = useState<string | null>(null);
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
 
-  const { allDoctors } = useDoctors();
+  const { allDoctors, error, refetch } = useDoctors();
+  const failed = loadFailed(error, allDoctors.length);
 
   // Filter doctors list
   const filteredDoctors = useMemo(() => {
@@ -186,9 +188,17 @@ function DoctorsDirectoryContent() {
               const IconComponent = spec.icon;
               const isSelected = activeSpecialty === spec.id;
               
-              // Count doctors in this specialty
-              const docCount = DEMO_DOCTORS[spec.id]?.length || 0;
-              if (docCount === 0) return null; // Only show specialties with doctors
+              // No count. It was `DEMO_DOCTORS[spec.id]?.length` — a number
+              // from a constant, shown to the patient as if it were the real
+              // one, and it also decided WHICH specialties appeared at all
+              // (`docCount === 0 → return null`), so the catalogue itself was
+              // driven by demo data.
+              //
+              // A real total is not available here either: `allDoctors` is one
+              // keyset page, not the whole set, so counting it would replace an
+              // invented number with a partial one presented as complete. The
+              // chip filters the list below, which is the honest answer — tap it
+              // and see who there is.
 
               return (
                 <button
@@ -206,9 +216,6 @@ function DoctorsDirectoryContent() {
                     <IconComponent className="w-5 h-5" />
                   </div>
                   <span className="text-xs font-bold whitespace-nowrap truncate max-w-[90px]">{spec.name}</span>
-                  <span className={`text-[10px] font-semibold ${isSelected ? 'text-white/80' : 'text-gray-400'}`}>
-                    {docCount} {docCount > 10 ? 'طبيب' : 'أطباء'}
-                  </span>
                 </button>
               );
             })}
@@ -219,10 +226,14 @@ function DoctorsDirectoryContent() {
         <section className="px-4 pb-8 space-y-4">
           <div className="flex justify-between items-center mb-2">
             <h2 className="text-base font-bold text-gray-800">الأطباء المدرجين</h2>
-            <span className="text-xs text-gray-500 font-medium">{filteredDoctors.length} طبيب</span>
+            <span className="text-xs text-gray-500 font-medium">
+              {failed ? '' : `${filteredDoctors.length} طبيب`}
+            </span>
           </div>
 
-          {filteredDoctors.length === 0 ? (
+          {failed ? (
+            <LoadError message="تعذّر تحميل دليل الأطباء" onRetry={() => void refetch()} />
+          ) : filteredDoctors.length === 0 ? (
             <div className="bg-white rounded-3xl p-10 border border-dashed border-gray-200 flex flex-col items-center justify-center text-center">
               <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center mb-4">
                 <Search className="w-8 h-8 text-gray-300" />
@@ -305,7 +316,7 @@ function DoctorsDirectoryContent() {
                 <div className="flex items-center justify-between pt-3.5 border-t border-gray-50 gap-3">
                   <div>
                     <span className="text-[10px] text-gray-400 block mb-0.5">رسوم العيادة</span>
-                    <span className="text-sm font-extrabold text-gray-900">{doctor.price}</span>
+                    <span className="text-sm font-extrabold text-gray-900">{formatCurrency(doctor.price)}</span>
                   </div>
                   
                   <div className="flex gap-2 flex-1 justify-end">
@@ -357,9 +368,11 @@ function DoctorsDirectoryContent() {
                     <h3 className="text-lg font-black text-gray-900 mb-1">{selectedDoctor.name}</h3>
                     <p className="text-sm text-primary font-bold mb-2">{selectedDoctor.specialty}</p>
                     <div className="flex items-center gap-1.5 text-sm font-medium text-gray-500">
+                      {/* No «(N مراجعة)»: that number was `Partner.totalTasks`,
+                          a completed-task counter. Nothing counts reviews, so
+                          the parenthetical invented a review history. */}
                       <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
-                      <span className="text-gray-900 font-bold">{selectedDoctor.rating}</span>
-                      <span>({selectedDoctor.reviewCount} مراجعة)</span>
+                      <span className="text-gray-900 font-bold">{selectedDoctor.rating.toFixed(1)}</span>
                     </div>
                   </div>
                 </div>
@@ -401,7 +414,7 @@ function DoctorsDirectoryContent() {
                     </div>
                     <div className="flex-1 flex justify-between items-center pt-1 border-b border-transparent">
                       <span className="text-sm font-bold text-gray-900">رسوم الكشفية</span>
-                      <span className="text-sm font-extrabold text-primary bg-primary/5 px-3 py-1 rounded-lg">{selectedDoctor.price}</span>
+                      <span className="text-sm font-extrabold text-primary bg-primary/5 px-3 py-1 rounded-lg">{formatCurrency(selectedDoctor.price)}</span>
                     </div>
                   </div>
 

@@ -10,6 +10,13 @@ import type { Doctor } from '@/types/patient';
 const ITEMS_PER_PAGE = 5;
 
 interface UseDoctorsOptions {
+  /** Scope to one medical complex's doctors. */
+  complexId?: string;
+  /**
+   * Which consultation the screen sells. مكالمة أطباء must pass
+   * ONLINE_CONSULT or it quotes the clinic fee for a phone call.
+   */
+  service?: 'IN_PERSON_CONSULT' | 'ONLINE_CONSULT';
   /** Limit results instead of paginating (e.g. for home page featured list) */
   limit?: number;
   /**
@@ -40,7 +47,9 @@ export function useDoctors(options?: UseDoctorsOptions) {
 
   const { data, isLoading, error, refetch } = useDashboardData<Doctor[]>({
     url: '/api/public/doctors',
-    params: { channel },
+    // `useDashboardData` drops undefined/empty params, so every existing
+    // caller still requests the identical URL.
+    params: { channel, complexId: options?.complexId, service: options?.service },
   });
 
   const allDoctors = useMemo(() => data ?? [], [data]);

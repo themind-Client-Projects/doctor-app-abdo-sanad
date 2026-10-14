@@ -36,7 +36,10 @@ export const GET = withAuth({}, async (req, _ctx, identity) => {
     select: { id: true, balance: true },
   });
 
-  if (!wallet) return ok({ balance: 0, transactions: [] }, { requestId });
+  // `null`, not 0: a patient with no wallet row has an UNKNOWN balance, not a
+  // zero one, and the screen must be able to tell those apart — 0 is itself a
+  // real balance a real wallet can hold.
+  if (!wallet) return ok({ balance: null, transactions: [], totals: { credit: 0, debit: 0 } }, { requestId });
 
   const transactions = await prisma.patientTransaction.findMany({
     where: { walletId: wallet.id },
@@ -54,5 +57,21 @@ export const GET = withAuth({}, async (req, _ctx, identity) => {
     },
   });
 
-  return ok({ balance: wallet.balance, transactions }, { requestId });
+  // Lifetime totals from the DATABASE, over every movement. The screen used
+  // to fold the `transactions` array above — which is capped at `limit` (50 by
+  // default) — and print the result under «إجمالي الإيداعات» / «إجمالي
+  // المصروفات». Those labels claim a lifetime total, so on the 51st movement
+  // the tiles would silently start understating it with no sign anything was
+  // missing.
+  const sums = await prisma.patientTransaction.groupBy({
+    by: ["type"],
+    where: { walletId: wallet.id },
+    _sum: { amount: true },
+  });
+  const totals = {
+    credit: sums.find((r) => r.type === "CREDIT")?._sum.amount ?? 0,
+    debit: sums.find((r) => r.type === "DEBIT")?._sum.amount ?? 0,
+  };
+
+  return ok({ balance: wallet.balance, transactions, totals }, { requestId });
 });

@@ -1,30 +1,49 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Search, MapPin, CheckCircle2 } from 'lucide-react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
+import { useDashboardData } from '@/hooks/use-dashboard-data';
 import { useLocationStore } from '@/stores/patient/location.store';
+import { LoadError } from '@/components/shared/load-error';
+import { STALE_TIME } from '@/lib/request-cache';
 
-const IRAQI_CITIES = [
-  'بغداد',
-  'البصرة',
-  'أربيل',
-  'الموصل',
-  'النجف',
-  'كربلاء',
-  'السليمانية',
-  'كركوك',
-  'بابل',
-  'ذي قار',
-];
+/**
+ * The city list comes from the governorates table, not from a constant.
+ *
+ * It used to be ten hardcoded names while the platform has eighteen
+ * governorates — so a patient in الأنبار، ديالى، دهوك، واسط، ميسان، المثنى،
+ * القادسية or صلاح الدين could not pick their city at all. That is not a
+ * cosmetic gap: `/services` refuses to open العيادات، العمليات or العروض until
+ * a city is chosen, so eight governorates were locked out of the service entry
+ * points entirely.
+ *
+ * This stays a NAME, deliberately. The store persists a string and
+ * `useDoctors` matches it with `doctor.location.includes(selectedCity)`
+ * against the governorate's name — so switching to `Governorate.id` here would
+ * silently break every filter that reads the store. Changing that is a wider
+ * refactor than this defect needs.
+ */
+type Governorate = { id: string; name: string };
 
 export function CitySelectorDrawer() {
   const { selectedCity, isCitySelectorOpen, setCity, closeCitySelector } = useLocationStore();
   const [searchQuery, setSearchQuery] = useState('');
 
-  const filteredCities = IRAQI_CITIES.filter((city) =>
-    city.includes(searchQuery)
+  const { data, isLoading, error, refetch } = useDashboardData<Governorate[]>({
+    url: '/api/public/governorates',
+    staleTime: STALE_TIME.reference,
+  });
+
+  const cities = useMemo(() => (data ?? []).map((g) => g.name), [data]);
+  const filteredCities = useMemo(
+    () => cities.filter((city) => city.includes(searchQuery)),
+    [cities, searchQuery]
   );
+  // Distinct from "no match": without this a failed fetch reads as
+  // «لا توجد مدن مطابقة للبحث», which blames the patient's search for an
+  // outage and leaves them stuck behind the /services city gate.
+  const failed = error != null && cities.length === 0;
 
   return (
     <Drawer open={isCitySelectorOpen} onOpenChange={(open) => !open && closeCitySelector()}>
@@ -73,7 +92,19 @@ export function CitySelectorDrawer() {
                 </button>
               ))}
               
-              {filteredCities.length === 0 && (
+              {failed && (
+                <LoadError message="تعذّر تحميل قائمة المدن" onRetry={() => void refetch()} />
+              )}
+
+              {!failed && isLoading && (
+                <div className="space-y-2">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <div key={i} className="h-14 rounded-2xl bg-white border border-gray-100 animate-pulse" />
+                  ))}
+                </div>
+              )}
+
+              {!failed && !isLoading && filteredCities.length === 0 && (
                 <div className="text-center py-10">
                   <MapPin className="w-12 h-12 text-gray-200 mx-auto mb-3" />
                   <p className="text-gray-500 text-sm font-medium">لا توجد مدن مطابقة للبحث</p>

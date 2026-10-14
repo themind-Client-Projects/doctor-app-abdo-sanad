@@ -3,6 +3,7 @@ import Image from 'next/image';
 import { Star, MapPin, Briefcase, CalendarClock, Stethoscope, User } from 'lucide-react';
 import type { Doctor } from '@/types/patient';
 import { doctorProfilePath, type StorefrontChannel } from '@/lib/channel-routes';
+import { formatCurrency } from '@/lib/format';
 
 interface DoctorCardProps {
   doctor: Doctor;
@@ -51,10 +52,16 @@ export function DoctorCard({ doctor, onBook, buttonText = 'احجز موعد', b
               <h3 className="font-extrabold text-gray-800 text-base truncate pe-2 group-hover:text-primary transition-colors">
                 {doctor.name}
               </h3>
-              <div className="flex items-center gap-1 bg-amber-50 text-amber-600 px-2 py-1 rounded-lg text-xs font-bold flex-shrink-0">
-                <Star className="w-3 h-3 fill-amber-500" />
-                {doctor.rating}
-              </div>
+              {/* Only a doctor who HAS been rated gets a rating chip. A
+                  newly onboarded doctor has rating 0, and «0 ★» reads as a
+                  bad score rather than "not rated yet". /dispatch and
+                  /search already gate on `> 0`. */}
+              {doctor.rating > 0 && (
+                <div className="flex items-center gap-1 bg-amber-50 text-amber-600 px-2 py-1 rounded-lg text-xs font-bold flex-shrink-0">
+                  <Star className="w-3 h-3 fill-amber-500" />
+                  {doctor.rating.toFixed(1)}
+                </div>
+              )}
             </div>
             <p className="text-xs text-gray-500 font-medium">{doctor.specialty}</p>
           </div>
@@ -65,17 +72,21 @@ export function DoctorCard({ doctor, onBook, buttonText = 'احجز موعد', b
             <MapPin className="w-3.5 h-3.5 text-primary/60" />
             <span className="truncate">{doctor.location} - {doctor.clinic}</span>
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-gray-600">
-            <Briefcase className="w-3.5 h-3.5 text-primary/60" />
-            <span>خبرة {doctor.experience}</span>
-          </div>
+          {/* `experience` is "" for a doctor whose years are unrecorded, which
+              printed a dangling «خبرة » with no value. */}
+          {doctor.experience ? (
+            <div className="flex items-center gap-1.5 text-xs text-gray-600">
+              <Briefcase className="w-3.5 h-3.5 text-primary/60" />
+              <span>خبرة {doctor.experience} سنة</span>
+            </div>
+          ) : null}
         </div>
       </Link>
 
       <div className="flex items-center gap-3 pt-3 border-t border-gray-50 mt-4">
         <div className="flex-1">
           <span className="text-[10px] text-gray-400 block mb-0.5">{priceLabel}</span>
-          <span className="text-sm font-extrabold text-primary block leading-none">{doctor.price}</span>
+          <span className="text-sm font-extrabold text-primary block leading-none">{formatCurrency(doctor.price)}</span>
         </div>
         <button
           onClick={(e) => {

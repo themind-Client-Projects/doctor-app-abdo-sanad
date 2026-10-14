@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { FlexibleHeader } from '@/components/shared/flexible-header';
 import { PromoBanner } from '@/components/shared/promo-banner';
+import { HomeSearchBox } from '@/components/features/patient/home-search-box';
 import {
   Bell,
   Search,
@@ -28,6 +29,8 @@ import { CategoryFilters } from '@/components/shared/category-filters';
 import { useFilters } from '@/hooks/use-filters';
 import { useStorefront } from '@/hooks/use-storefront';
 import { formatNumber } from '@/lib/format';
+import { LoadError, loadFailed } from '@/components/shared/load-error';
+import { useDashboardData } from '@/hooks/use-dashboard-data';
 
 /**
  * Tailwind cannot see a class name it did not find in the source, so a theme
@@ -74,8 +77,20 @@ const PLAN_ICONS: Record<string, React.ElementType> = {
 function RootLandingContent() {
   const { category: activeSpecialty } = useFilters();
   // The main app home is the DIRECT storefront — سند is its own world at /sanad.
-  const { paginatedDoctors: filteredDoctors } = useDoctors({ limit: 4, channel: 'DIRECT' });
+  const {
+    paginatedDoctors: filteredDoctors,
+    error: doctorsError,
+    refetch: refetchDoctors,
+  } = useDoctors({ limit: 4, channel: 'DIRECT' });
   const { storefront } = useStorefront('DIRECT');
+  // What the patient already holds. Without it every card in the strip below
+  // read «اشتراك» to a subscriber — the owner's own report: "عند الاشتراك
+  // بباقة يجب أن يظهر أني الآن مشترك بشيء ما". `ok(null)` is a normal answer
+  // here (no membership), which is why the envelope unwrap had to be fixed
+  // first — it used to leak `{data:null,meta}` and read as an object.
+  const { data: membership } = useDashboardData<{ planId: string; planName: string } | null>({
+    url: '/api/v1/me/membership',
+  });
   const { drawerOpen, setDrawerOpen, selectedDoctor, openBooking } = useBookingDrawer();
 
   return (
@@ -88,16 +103,7 @@ function RootLandingContent() {
 
       <main className="px-4 mt-5 space-y-8">
         {/* Search */}
-        <div className="relative">
-          <div className="absolute inset-y-0 start-0 flex items-center ps-4 pointer-events-none">
-            <Search className="w-5 h-5 text-gray-400" />
-          </div>
-          <input
-            type="text"
-            className="w-full bg-white text-gray-900 rounded-2xl py-3.5 ps-11 pe-4 border border-gray-100 outline-none focus:ring-2 focus:ring-primary/50 shadow-sm text-sm"
-            placeholder="ابحث عن أطباء، خدمات، أو باقات..."
-          />
-        </div>
+        <HomeSearchBox placeholder="ابحث عن أطباء، خدمات، أو باقات..." />
 
         {/* Ads Carousel */}
         <section>
@@ -173,10 +179,17 @@ function RootLandingContent() {
         {/* Subscriptions & Packages */}
         <section>
           <div className="flex justify-between items-center mb-4">
-            <h3 className="text-base font-bold text-gray-800">الاشتراكات والباقات</h3>
+            <div className="flex items-center gap-2 min-w-0">
+              <h3 className="text-base font-bold text-gray-800">الاشتراكات والباقات</h3>
+              {membership ? (
+                <span className="flex-shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                  مشترك — {membership.planName}
+                </span>
+              ) : null}
+            </div>
             {/* Was a `cursor-pointer` span with no handler — it looked like a
                 link and did nothing. */}
-            <Link href="/memberships" className="text-xs text-primary font-medium">عرض الكل</Link>
+            <Link href="/memberships" className="text-xs text-primary font-medium flex-shrink-0">عرض الكل</Link>
           </div>
           <div className="flex gap-4 overflow-x-auto hide-scrollbar snap-x pb-4">
             {storefront.plans.map((pkg) => (
@@ -222,11 +235,24 @@ function RootLandingContent() {
                   {/* Was a bare <button> with no onClick. Subscribing needs the
                       wallet balance and the shortfall message, so it links to
                       the page that has both rather than half-doing it here. */}
+                  {/* The strip never knew what the patient already held, so
+                      every card read «اشتراك» to a subscriber — including on
+                      the plan they were already on. */}
                   <Link
                     href="/memberships"
                     className={`text-xs font-bold px-5 py-2.5 rounded-xl transition-colors ${(PLAN_ACCENTS[pkg.accent] ?? PLAN_ACCENTS.blue).btn}`}
                   >
-                    {pkg.isComingSoon ? 'قريباً' : 'اشتراك'}
+                    {pkg.isComingSoon
+                      ? 'قريباً'
+                      : membership?.planId === pkg.id
+                        ? 'تجديد العضوية'
+                        : membership
+                          ? // NOT «ترقية»: switching plans is precisely what the
+                            // server refuses (ALREADY_MEMBER), because it would
+                            // forfeit days already paid for. Offering an upgrade
+                            // would advertise a path that does not exist.
+                            'لديك عضوية سارية'
+                          : 'اشتراك'}
                   </Link>
                 </div>
               </div>
@@ -252,7 +278,9 @@ function RootLandingContent() {
           </div>
 
           <div className="flex flex-col gap-4">
-            {filteredDoctors.length > 0 ? (
+            {loadFailed(doctorsError, filteredDoctors.length) ? (
+              <LoadError message="تعذّر تحميل الأطباء" onRetry={() => void refetchDoctors()} />
+            ) : filteredDoctors.length > 0 ? (
               filteredDoctors.map((doctor) => (
                 <DoctorCard
                   key={doctor.id}
@@ -294,6 +322,7 @@ function RootLandingContent() {
         doctor={selectedDoctor}
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
+        channel="DIRECT"
       />
     </div>
   );

@@ -17,9 +17,15 @@ import { CitySelectorDrawer } from '@/components/features/patient/city-selector-
 import { SPECIALIZATIONS } from '@/lib/constants/specializations';
 import { useDoctors } from '@/hooks/use-doctors';
 import { useBookingDrawer } from '@/hooks/use-booking-drawer';
+import { LoadError, loadFailed } from '@/components/shared/load-error';
 
 function DoctorsContent() {
-  const { paginatedDoctors, totalCount, itemsPerPage } = useDoctors();
+  // ONLINE_CONSULT, not the default. «سعر المكالمة» was the IN_PERSON_CONSULT
+  // fee — 25,000 against the call's real 15,000 — and «متاح» was the
+  // clinic-visit flag. The service decides both, and the pool too.
+  const { allDoctors, paginatedDoctors, totalCount, itemsPerPage, isLoading, error, refetch } =
+    useDoctors({ service: 'ONLINE_CONSULT' });
+  const failed = loadFailed(error, allDoctors.length);
   const { drawerOpen, setDrawerOpen, selectedDoctor, openBooking } = useBookingDrawer();
 
   return (
@@ -62,10 +68,20 @@ function DoctorsContent() {
         <section className="px-4 space-y-4">
           <div className="flex justify-between items-center mb-2">
             <h2 className="text-base font-bold text-gray-800">الأطباء المتاحين للمكالمات</h2>
-            <span className="text-xs text-gray-500 font-medium">{totalCount} طبيب</span>
+            <span className="text-xs text-gray-500 font-medium">{failed ? '' : `${totalCount} طبيب`}</span>
           </div>
 
-          {totalCount === 0 ? (
+          {/* This screen had no loading branch either, so an in-flight fetch
+              rendered «لا يوجد أطباء» before any answer had arrived. */}
+          {failed ? (
+            <LoadError message="تعذّر تحميل قائمة الأطباء" onRetry={() => void refetch()} />
+          ) : isLoading ? (
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-32 rounded-3xl bg-white border border-gray-100 animate-pulse" />
+              ))}
+            </div>
+          ) : totalCount === 0 ? (
             <div className="bg-white rounded-3xl p-8 border border-dashed border-gray-200 flex flex-col items-center justify-center text-center">
               <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center mb-4">
                 <Search className="w-8 h-8 text-gray-300" />
@@ -96,6 +112,9 @@ function DoctorsContent() {
         doctor={selectedDoctor}
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
+        // مكالمة أطباء is a CALL, so the order must carry ONLINE_CONSULT —
+        // posting IN_PERSON_CONSULT would price and dispatch a clinic visit.
+        serviceType="ONLINE_CONSULT"
       />
 
       <CitySelectorDrawer />

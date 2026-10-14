@@ -1,5 +1,7 @@
 "use client";
 
+import { unwrapEnvelope } from "@/lib/api-envelope";
+
 /**
  * One request per resource, however many components ask for it.
  *
@@ -197,7 +199,7 @@ export function load(
       if (!response.ok) {
         throw new Error(body?.error ?? "فشل في تحميل البيانات");
       }
-      entry.data = body?.data ?? body;
+      entry.data = unwrapEnvelope(body);
       entry.meta = body?.meta ?? undefined;
       entry.error = undefined;
     } catch (err) {

@@ -18,7 +18,8 @@ export const GET = withMaybeAuth(async (req, _ctx, identity) => {
 
   if (!identity) return ok({ user: null, wallet: null }, { requestId });
 
-  const [user, wallet, completedOrders, prescriptions, labReports] = await Promise.all([
+  const [user, wallet, completedOrders, completedAppointments, prescriptions, labReports] =
+    await Promise.all([
     prisma.user.findUnique({
       where: { id: identity.userId },
       select: {
@@ -36,20 +37,47 @@ export const GET = withMaybeAuth(async (req, _ctx, identity) => {
     // The three tiles on /profile were the literals 12 / 3 / 8 for every
     // account. Counted rather than stored: a stored total drifts the moment an
     // order is cancelled or a record is deleted.
-    prisma.order.count({ where: { patientId: identity.userId, status: "COMPLETED" } }),
+    // «حجز مكتمل» means a BOOKING, and a patient's bookings live in two
+    // tables — `/api/v1/me/bookings` merges orders and appointments into one
+    // list for exactly that reason. Counting orders alone made the tile
+    // contradict the list it summarises.
+    //
+    // `deletedAt: null` to match that feed: without it a soft-deleted order
+    // counted on the tile while being absent from the list below it.
+    prisma.order.count({
+      where: { patientId: identity.userId, status: "COMPLETED", deletedAt: null },
+    }),
+    prisma.appointment.count({
+      where: { patientId: identity.userId, status: "completed", deletedAt: null },
+    }),
     prisma.prescription.count({ where: { patientId: identity.userId } }),
     // `LabSample` has no patientId — it reaches the patient through its order,
     // so the count has to traverse the relation rather than assume a column.
+    //
+    // And only samples that actually CARRY a result: the tile says
+    // «تقارير مختبر», and a sample still at `received` or `testing` is not a
+    // report. It was counting the whole ladder, so a patient with ten samples
+    // and no finished test was told they had ten reports — and the tile leads
+    // nowhere, so nothing corrected the impression. The boundary is the
+    // schema's own: `ready (النتيجة جاهزة)`.
     prisma.labSample.count({
-      where: { deletedAt: null, order: { patientId: identity.userId } },
+      where: {
+        deletedAt: null,
+        order: { patientId: identity.userId },
+        status: { in: ["ready", "sent_to_doctor", "sent_to_patient"] },
+      },
     }),
   ]);
 
   return ok(
     {
       user,
-      wallet: { balance: wallet?.balance ?? 0 },
-      stats: { completedOrders, prescriptions, labReports },
+      // `null` when the patient has no PatientWallet row — the wallet is
+      // created on first write, so "no row" is a normal state and NOT a zero
+      // balance. `?? 0` made the two indistinguishable, and the header then
+      // printed «0 د.ع» to patients who have no wallet at all.
+      wallet: wallet ? { balance: wallet.balance } : null,
+      stats: { completedOrders: completedOrders + completedAppointments, prescriptions, labReports },
     },
     { requestId }
   );

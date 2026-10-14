@@ -1,9 +1,10 @@
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { BAGHDAD_TZ } from "@/lib/time";
 import { withAuth } from "@/lib/api-auth";
 import { ErrorCode, fail, ok } from "@/lib/api-response";
-import { SERVICE_TYPE_LABELS } from "@/lib/labels";
+import { SERVICE_TYPE_LABELS, isServiceLive } from "@/lib/labels";
 import { nonEmpty, parseBody, serviceTypeSchema } from "@/lib/validation";
 import { consumeEntitlement } from "@/server/services/membership";
 import { PROVIDER_SLOT } from "@/lib/order-slots";
@@ -56,6 +57,31 @@ function toCardStatus(raw: string): "confirmed" | "pending" | "completed" | "can
  * saying so. `truncated` now tells the client to send them to the paged lists,
  * `/api/v1/me/orders` and `/api/v1/me/appointments`.
  */
+
+/**
+ * Is this appointment's day already behind us, in Baghdad?
+ *
+ * `a.date.getTime() < Date.now()` filed a visit booked for TODAY under
+ * «السابقة» from one minute past midnight, because `Appointment.date` is the
+ * day at midnight and the clock passes it immediately — so a patient with a
+ * 10:30 appointment saw «0 حجوزات قادمة» on the morning of the visit, and the
+ * card sat under the past tab beside last month's.
+ *
+ * Compared as calendar days in Baghdad rather than as instants: the clinic's
+ * day is the unit here, and `time` is a separate free-text column that is not
+ * reliably parseable.
+ */
+const BAGHDAD_DAY = new Intl.DateTimeFormat("en-CA", {
+  timeZone: BAGHDAD_TZ,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+function isBeforeToday(date: Date): boolean {
+  return BAGHDAD_DAY.format(date) < BAGHDAD_DAY.format(new Date());
+}
+
 const CARD_LIMIT = 50;
 
 export const GET = withAuth({}, async (req, _ctx, identity) => {
@@ -67,7 +93,7 @@ export const GET = withAuth({}, async (req, _ctx, identity) => {
       orderBy: { date: "desc" },
       take: CARD_LIMIT + 1,
       select: {
-        id: true, date: true, time: true, status: true, price: true, type: true,
+        id: true, date: true, time: true, status: true, price: true, type: true, doctorId: true,
         doctor: {
           select: {
             specialty: { select: { name: true } },
@@ -90,10 +116,15 @@ export const GET = withAuth({}, async (req, _ctx, identity) => {
         id: true, orderNumber: true, serviceType: true, status: true, source: true,
         totalAmount: true, createdAt: true, address: true, area: true,
         governorate: { select: { name: true } },
+        // All six provider slots. The doctor and the driver were missing, so a
+        // consultation the patient booked through this very handler came back
+        // reading «قيد الإسناد» — assigned, and shown as unassigned.
+        assignedDoctor: { select: { name: true } },
         assignedLab: { select: { name: true } },
         assignedPharmacy: { select: { name: true } },
         assignedNurse: { select: { name: true } },
         assignedRadiology: { select: { name: true } },
+        assignedDriver: { select: { name: true } },
         // The patient's own rating, if they gave one — so the card can show
         // their stars instead of asking again.
         feedbacks: {
@@ -108,6 +139,7 @@ export const GET = withAuth({}, async (req, _ctx, identity) => {
   type Card = {
     id: string;
     kind: "appointment" | "order";
+    doctorId?: string | null;
     providerName: string;
     subtitle: string;
     date: string;
@@ -124,6 +156,14 @@ export const GET = withAuth({}, async (req, _ctx, identity) => {
     canRate: boolean;
     /** The patient's own rating, 1-5, or null. */
     rating: number | null;
+    /**
+     * `AppointmentType` for an appointment card, null for an order.
+     *
+     * `type` stays "doctor" because the screen's icon mappers branch on it;
+     * this is the axis that says whether the patient travels. Without it every
+     * appointment read "عيادة", video calls included.
+     */
+    appointmentType: string | null;
   };
 
   // The extra row fetched above exists only to detect truncation; it must not
@@ -132,17 +172,21 @@ export const GET = withAuth({}, async (req, _ctx, identity) => {
     ...appointments.slice(0, CARD_LIMIT).map((a) => ({
       id: a.id,
       kind: "appointment" as const,
+      /** `DoctorProfile.id` — the reschedule drawer needs it to read this
+       *  doctor's real working week instead of offering invented dates. */
+      doctorId: a.doctorId,
       providerName: a.doctor?.user.name ?? "طبيب",
       subtitle: a.doctor?.specialty?.name ?? "استشارة طبية",
       date: a.date.toISOString(),
       time: a.time,
       location: a.doctor?.user.partner?.address ?? a.doctor?.user.governorate?.name ?? "",
       type: "doctor",
+      appointmentType: a.type,
       status: toCardStatus(a.status),
       price: a.price === null ? null : Number(a.price),
       reference: a.id.slice(-8).toUpperCase(),
       source: null,
-      isPast: APPT_TERMINAL.includes(a.status) || a.date.getTime() < Date.now(),
+      isPast: APPT_TERMINAL.includes(a.status) || isBeforeToday(a.date),
       sortAt: a.date.toISOString(),
       canRate: false,
       rating: null,
@@ -150,15 +194,24 @@ export const GET = withAuth({}, async (req, _ctx, identity) => {
     ...orders.slice(0, CARD_LIMIT).map((o) => ({
       id: o.id,
       kind: "order" as const,
+      doctorId: null,
       // Whichever provider was assigned; unassigned orders are still real
       // bookings and must not vanish from the list.
+      //
+      // Doctor first and driver last, matching `PROVIDER_SLOTS_IN_PRECEDENCE`.
+      // The driver is the courier rather than the provider, so a nurse+driver
+      // order still names the nurse; the driver only titles a card when it is
+      // the one thing assigned, which is the TAXI case.
       providerName:
+        o.assignedDoctor?.name ??
         o.assignedLab?.name ??
         o.assignedPharmacy?.name ??
         o.assignedNurse?.name ??
         o.assignedRadiology?.name ??
+        o.assignedDriver?.name ??
         "قيد الإسناد",
       subtitle: SERVICE_TYPE_LABELS[o.serviceType] ?? o.serviceType,
+      appointmentType: null,
       date: o.createdAt.toISOString(),
       time: null,
       location: [o.governorate?.name, o.area, o.address].filter(Boolean).join(" - "),
@@ -292,8 +345,10 @@ export const POST = withAuth({}, async (req, _ctx, identity) => {
     });
   }
 
-  // Offers this service, and it is switched on.
-  if (provider.serviceConfigs[0]?.status !== "ACTIVE") {
+  // Offers this service, and it is switched on. REACTIVATED is live too —
+  // `/api/public/partners` already lists on `["ACTIVE","REACTIVATED"]`, so an
+  // ACTIVE-only gate here refused providers the directory had just offered.
+  if (!isServiceLive(provider.serviceConfigs[0]?.status)) {
     return fail(ErrorCode.BUSINESS_RULE_VIOLATION, 422, "مقدم الخدمة لا يقدّم هذه الخدمة", {
       requestId,
     });

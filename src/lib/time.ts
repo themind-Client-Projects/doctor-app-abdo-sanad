@@ -18,6 +18,14 @@
 /** Iraq is UTC+3 all year — it has not observed DST since 2008. */
 export const BAGHDAD_OFFSET_MS = 3 * 60 * 60 * 1000;
 
+/**
+ * The same clock as an IANA zone, for `Intl` / `toLocale*` formatting.
+ *
+ * An IANA name rather than the fixed offset above, so `Intl` stays correct if
+ * Iraq ever reinstates DST — the offset constant would not.
+ */
+export const BAGHDAD_TZ = "Asia/Baghdad";
+
 /** Midnight in Baghdad, as the UTC instant to compare timestamps against. */
 export function startOfBaghdadDay(at: Date = new Date()): Date {
   const local = new Date(at.getTime() + BAGHDAD_OFFSET_MS);

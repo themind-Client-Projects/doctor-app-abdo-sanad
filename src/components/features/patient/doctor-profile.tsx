@@ -92,14 +92,23 @@ export function DoctorProfile({ id, channel = 'DIRECT' }: { id: string; channel?
           
           <div className="flex-1 text-right">
             <h2 className="text-2xl font-extrabold text-gray-900 mb-2">{doctor.name}</h2>
-            <div className="flex items-center justify-start gap-1.5 mb-2 text-[#10b981]">
-              <div className="flex text-amber-400 ml-2">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Star key={i} className={`w-4 h-4 ${i < Math.floor(doctor.rating) ? 'fill-current' : 'text-gray-200'}`} />
-                ))}
+            {/* Shown only for a doctor who HAS a rating. An unrated doctor
+                was drawn as five empty stars with «التقييم العام من 0 زائر» —
+                a zero score from zero raters, which reads as a bad doctor
+                rather than a new one. And the count was `totalTasks`, a
+                completed-task counter, never a number of raters. */}
+            {doctor.rating > 0 ? (
+              <div className="flex items-center justify-start gap-1.5 mb-2 text-[#10b981]">
+                <div className="flex text-amber-400 ml-2">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Star key={i} className={`w-4 h-4 ${i < Math.floor(doctor.rating) ? 'fill-current' : 'text-gray-200'}`} />
+                  ))}
+                </div>
+                <span className="text-xs font-bold">{doctor.rating.toFixed(1)} من 5</span>
               </div>
-              <span className="text-xs font-bold">التقييم العام من {doctor.reviewCount} زائر</span>
-            </div>
+            ) : (
+              <p className="text-xs font-bold text-gray-400 mb-2">لا توجد تقييمات بعد</p>
+            )}
             <p className="text-sm text-gray-600 font-medium">{doctor.specialty}</p>
           </div>
         </div>
@@ -161,10 +170,9 @@ export function DoctorProfile({ id, channel = 'DIRECT' }: { id: string; channel?
             </div>
             
             <div className="p-5 pb-8 mt-auto space-y-3">
-              <button className="w-full bg-[#eaf6ef] text-[#10b981] font-extrabold text-[15px] py-4 rounded-2xl hover:bg-[#10b981]/20 transition-colors">
-                عرض المزيد
-              </button>
-              
+              {/* No «عرض المزيد»: it had no handler, and the endpoint returns
+                  the doctor's whole service set, so there was never a second
+                  page to open. It implied services were being withheld. */}
               {/* Optional Checkout Action if items are selected */}
               {selectedServices.length > 0 && (
                 <button 
@@ -188,6 +196,7 @@ export function DoctorProfile({ id, channel = 'DIRECT' }: { id: string; channel?
         open={isBookingOpen}
         onOpenChange={setIsBookingOpen}
         doctor={doctor}
+        channel={channel}
       />
     </div>
   );

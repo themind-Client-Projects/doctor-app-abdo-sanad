@@ -12,6 +12,7 @@ import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { useKPIs } from "@/hooks/use-kpi";
 import { useRole } from "@/hooks/use-role";
 import { getTaskColumns, getTaskTitle } from "@/lib/task-columns";
+import { LoadError, loadFailed } from "@/components/shared/load-error";
 import type {
   Alert,
   ActivityItem,
@@ -51,24 +52,51 @@ function DashboardContent({
   // Section 2: KPI Cards — role-specific live data (req L16-46)
   const { kpis, isLoading: kpisLoading } = useKPIs(role, partnerId);
 
-  const { data: alertsData } = useDashboardData<Alert[]>({
+  // `error` and `refetch` on every panel. This page destructured neither, so
+  // a 500 was indistinguishable from an empty clinical queue: section 3 said
+  // «لا توجد مهام حالية», and sections 4 and 7 VANISHED outright — two of the
+  // eight the requirement is built around, gone with no skeleton and no retry.
+  // 48 of the 55 screens using this hook read `error`; this one, the most-used
+  // screen in the product, did not.
+  const {
+    data: alertsData,
+    error: alertsError,
+    refetch: refetchAlerts,
+  } = useDashboardData<Alert[]>({
     url: "/api/dashboard/alerts",
     refreshInterval: 30000,
   });
 
-  const { data: activitiesData } = useDashboardData<ActivityItem[]>({
+  const {
+    data: activitiesData,
+    error: activitiesError,
+    refetch: refetchActivities,
+  } = useDashboardData<ActivityItem[]>({
     url: "/api/dashboard/recent-activity",
   });
 
-  const { data: calendarData } = useDashboardData<CalendarItem[]>({
+  const {
+    data: calendarData,
+    error: calendarError,
+    refetch: refetchCalendar,
+  } = useDashboardData<CalendarItem[]>({
     url: "/api/dashboard/calendar",
   });
 
-  const { data: earningsData } = useDashboardData<EarningsSummary>({
+  const {
+    data: earningsData,
+    error: earningsError,
+    refetch: refetchEarnings,
+  } = useDashboardData<EarningsSummary>({
     url: "/api/dashboard/earnings",
   });
 
-  const { data: tasksData } = useDashboardData<Record<string, unknown>[]>({
+  const {
+    data: tasksData,
+    isLoading: tasksLoading,
+    error: tasksError,
+    refetch: refetchTasks,
+  } = useDashboardData<Record<string, unknown>[]>({
     url: "/api/dashboard/tasks",
     params: { role },
     refreshInterval: 30000,
@@ -99,30 +127,51 @@ function DashboardContent({
       <KPICards kpis={kpis} isLoading={kpisLoading} />
 
       {/* Section 3: Current Tasks ⭐ (req L48-58) */}
-      <CurrentTasksTable
-        title={getTaskTitle(role)}
-        columns={taskColumns}
-        data={tasksData || []}
-      />
+      {loadFailed(tasksError, tasksData?.length ?? 0) ? (
+        <LoadError message="تعذّر تحميل المهام الحالية" onRetry={() => void refetchTasks()} />
+      ) : (
+        <CurrentTasksTable
+          title={getTaskTitle(role)}
+          columns={taskColumns}
+          data={tasksData || []}
+          isLoading={tasksLoading}
+        />
+      )}
 
       {/* Bottom grid: Alerts + Activity + Calendar + Earnings + Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Column 1: Alerts + Activity */}
         <div className="space-y-6">
           {/* Section 4: Alerts (req L60-68) */}
-          <AlertsPanel alerts={alertsData || []} />
+          {loadFailed(alertsError, alertsData?.length ?? 0) ? (
+            <LoadError message="تعذّر تحميل التنبيهات" onRetry={() => void refetchAlerts()} />
+          ) : (
+            <AlertsPanel alerts={alertsData || []} />
+          )}
 
           {/* Section 5: Recent Activity (req L70-76) */}
-          <RecentActivity activities={activitiesData || []} />
+          {loadFailed(activitiesError, activitiesData?.length ?? 0) ? (
+            <LoadError message="تعذّر تحميل النشاط الأخير" onRetry={() => void refetchActivities()} />
+          ) : (
+            <RecentActivity activities={activitiesData || []} />
+          )}
         </div>
 
         {/* Column 2: Calendar + Earnings */}
         <div className="space-y-6">
           {/* Section 6: Calendar (req L79-82) */}
-          <CalendarWidget appointments={calendarData || []} />
+          {loadFailed(calendarError, calendarData?.length ?? 0) ? (
+            <LoadError message="تعذّر تحميل مواعيد اليوم" onRetry={() => void refetchCalendar()} />
+          ) : (
+            <CalendarWidget appointments={calendarData || []} />
+          )}
 
           {/* Section 7: Earnings (req L84-89) */}
-          {earningsData && <EarningsWidget earnings={earningsData} />}
+          {loadFailed(earningsError, earningsData ? 1 : 0) ? (
+            <LoadError message="تعذّر تحميل الأرباح" onRetry={() => void refetchEarnings()} />
+          ) : earningsData ? (
+            <EarningsWidget earnings={earningsData} />
+          ) : null}
         </div>
 
         {/* Column 3: Quick Actions */}

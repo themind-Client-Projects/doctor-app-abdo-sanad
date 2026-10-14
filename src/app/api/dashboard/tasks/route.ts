@@ -2,6 +2,8 @@ import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
 import { ok } from "@/lib/api-response";
 import { startOfBaghdadDay } from "@/lib/time";
+import { shapeTaskRows } from "@/lib/dashboard-task-rows";
+import { withPatients } from "@/server/services/patient-contacts";
 
 // GET /api/dashboard/tasks — Current tasks per role (req L48-58 ⭐)
 //
@@ -19,46 +21,61 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) 
   // Appointment.doctorId FKs DoctorProfile.id, not Partner.id.
   const doctorScopeId = identity.doctorProfileId ?? "";
 
-  let data;
+  // The rows as the models hold them. They are SHAPED at the end — the table
+  // reads `patientName` / `serviceType` / `sampleId` / `prescriptionId`, and
+  // no model has those names.
+  let rows: Record<string, unknown>[];
 
   switch (identity.role) {
     case "DOCTOR":
-      data = await prisma.appointment.findMany({
-        where: { date: { gte: today }, doctorId: doctorScopeId },
-        orderBy: { time: "asc" },
-        take: 20,
-      });
+      // `patientId` is a bare String with no relation, so the name has to be
+      // looked up — the same hydration the appointments list already does.
+      rows = await withPatients(
+        await prisma.appointment.findMany({
+          where: { date: { gte: today }, doctorId: doctorScopeId },
+          orderBy: { time: "asc" },
+          take: 20,
+        })
+      );
       break;
     case "LAB":
-      data = await prisma.labSample.findMany({
+      rows = await prisma.labSample.findMany({
         where: { status: { not: "sent_to_patient" }, labId: scopeId },
         orderBy: { createdAt: "desc" },
         take: 20,
       });
       break;
     case "PHARMACY":
-      data = await prisma.prescription.findMany({
-        where: { status: { not: "delivered" }, pharmacyId: scopeId },
-        orderBy: { createdAt: "desc" },
-        take: 20,
-      });
+      rows = await withPatients(
+        await prisma.prescription.findMany({
+          where: { status: { not: "delivered" }, pharmacyId: scopeId },
+          // The order carries the contact details as given at booking; a
+          // prescription written in clinic has no order, hence `withPatients`.
+          include: { order: { select: { orderNumber: true, patientName: true } } },
+          orderBy: { createdAt: "desc" },
+          take: 20,
+        })
+      );
       break;
     case "RADIOLOGY":
-      data = await prisma.radiologyRequest.findMany({
+      // No `withPatients` here: RadiologyRequest has no patientId column at
+      // all — it reaches a patient only through its optional order.
+      rows = await prisma.radiologyRequest.findMany({
         where: { status: { not: "sent_to_doctor" }, centerId: scopeId },
+        include: { order: { select: { patientName: true } } },
         orderBy: { createdAt: "desc" },
         take: 20,
       });
       break;
     case "NURSE":
-      data = await prisma.order.findMany({
+      rows = await prisma.order.findMany({
         where: { status: { not: "COMPLETED" }, assignedNurseId: scopeId },
         orderBy: { createdAt: "desc" },
         take: 20,
       });
       break;
     case "DRIVER":
-      data = await prisma.order.findMany({
+      rows = await prisma.order.findMany({
         where: { status: { not: "COMPLETED" }, assignedDriverId: scopeId },
         orderBy: { createdAt: "desc" },
         take: 20,
@@ -66,12 +83,12 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) 
       break;
     default:
       // OPERATIONS and SUPER_ADMIN legitimately see the whole queue.
-      data = await prisma.order.findMany({
+      rows = await prisma.order.findMany({
         where: { status: { not: "COMPLETED" }, createdAt: { gte: today } },
         orderBy: { createdAt: "desc" },
         take: 20,
       });
   }
 
-  return ok(data, { requestId });
+  return ok(shapeTaskRows(identity.role, rows), { requestId });
 });

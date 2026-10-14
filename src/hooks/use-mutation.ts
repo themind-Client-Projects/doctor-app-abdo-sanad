@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { unwrapEnvelope } from "@/lib/api-envelope";
 
 /** Shape of an error returned by the API contract (src/lib/api-response.ts). */
 type ApiErrorBody = {
@@ -56,7 +57,7 @@ export async function apiFetch<T>(
     );
   }
 
-  return (body?.data ?? body) as T;
+  return unwrapEnvelope(body) as T;
 }
 
 type UseMutationOptions<T> = {

@@ -2,9 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronRight, Droplet, Search, HeartHandshake, CheckCircle2, AlertCircle, Phone, MapPin } from 'lucide-react';
+import { Droplet, Search, HeartHandshake, AlertCircle } from 'lucide-react';
 import { FlexibleHeader } from '@/components/shared/flexible-header';
-import { useAuthGuard } from '@/hooks/use-auth-guard';
 
 type Role = 'none' | 'need' | 'donate';
 type BloodType = 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-';
@@ -13,12 +12,25 @@ type City = 'بغداد' | 'البصرة' | 'أربيل' | 'الموصل' | 'ا�
 const CITIES: City[] = ['بغداد', 'البصرة', 'أربيل', 'الموصل', 'النجف', 'كربلاء'];
 const BLOOD_TYPES: BloodType[] = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
-// Mock Donors
-const MOCK_DONORS = [
-  { id: 1, name: 'أحمد صالح', bloodType: 'O+', distance: '2 كم', city: 'بغداد', lastDonation: 'قبل 4 أشهر' },
-  { id: 2, name: 'محمد علي', bloodType: 'O+', distance: '5 كم', city: 'بغداد', lastDonation: 'قبل 6 أشهر' },
-  { id: 3, name: 'متبرع مجهول', bloodType: 'A-', distance: '8 كم', city: 'بغداد', lastDonation: 'قبل سنة' },
-];
+// ─────────────────────────────────────────────────────────────
+// بنك الدم — the patient's half, told truthfully.
+//
+// This screen used to invent three donors with names, distances and a «متاح»
+// badge, show them even when none matched the blood type asked for ("to not
+// look broken in demo", said the code), offer a «طلب تبرع عاجل» button wired
+// to nothing, and then announce «تم تسجيل بياناتك كمتبرع بنجاح … سيتم التواصل
+// معك» over a `setTimeout` that saved nothing at all.
+//
+// There is no donor registry in the product and no patient-reachable endpoint:
+// both `/api/blood-bank` verbs are ROLES.OPERATIONS. The staff side of this
+// service is fully built; the patient side is not. So the screen still
+// explains the service and still collects both intents, and it now says
+// plainly that nothing was sent and nobody will call — instead of promising a
+// record that does not exist.
+//
+// What it deliberately does NOT do: build the patient endpoint, or delete the
+// service. Both are the owner's call.
+// ─────────────────────────────────────────────────────────────
 
 export default function BloodBankPage() {
   const router = useRouter();
@@ -28,39 +40,26 @@ export default function BloodBankPage() {
   const [needCity, setNeedCity] = useState<City>('بغداد');
   const [needBloodType, setNeedBloodType] = useState<BloodType>('O+');
   const [urgency, setUrgency] = useState<'normal' | 'urgent'>('normal');
-  const [searchResults, setSearchResults] = useState<typeof MOCK_DONORS | null>(null);
+  const [needNotice, setNeedNotice] = useState(false);
 
   // Donate Blood State
   const [donateCity, setDonateCity] = useState<City>('بغداد');
   const [donateBloodType, setDonateBloodType] = useState<BloodType>('O+');
-  const [donateSuccess, setDonateSuccess] = useState(false);
+  const [donateNotice, setDonateNotice] = useState(false);
 
-  const { ensureSignedIn } = useAuthGuard();
 
+  // No sign-in guard on either of these: `useAuthGuard` exists to attribute a
+  // WRITE to a patient id, and there is no write here. Forcing a sign-in for an
+  // action that cannot happen only adds a second dead end. Restore it in both
+  // places on the day a patient endpoint exists.
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    // Searching for donors creates a blood request that the app employee acts
-    // on and that donors are messaged about — it needs someone to attribute it
-    // to and a number to call back.
-    if (!ensureSignedIn()) return;
-    // Simulate searching
-    setTimeout(() => {
-      // Filter mock donors based on selected blood type for demo purposes
-      const filtered = MOCK_DONORS.filter(d => d.bloodType === needBloodType);
-      // If none match exactly in mock data, just show the mock donors anyway to not look broken in demo
-      setSearchResults(filtered.length > 0 ? filtered : MOCK_DONORS);
-    }, 600);
+    setNeedNotice(true);
   };
 
   const handleDonate = (e: React.FormEvent) => {
     e.preventDefault();
-    // Registering as a donor is a standing record about a person, so it needs
-    // an account behind it.
-    if (!ensureSignedIn()) return;
-    // Simulate saving
-    setTimeout(() => {
-      setDonateSuccess(true);
-    }, 600);
+    setDonateNotice(true);
   };
 
   return (
@@ -117,7 +116,7 @@ export default function BloodBankPage() {
           <div className="animate-in fade-in slide-in-from-right-4 duration-500">
             <h2 className="text-xl font-extrabold text-gray-900 mb-6">البحث عن متبرعين</h2>
             
-            {!searchResults ? (
+            {!needNotice ? (
               <form onSubmit={handleSearch} className="space-y-5">
                 <div className="space-y-2">
                   <label className="text-sm font-bold text-gray-700">المدينة</label>
@@ -188,55 +187,25 @@ export default function BloodBankPage() {
               </form>
             ) : (
               <div className="space-y-4">
-                <div className="flex items-center justify-between bg-red-50 p-4 rounded-xl border border-red-100">
-                  <div className="flex items-center gap-2">
-                    <MapPin className="w-5 h-5 text-red-600" />
-                    <div>
-                      <h4 className="font-bold text-red-900 text-sm">متبرعين ({needBloodType})</h4>
-                      <p className="text-xs text-red-600/80 font-medium">بالقرب منك في {needCity}</p>
-                    </div>
-                  </div>
-                  <button 
-                    onClick={() => setSearchResults(null)}
-                    className="text-sm font-bold text-red-600 bg-white px-3 py-1.5 rounded-lg shadow-sm border border-red-100"
-                  >
-                    تعديل البحث
-                  </button>
+                {/* Was three invented donors with distances and a «متاح» badge,
+                    plus a «طلب تبرع عاجل» button with no handler. There is no
+                    donor registry to search and no endpoint to request from, so
+                    the screen says that rather than showing people who do not
+                    exist. */}
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-center">
+                  <AlertCircle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
+                  <h4 className="font-bold text-amber-900 mb-2">البحث عن المتبرعين غير مفعّل بعد</h4>
+                  <p className="text-sm text-amber-800 leading-relaxed font-medium">
+                    لا يوجد سجل متبرعين داخل التطبيق حتى الآن. لم يُرسل طلبك ولم تُحفظ أي من بياناتك،
+                    ولن يتواصل معك أحد بناءً على هذه الشاشة.
+                  </p>
                 </div>
-
-                <div className="space-y-3">
-                  {searchResults.map((donor) => (
-                    <div key={donor.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm flex flex-col gap-4">
-                      <div className="flex justify-between items-start">
-                        <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center font-black text-red-600 text-lg border border-red-100">
-                            {donor.bloodType}
-                          </div>
-                          <div>
-                            <h4 className="font-bold text-gray-900">{donor.name}</h4>
-                            <p className="text-xs text-gray-500 font-medium flex items-center gap-1 mt-0.5">
-                              <MapPin className="w-3 h-3" /> يبعد عنك {donor.distance}
-                            </p>
-                          </div>
-                        </div>
-                        <span className="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-1 rounded-md font-bold">متاح</span>
-                      </div>
-                      
-                      <div className="flex gap-2">
-                        <button className="flex-1 bg-red-600 text-white font-bold py-2.5 rounded-xl text-sm flex justify-center items-center gap-2 active:scale-95 transition-transform">
-                          <Phone className="w-4 h-4" />
-                          طلب تبرع عاجل
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                  
-                  {searchResults.length === 0 && (
-                    <div className="text-center py-10">
-                      <p className="text-gray-500 font-medium">عذراً، لم نجد متبرعين مطابقين للبحث حالياً.</p>
-                    </div>
-                  )}
-                </div>
+                <button
+                  onClick={() => setNeedNotice(false)}
+                  className="w-full bg-gray-100 text-gray-700 font-bold py-3 rounded-xl hover:bg-gray-200 transition-colors"
+                >
+                  تعديل البحث
+                </button>
               </div>
             )}
           </div>
@@ -244,7 +213,7 @@ export default function BloodBankPage() {
 
         {role === 'donate' && (
           <div className="animate-in fade-in slide-in-from-left-4 duration-500">
-            {!donateSuccess ? (
+            {!donateNotice ? (
               <>
                 <h2 className="text-xl font-extrabold text-gray-900 mb-2">التسجيل كمتبرع</h2>
                 <p className="text-gray-500 text-sm mb-6 font-medium">تبرعك بالدم قد ينقذ حياة إنسان، كن مستعداً للنداء.</p>
@@ -301,12 +270,18 @@ export default function BloodBankPage() {
               </>
             ) : (
               <div className="flex flex-col items-center justify-center py-10 text-center animate-in zoom-in-95 duration-500">
-                <div className="w-24 h-24 bg-emerald-50 rounded-full flex items-center justify-center mb-6">
-                  <CheckCircle2 className="w-12 h-12 text-emerald-500" />
+                {/* Was a green tick over «شكراً لك يا بطل!» and «تم تسجيل
+                    بياناتك كمتبرع بنجاح … سيتم التواصل معك», after a
+                    `setTimeout` that wrote nothing. The city and blood type
+                    were read back to the user, which is what made it read like
+                    a stored record — so they are gone too. */}
+                <div className="w-24 h-24 bg-amber-50 rounded-full flex items-center justify-center mb-6">
+                  <AlertCircle className="w-12 h-12 text-amber-500" />
                 </div>
-                <h3 className="text-2xl font-black text-gray-900 mb-2">شكراً لك يا بطل!</h3>
-                <p className="text-gray-500 font-medium mb-8 max-w-[250px]">
-                  تم تسجيل بياناتك كمتبرع بنجاح في مدينة {donateCity} بفصيلة دم {donateBloodType}. سيتم التواصل معك عندما يحتاجك شخص.
+                <h3 className="text-2xl font-black text-gray-900 mb-2">التسجيل الإلكتروني غير مفعّل بعد</h3>
+                <p className="text-gray-500 font-medium mb-8 max-w-[280px] leading-relaxed">
+                  شكراً لرغبتك بالتبرع. لم تُحفظ بياناتك: تسجيل المتبرعين داخل التطبيق غير مفعّل حتى الآن،
+                  ولن يتواصل معك أحد بناءً على هذه الشاشة.
                 </p>
                 <button 
                   onClick={() => router.push('/')}

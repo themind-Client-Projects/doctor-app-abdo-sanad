@@ -9262,7 +9262,7 @@
           "Internal"
         ],
         "summary": "GET /api/orders/{id}/advance",
-        "description": "Requires: **ROLES.OPERATIONS**",
+        "description": "Requires: **ROLES.STAFF**",
         "operationId": "get_api_orders_id_advance",
         "security": [
           {
@@ -9367,7 +9367,7 @@
           "Internal"
         ],
         "summary": "POST /api/orders/{id}/advance",
-        "description": "Requires: **ROLES.OPERATIONS**",
+        "description": "Requires: **ROLES.STAFF**",
         "operationId": "post_api_orders_id_advance",
         "security": [
           {
@@ -9476,6 +9476,113 @@
         "summary": "POST /api/orders/{id}/assign",
         "description": "Requires: **ROLES.OPERATIONS**",
         "operationId": "post_api_orders_id_assign",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed — see `details`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated, but not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found — or not yours; the two are deliberately indistinguishable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refused by a domain rule — `error` explains why",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited — back off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server fault — retry with backoff and quote `requestId`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/orders/{id}/cancel": {
+      "post": {
+        "tags": [
+          "Internal"
+        ],
+        "summary": "POST /api/orders/{id}/cancel",
+        "description": "Requires: **ROLES.OPERATIONS**",
+        "operationId": "post_api_orders_id_cancel",
         "security": [
           {
             "bearerAuth": []
@@ -13018,6 +13125,103 @@
             }
           }
         ]
+      }
+    },
+    "/api/patients": {
+      "get": {
+        "tags": [
+          "Internal"
+        ],
+        "summary": "GET /api/patients",
+        "description": "Requires: **ROLES.OPERATIONS**",
+        "operationId": "get_api_patients",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed — see `details`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated, but not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found — or not yours; the two are deliberately indistinguishable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refused by a domain rule — `error` explains why",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited — back off",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server fault — retry with backoff and quote `requestId`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/plans/{id}": {
@@ -17805,7 +18009,7 @@
           "Internal"
         ],
         "summary": "POST /api/users/{id}/password",
-        "description": "Requires: **ROLES.ADMIN**",
+        "description": "Requires: **ROLES.STAFF**",
         "operationId": "post_api_users_id_password",
         "security": [
           {

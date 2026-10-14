@@ -2,7 +2,8 @@
 
 import { useMemo } from 'react';
 import { STALE_TIME } from "@/lib/request-cache";
-import { MapPin, Phone, Star } from 'lucide-react';
+import Link from 'next/link';
+import { MapPin, Phone, Star, Pill } from 'lucide-react';
 import { FlexibleHeader } from '@/components/shared/flexible-header';
 import { BrowseToolbar, useBrowseState, type Facet } from '@/components/shared/browse/browse-toolbar';
 import { InfiniteList } from '@/components/shared/browse/infinite-list';
@@ -32,7 +33,8 @@ export type Provider = {
   location: string;
   address: string;
   rating: number;
-  reviewCount: number;
+  /** Completed tasks — NOT reviews. Nothing in the schema counts reviews. */
+  completedTasks: number;
   services: string[];
   hasHomeService: boolean;
   hasBloodDraw: boolean;
@@ -48,6 +50,7 @@ export function ProviderBrowse({
   subtitle,
   searchPlaceholder,
   emptyTitle,
+  detailBasePath,
 }: {
   /** The `ServiceType` this screen sells. */
   serviceType: string;
@@ -56,6 +59,23 @@ export function ProviderBrowse({
   subtitle: string;
   searchPlaceholder: string;
   emptyTitle: string;
+  /**
+   * Route prefix for a provider's own page, when it has one — `/pharmacies`.
+   * That page existed but was reachable from nowhere in the app, so a list of
+   * real pharmacies had no way to open one. Labs, nursing and physiotherapy
+   * have no detail route, so they pass nothing and the card keeps its single
+   * call button.
+   *
+   * A string, not a `(provider) => string`: both list pages are SERVER
+   * components, and a function prop cannot cross into a client one — the
+   * build refuses it.
+   *
+   * Each storefront passes its OWN prefix — `/pharmacies` and
+   * `/sanad/pharmacies` — because the detail route is paired like every other
+   * one here. A single shared route with the channel in the query string would
+   * drop a سند patient onto a public URL, outside the سند layout.
+   */
+  detailBasePath?: string;
 }) {
   const { ensureSignedIn } = useAuthGuard();
 
@@ -121,14 +141,19 @@ export function ProviderBrowse({
                     </p>
 
                     <div className="mt-2 flex flex-wrap items-center gap-2">
+                      {/* The parenthetical used to be `reviewCount`, which the
+                          API filled from `Partner.totalTasks` — completed
+                          tasks. Beside a star it read as "rated by 156
+                          people". The count is still worth showing; it is
+                          now labelled for what it is, and separately. */}
                       {p.rating > 0 ? (
                         <span className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2 py-1 text-xs font-bold text-amber-700">
                           <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" aria-hidden="true" />
                           {p.rating.toFixed(1)}
-                          <span className="font-medium text-amber-600/70">
-                            ({formatNumber(p.reviewCount)})
-                          </span>
                         </span>
+                      ) : null}
+                      {p.completedTasks > 0 ? (
+                        <Tag>{formatNumber(p.completedTasks)} مهمة منجزة</Tag>
                       ) : null}
                       {p.hasHomeService ? <Tag>خدمة منزلية</Tag> : null}
                       {p.hasBloodDraw ? <Tag>سحب دم</Tag> : null}
@@ -145,6 +170,15 @@ export function ProviderBrowse({
                     <Phone className="h-4 w-4" aria-hidden="true" />
                     اتصل الآن
                   </button>
+                  {detailBasePath ? (
+                    <Link
+                      href={`${detailBasePath}/${p.id}`}
+                      className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-primary/20 bg-primary/5 py-3 text-sm font-bold text-primary transition-colors hover:bg-primary/10 active:scale-[0.98]"
+                    >
+                      <Pill className="h-4 w-4" aria-hidden="true" />
+                      عرض المنتجات
+                    </Link>
+                  ) : null}
                 </div>
               </article>
             )}

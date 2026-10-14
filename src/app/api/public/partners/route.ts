@@ -32,6 +32,14 @@ const listQuerySchema = z.object({
   service: serviceTypeSchema.optional(),
   /** Only partners that own a medical complex. */
   complexesOnly: z.enum(["true", "false"]).optional(),
+  /**
+   * Members OF one complex — its pharmacies, labs and clinics.
+   *
+   * `Partner.complexId` has always held this (indexed), and no patient-facing
+   * route exposed it, so the complex detail page listed three invented
+   * pharmacies and three invented labs instead of the real members.
+   */
+  complexId: z.string().trim().min(1).optional(),
   q: z.string().trim().min(1).max(80).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(12),
   cursor: z.string().optional(),
@@ -39,7 +47,7 @@ const listQuerySchema = z.object({
 
 export const GET = withPublic(async (req) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
-  const { type, governorate, complexesOnly, channel, service, q, limit, cursor } = parseQuery(
+  const { type, governorate, complexesOnly, complexId, channel, service, q, limit, cursor } = parseQuery(
     req.nextUrl.searchParams,
     listQuerySchema
   );
@@ -51,6 +59,7 @@ export const GET = withPublic(async (req) => {
     // page against different pools.
     channels: { some: { channel, status: { not: "SUSPENDED" } } },
     ...(type ? { type } : {}),
+    ...(complexId ? { complexId } : {}),
     ...(service
       ? {
           serviceConfigs: {
@@ -60,7 +69,17 @@ export const GET = withPublic(async (req) => {
       : {}),
     ...(governorate ? { governorate: { name: governorate } } : {}),
     ...(complexesOnly === "true" ? { ownedComplex: { isNot: null } } : {}),
-    ...(q ? { name: { contains: q, mode: "insensitive" } } : {}),
+    // Name alone missed «المنصور» and «شارع حيفا», which the card prints
+    // under the name — see the same widening in the doctors sibling.
+    ...(q
+      ? {
+          OR: [
+            { name: { contains: q, mode: "insensitive" as const } },
+            { address: { contains: q, mode: "insensitive" as const } },
+            { governorate: { name: { contains: q, mode: "insensitive" as const } } },
+          ],
+        }
+      : {}),
   };
 
   const keyset = keysetArgs(cursor, limit);
@@ -104,11 +123,20 @@ export const GET = withPublic(async (req) => {
     latitude: p.latitude,
     longitude: p.longitude,
     rating: p.rating,
-    reviewCount: p.totalTasks,
     complex: p.ownedComplex,
     services: p.serviceConfigs.map((s) => s.serviceType),
-    hasHomeService: p.serviceConfigs.some((s) => s.isHomeService),
-    hasBloodDraw: p.serviceConfigs.some((s) => s.isBloodDraw),
+    // Scoped to the service this screen SELLS. `.some()` over every config
+    // put «خدمة منزلية» on a lab because that partner does home nursing, and
+    // «سحب دم» on a physiotherapy centre that also runs a lab — badges about
+    // one service, printed on a card selling another. With no `service`
+    // filter the old any-service meaning is kept.
+    hasHomeService: p.serviceConfigs.some((s) => (service ? s.serviceType === service : true) && s.isHomeService),
+    hasBloodDraw: p.serviceConfigs.some((s) => (service ? s.serviceType === service : true) && s.isBloodDraw),
+    /** What `reviewCount` used to be called. It is `Partner.totalTasks` — a
+     *  lifetime COMPLETED-TASK counter — and nothing in the schema counts
+     *  reviews, so printing it as «(156)» beside a star rating invented a
+     *  review history. Renamed so no screen can mistake it again. */
+    completedTasks: p.totalTasks,
   }));
 
   return okList(data, page, { requestId });

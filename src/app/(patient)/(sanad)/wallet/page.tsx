@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Wallet, ArrowUpRight, ArrowDownLeft, Plus, Receipt, Clock, TrendingUp, Loader2 } from 'lucide-react';
+import { Wallet, ArrowUpRight, ArrowDownLeft, Plus, Receipt, Clock, Loader2 } from 'lucide-react';
 import { useDashboardData } from '@/hooks/use-dashboard-data';
 import { apiFetch, useMutation } from '@/hooks/use-mutation';
 import { formatNumber, formatRelative } from '@/lib/format';
@@ -29,7 +29,13 @@ type WalletTx = {
   order: { orderNumber: string; serviceType: string; source: string } | null;
 };
 
-type WalletData = { balance: number; transactions: WalletTx[] };
+type WalletData = {
+  /** null = this patient has no wallet row. Not the same as a zero balance. */
+  balance: number | null;
+  transactions: WalletTx[];
+  /** Lifetime sums over EVERY movement, computed server-side. */
+  totals: { credit: number; debit: number };
+};
 
 /** `reason` is the machine key; this is what the patient reads. */
 const REASON_LABELS: Record<string, string> = {
@@ -40,8 +46,11 @@ const REASON_LABELS: Record<string, string> = {
 };
 
 export default function WalletPage() {
+  const [limit, setLimit] = useState(50);
   const { data, isLoading, error, refetch } = useDashboardData<WalletData>({
     url: '/api/v1/me/wallet',
+    // The cache key is the full URL, so raising the limit is a new request.
+    params: { limit: String(limit) },
   });
   // Whether the gateway is configured at all — an "إيداع رصيد" button that
   // 503s is worse than one that is not shown.
@@ -66,17 +75,9 @@ export default function WalletPage() {
 
   const transactions = useMemo(() => data?.transactions ?? [], [data]);
 
-  // Derived from the movements rather than hardcoded, so the tiles can never
-  // disagree with the list beneath them.
-  const totals = useMemo(() => {
-    let credit = 0;
-    let debit = 0;
-    for (const t of transactions) {
-      if (t.type === 'CREDIT') credit += Number(t.amount);
-      else debit += Number(t.amount);
-    }
-    return { credit, debit };
-  }, [transactions]);
+  // Straight from the server. Folding `transactions` here summed only the
+  // newest 50 movements under a label that says «إجمالي» — a lifetime total.
+  const totals = data?.totals ?? null;
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50/50 pb-24 font-sans">
@@ -102,15 +103,18 @@ export default function WalletPage() {
               <div>
                 <p className="text-xs text-gray-500 font-medium">الرصيد الحالي</p>
                 <h2 className="text-2xl font-extrabold text-gray-800">
-                  {isLoading ? '—' : formatNumber(data?.balance ?? 0)}{' '}
+                  {/* «—» whenever the balance is not known: still loading, the
+                      request failed (`isLoading` goes false on error), or the
+                      patient has no wallet row at all. `?? 0` turned all three
+                      into a confident zero. */}
+                  {data?.balance == null || error ? '—' : formatNumber(data.balance)}{' '}
                   <span className="text-base font-bold text-gray-500">د.ع</span>
                 </h2>
               </div>
             </div>
-            <div className="flex items-center gap-1 text-xs text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg font-bold">
-              <TrendingUp className="w-3 h-3" />
-              نشط
-            </div>
+            {/* No «نشط» badge: `PatientWallet` has no status column, so the
+                word asserted a state nothing records — and it was printed even
+                while the balance was unknown. */}
           </div>
 
           {/* Quick Actions */}
@@ -150,7 +154,7 @@ export default function WalletPage() {
               </div>
               <span className="text-xs text-gray-500 font-medium">إجمالي الإيداعات</span>
             </div>
-            <h3 className="text-lg font-extrabold text-gray-800">{formatNumber(totals.credit)} <span className="text-xs text-gray-400 font-bold">د.ع</span></h3>
+            <h3 className="text-lg font-extrabold text-gray-800">{totals ? formatNumber(totals.credit) : '—'} <span className="text-xs text-gray-400 font-bold">د.ع</span></h3>
           </div>
           <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
             <div className="flex items-center gap-2 mb-2">
@@ -159,7 +163,7 @@ export default function WalletPage() {
               </div>
               <span className="text-xs text-gray-500 font-medium">إجمالي المصروفات</span>
             </div>
-            <h3 className="text-lg font-extrabold text-gray-800">{formatNumber(totals.debit)} <span className="text-xs text-gray-400 font-bold">د.ع</span></h3>
+            <h3 className="text-lg font-extrabold text-gray-800">{totals ? formatNumber(totals.debit) : '—'} <span className="text-xs text-gray-400 font-bold">د.ع</span></h3>
           </div>
         </section>
 
@@ -170,9 +174,18 @@ export default function WalletPage() {
               <Receipt className="w-5 h-5 text-primary" />
               آخر المعاملات
             </h3>
-            <button className="text-sm text-primary font-bold hover:text-primary/70 transition-colors">
-              عرض الكل
-            </button>
+            {/* Was a styled button with no handler. The endpoint takes a
+                `limit` (max 100), so this now actually fetches more rather
+                than implying a history screen that does not exist. */}
+            {transactions.length >= limit && limit < 100 ? (
+              <button
+                type="button"
+                onClick={() => setLimit(100)}
+                className="text-sm text-primary font-bold hover:text-primary/70 transition-colors"
+              >
+                عرض المزيد
+              </button>
+            ) : null}
           </div>
 
           <div className="space-y-3">
@@ -200,7 +213,7 @@ export default function WalletPage() {
                     {REASON_LABELS[tx.reason] ?? tx.reason}
                   </h4>
                   <p className="text-xs text-gray-500 truncate mt-0.5">
-                    {tx.description ?? (tx.order ? `طلب ${tx.order.orderNumber.slice(0, 8)}` : '—')}
+                    {tx.description ?? (tx.order ? `طلب #${tx.order.orderNumber.slice(-8).toUpperCase()}` : '—')}
                   </p>
                 </div>
                 <div className="text-end flex-shrink-0">

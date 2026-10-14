@@ -1,3 +1,5 @@
+import type { ServiceStatus } from "@prisma/client";
+
 /**
  * Arabic display labels for the enums the admin screens render.
  *
@@ -30,12 +32,48 @@ export const SERVICE_TYPE_LABELS = {
 export type ServiceTypeKey = keyof typeof SERVICE_TYPE_LABELS;
 export const SERVICE_TYPE_KEYS = Object.keys(SERVICE_TYPE_LABELS) as ServiceTypeKey[];
 
+/**
+ * `AppointmentType` — how the consultation happens, which is NOT the same axis
+ * as `ServiceType`.
+ *
+ * حجوزاتي labelled every appointment "عيادة" because the card discarded this
+ * column, so an ONLINE consultation and a SURGERY read identically to an
+ * in-person clinic visit. A patient could set out for a clinic to attend a
+ * video call.
+ */
+export const APPOINTMENT_TYPE_LABELS = {
+  IN_PERSON: "حضوري",
+  ONLINE: "أونلاين",
+  HOME_VISIT: "زيارة منزلية",
+  SURGERY: "عملية",
+} as const;
+
 export const SERVICE_STATUS_LABELS = {
   ACTIVE: "مفعّلة",
   SUSPENDED: "معلّقة",
   PAUSED: "متوقفة مؤقتاً",
   REACTIVATED: "أُعيد تفعيلها",
 } as const;
+
+/**
+ * The statuses at which a ServiceConfig is LIVE, and therefore bookable.
+ *
+ * "إعادة التفعيل" writes REACTIVATED — it never writes ACTIVE back. So a
+ * predicate spelled `=== "ACTIVE"` permanently blacklists every service an
+ * administrator ever turned back on: the doctor keeps the service switched on,
+ * the admin screen says أُعيد تفعيلها, and the directory renders «غير متاح»
+ * forever. Two places disagreed about this and the disagreement was visible —
+ * the detail route listed a reactivated doctor as available while the list
+ * route did not, and the booking gate refused a provider the directory still
+ * offered.
+ *
+ * Prisma accepts the tuple directly in `status: { in: ... }`.
+ */
+export const LIVE_SERVICE_STATUSES = ["ACTIVE", "REACTIVATED"] as const satisfies readonly ServiceStatus[];
+
+export function isServiceLive(status: string | null | undefined): boolean {
+  return status === "ACTIVE" || status === "REACTIVATED";
+}
 
 export const PARTNER_STATUS_LABELS = {
   ACTIVE: "نشط",

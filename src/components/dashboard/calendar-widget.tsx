@@ -3,17 +3,12 @@
 import { Calendar, Clock } from "lucide-react";
 import type { CalendarItem } from "@/types/dashboard";
 import { LOCALE } from "@/lib/format";
+import { APPOINTMENT_TYPE_LABELS, labelOf } from "@/lib/labels";
+import { StatusBadge } from "@/components/shared/status-badge";
 
 interface CalendarWidgetProps {
   appointments: CalendarItem[];
 }
-
-const typeLabels: Record<string, string> = {
-  IN_PERSON: "حضوري",
-  ONLINE: "أونلاين",
-  HOME_VISIT: "زيارة منزلية",
-  SURGERY: "عمليات",
-};
 
 export function CalendarWidget({ appointments }: CalendarWidgetProps) {
   const today = new Date().toLocaleDateString(LOCALE, {
@@ -45,15 +40,14 @@ export function CalendarWidget({ appointments }: CalendarWidgetProps) {
               </div>
               <div className="flex-1 min-w-0">
                 <span className="text-sm font-medium text-foreground block truncate">{apt.patientName}</span>
-                <span className="text-xs text-muted-foreground">{typeLabels[apt.type] || apt.type}</span>
+                <span className="text-xs text-muted-foreground">{labelOf(APPOINTMENT_TYPE_LABELS, apt.type)}</span>
               </div>
-              <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                apt.status === "confirmed" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" :
-                apt.status === "pending" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" :
-                "bg-muted text-muted-foreground"
-              }`}>
-                {apt.status}
-              </span>
+              {/* Was an inline chip comparing against "confirmed"/"pending",
+                  neither of which is in the appointment vocabulary
+                  (scheduled | completed | cancelled | no_show) — so every
+                  appointment fell through to grey and printed its raw English
+                  status. StatusBadge already maps the real values. */}
+              <StatusBadge status={apt.status} size="sm" />
             </div>
           ))
         )}

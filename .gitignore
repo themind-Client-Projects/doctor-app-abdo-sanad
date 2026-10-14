@@ -11,6 +11,9 @@
 
 # next.js
 /.next/
+# Verification builds run with NEXT_DIST_DIR so they cannot clobber a running
+# dev server's .next — the output is still a build artifact, never committed.
+/.next-verify/
 /out/
 
 # production

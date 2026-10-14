@@ -10,6 +10,7 @@ export default function Page() {
       subtitle="اطلب أدويتك من أفضل الصيدليات المعتمدة"
       searchPlaceholder="ابحث عن صيدلية..."
       emptyTitle="لا توجد صيدليات"
+      detailBasePath="/sanad/pharmacies"
     />
   );
 }
