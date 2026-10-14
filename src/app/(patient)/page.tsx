@@ -31,6 +31,7 @@ import { useStorefront } from '@/hooks/use-storefront';
 import { formatNumber } from '@/lib/format';
 import { LoadError, loadFailed } from '@/components/shared/load-error';
 import { useDashboardData } from '@/hooks/use-dashboard-data';
+import { STALE_TIME } from '@/lib/request-cache';
 
 /**
  * Tailwind cannot see a class name it did not find in the source, so a theme
@@ -83,6 +84,13 @@ function RootLandingContent() {
     refetch: refetchDoctors,
   } = useDoctors({ limit: 4, channel: 'DIRECT' });
   const { storefront } = useStorefront('DIRECT');
+  // The real partner roster behind «شركاؤنا».
+  const { data: partnerRows } = useDashboardData<{ id: string; name: string }[]>({
+    url: '/api/public/partners',
+    params: { channel: 'DIRECT', limit: '12' },
+    staleTime: STALE_TIME.reference,
+  });
+  const partners = useMemo(() => partnerRows ?? [], [partnerRows]);
   // What the patient already holds. Without it every card in the strip below
   // read «اشتراك» to a subscriber — the owner's own report: "عند الاشتراك
   // بباقة يجب أن يظهر أني الآن مشترك بشيء ما". `ok(null)` is a normal answer
@@ -301,27 +309,30 @@ function RootLandingContent() {
           </div>
         </section>
 
-        {/* Partners */}
-        <section className="pb-8">
-          <h3 className="text-base font-bold text-gray-800 mb-4">شركاؤنا</h3>
-          <div className="flex gap-5 overflow-x-auto hide-scrollbar pb-2">
-            {[
-              { id: 1, name: 'مستشفى السلام' },
-              { id: 2, name: 'مختبرات الأمل' },
-              { id: 3, name: 'صيدلية الشفاء' },
-              { id: 4, name: 'مركز النور' },
-              { id: 5, name: 'عيادات بغداد' },
-            ].map((partner) => (
-              <div key={partner.id} className="flex flex-col items-center gap-2 min-w-[70px]">
-                <div className="w-16 h-16 bg-white border border-gray-100 rounded-full flex items-center justify-center shadow-sm">
-                  {/* Placeholder for partner logo */}
-                  <Activity className="w-6 h-6 text-gray-300" />
+        {/* Partners — the real ones.
+            Was five invented names: «مستشفى السلام», «مختبرات الأمل», «صيدلية
+            الشفاء», «مركز النور», «عيادات بغداد». The platform's actual ACTIVE
+            partners were served by /api/public/partners the whole time, so this
+            strip credited five organisations that do not exist while naming
+            none of the ones that do. Absent entirely when there are none, since
+            a «شركاؤنا» heading over nothing is its own small claim. */}
+        {partners.length > 0 ? (
+          <section className="pb-8">
+            <h3 className="text-base font-bold text-gray-800 mb-4">شركاؤنا</h3>
+            <div className="flex gap-5 overflow-x-auto hide-scrollbar pb-2">
+              {partners.map((partner) => (
+                <div key={partner.id} className="flex flex-col items-center gap-2 min-w-[70px]">
+                  <div className="w-16 h-16 bg-white border border-gray-100 rounded-full flex items-center justify-center shadow-sm">
+                    {/* `Partner` carries no logo column, so the type's own icon
+                        stands in rather than a picture of someone else. */}
+                    <Activity className="w-6 h-6 text-gray-300" />
+                  </div>
+                  <span className="text-xs font-bold text-gray-600 text-center line-clamp-2">{partner.name}</span>
                 </div>
-                <span className="text-xs font-bold text-gray-600 text-center">{partner.name}</span>
-              </div>
-            ))}
-          </div>
-        </section>
+              ))}
+            </div>
+          </section>
+        ) : null}
       </main>
 
       {/* ── Doctor Booking Drawer ── */}

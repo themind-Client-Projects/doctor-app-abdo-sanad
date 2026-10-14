@@ -8,6 +8,7 @@ import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
 import { LoadError, loadFailed } from '@/components/shared/load-error';
 import { useDashboardData } from '@/hooks/use-dashboard-data';
+import { useStorefront } from '@/hooks/use-storefront';
 import { doctorProfilePath, storefrontCategories, type StorefrontChannel } from '@/lib/channel-routes';
 import type { SearchResult, SearchCategory } from '@/types/patient';
 
@@ -68,8 +69,12 @@ function browseCategories(routes: ReturnType<typeof storefrontCategories>) {
   ]
 };
 
-/** Generic phrases that seed a search — suggestions, not platform statistics. */
-const SEARCH_SUGGESTIONS = ['طبيب أطفال', 'تحليل دم شامل', 'صيدلية', 'طبيب عيون'];
+// The four hardcoded phrases are gone. «تحليل دم شامل» matched nothing —
+// search covers doctors, labs and pharmacies by name, specialty, governorate
+// and address, never lab TESTS — and «طبيب أطفال» / «طبيب عيون» only matched
+// because a specialty happens to be worded that way. Suggestions now come from
+// the specialties the search actually queries, so tapping one cannot return
+// «لا توجد نتائج».
 
 function getCategoryIcon(category: SearchCategory) {
   switch (category) {
@@ -121,6 +126,13 @@ function SearchScreen() {
   const params = useSearchParams();
   const seedQuery = params.get('q') ?? '';
   const CHANNEL = readChannel(params.get('channel'));
+  // Specialty names, which `q` matches against — see the widened filter in
+  // /api/public/doctors.
+  const { storefront } = useStorefront(CHANNEL);
+  const suggestions = useMemo(
+    () => storefront.specialties.slice(0, 6).map((sp) => sp.name),
+    [storefront.specialties]
+  );
   const ROUTES = useMemo(() => storefrontCategories(CHANNEL), [CHANNEL]);
 
   const [query, setQuery] = useState(seedQuery);
@@ -464,10 +476,11 @@ function SearchScreen() {
             {/* Suggestions — phrases that seed a search, not platform statistics.
                 The heading used to read «الأكثر بحثاً», which claimed these were
                 the most-searched terms; nothing counts searches. */}
+            {suggestions.length > 0 ? (
             <section>
               <h3 className="font-bold text-gray-800 text-sm mb-3">اقتراحات للبحث</h3>
               <div className="space-y-2">
-                {SEARCH_SUGGESTIONS.map((term) => (
+                {suggestions.map((term) => (
                   <button
                     key={term}
                     type="button"
@@ -483,6 +496,7 @@ function SearchScreen() {
                 ))}
               </div>
             </section>
+            ) : null}
           </>
         )}
       </main>
