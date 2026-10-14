@@ -8,6 +8,10 @@ import { FlexibleHeader } from '@/components/shared/flexible-header';
 import { useAuthGuard } from '@/hooks/use-auth-guard';
 import { useFeatureFlags } from '@/hooks/use-feature-flags';
 import { formatNumber } from '@/lib/format';
+import { useDashboardData } from '@/hooks/use-dashboard-data';
+import { apiFetch, useMutation } from '@/hooks/use-mutation';
+import { invalidate } from '@/lib/request-cache';
+import { toast } from 'sonner';
 import {
   Drawer,
   DrawerClose,
@@ -18,39 +22,15 @@ import {
 } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
 
-const TAXI_PACKAGES = [
-  {
-    id: 1,
-    name: 'تكسي اقتصادي',
-    description: 'سيارات عملية ومريحة لمشاويرك اليومية',
-    price: '5,000',
-    priceNum: 5000,
-    theme: 'from-blue-50/50 to-white border-blue-100',
-    iconBg: 'bg-blue-100 text-blue-600',
-    features: ['تكييف ممتاز', 'سائق محترف', 'وصول سريع']
-  },
-  {
-    id: 2,
-    name: 'تكسي مميز (VIP)',
-    description: 'سيارات فخمة لراحة تامة وخصوصية عالية',
-    price: '12,000',
-    priceNum: 12000,
-    theme: 'from-emerald-50/50 to-white border-emerald-200 ring-2 ring-emerald-500/20',
-    iconBg: 'bg-emerald-100 text-emerald-600',
-    popular: true,
-    features: ['سيارة حديثة', 'واي فاي مجاني', 'مياه معبأة', 'أولوية الحجز']
-  },
-  {
-    id: 3,
-    name: 'تكسي عائلي',
-    description: 'مساحة واسعة تناسب عائلتك وأمتعتك',
-    price: '15,000',
-    priceNum: 15000,
-    theme: 'from-purple-50/50 to-white border-purple-100',
-    iconBg: 'bg-purple-100 text-purple-600',
-    features: ['تتسع لـ 6 أشخاص', 'سعة أمتعة كبيرة', 'تكييف مركزي']
-  },
-];
+// TAXI_PACKAGES removed. Three invented fare tiers — «تكسي اقتصادي» 5,000,
+// «تكسي مميز (VIP)» 12,000 and «تكسي عائلي» 15,000, each with its own invented
+// feature list — while `PriceConfig` holds exactly ONE real TAXI row: 7,500
+// (6,000 in سند). The tiers were not a mispriced product; they were a product
+// line that does not exist, with no model behind the three names, so no admin
+// could change a fare or retire a tier.
+//
+// The real price now comes from /api/public/prices, which applies the same
+// channel precedence `quoteService()` uses when the order is placed.
 
 export default function TaxiServicePage() {
   const router = useRouter();
@@ -67,7 +47,21 @@ export default function TaxiServicePage() {
   const [subscription, setSubscription] = useState<'none' | 'weekly' | 'monthly'>('none');
 
   // Booking State
-  const [selectedPackage, setSelectedPackage] = useState<typeof TAXI_PACKAGES[0] | null>(null);
+  // The real fare, and whether anyone can actually drive it. A booking is
+  // validated against a DRIVER partner that offers TAXI — so if the pool is
+  // empty the honest thing is to say so BEFORE the patient fills the form,
+  // not after they tap «تأكيد».
+  const { data: priceRow } = useDashboardData<{ price: number | null }>({
+    url: '/api/public/prices',
+    params: { service: 'TAXI', channel: 'DIRECT' },
+  });
+  const { data: drivers, isLoading: driversLoading } = useDashboardData<{ id: string; name: string; phone: string }[]>({
+    url: '/api/public/partners',
+    params: { type: 'DRIVER', service: 'TAXI', channel: 'DIRECT', limit: '1' },
+  });
+  const fare = priceRow?.price ?? null;
+  const driver = drivers?.[0] ?? null;
+  const taxiAvailable = Boolean(driver);
   // "زر تفعيل الخدمة التمريضية ضمن اجرائات تحديد نوع الرحلة" — part of choosing
   // the trip, not a separate flow, and only offered while the admin has it on.
   const [withNurse, setWithNurse] = useState(false);
@@ -91,25 +85,70 @@ export default function TaxiServicePage() {
 
   // Total = fare + the add-on when it is both switched on AND chosen. Derived,
   // never stored, so switching the flag off cannot leave a charge behind.
-  const total = (selectedPackage?.priceNum ?? 0) + (nurseEnabled && withNurse ? nursePrice : 0);
+  // The real TAXI fare plus the admin-priced add-on. Was the selected tier's
+  // invented `priceNum`.
+  const total = (fare ?? 0) + (nurseEnabled && withNurse ? nursePrice : 0);
 
-  const handleSelectPackage = (pkg: typeof TAXI_PACKAGES[0]) => {
+  const handleRequestRide = () => {
     // The next screen takes payment, so the gate belongs here — not after
     // someone has reviewed a fare they cannot actually pay.
-    ensureSignedIn(() => {
-      setSelectedPackage(pkg);
-      setPaymentDrawerOpen(true);
-    });
+    ensureSignedIn(() => setPaymentDrawerOpen(true));
   };
 
-  const confirmPayment = () => {
-    setBookingConfirmed(true);
-    setTimeout(() => {
-      setPaymentDrawerOpen(false);
-      setBookingConfirmed(false);
-      router.push('/'); // Navigate back to home or success page
-    }, 2500);
-  };
+  /** What the server actually recorded. */
+  const [outcome, setOutcome] = useState<{
+    orderNumber: string;
+    total: number | null;
+    paid: boolean;
+    paymentError: string | null;
+  } | null>(null);
+
+  // THE RIDE. `confirmPayment` used to be `setBookingConfirmed(true)` and a
+  // 2.5s timer, under a button reading «تأكيد واستقطاع من المحفظة». No order
+  // was created, no money moved, and the panel then said «تم تأكيد رحلتك!
+  // السائق في طريقه إليك الآن» over a trip number generated with
+  // `Math.random()` — a reference that matched nothing and differed every
+  // render. A patient could be standing outside waiting for a car nobody had
+  // been asked to send.
+  const { mutate: confirmPayment, isPending: booking } = useMutation<{
+    orderNumber: string;
+    totalAmount: number | null;
+    paid: boolean;
+    paymentError: string | null;
+  }>(
+    async () => {
+      if (!driver) throw new Error('لا يوجد سائق متاح حالياً');
+      return apiFetch('/api/v1/me/bookings', {
+        method: 'POST',
+        body: JSON.stringify({
+          serviceType: 'TAXI',
+          providerId: driver.id,
+          source: 'DIRECT',
+          payFromWallet: true,
+          address: pickupLocation || undefined,
+          notes: [
+            pickupLocation ? `من: ${pickupLocation}` : null,
+            destination ? `إلى: ${destination}` : null,
+            nurseEnabled && withNurse ? 'مع مرافقة تمريضية' : null,
+          ].filter(Boolean).join(' — ') || undefined,
+        }),
+      });
+    },
+    {
+      successMessage: null,
+      onSuccess: (r) => {
+        setOutcome({
+          orderNumber: r.orderNumber,
+          total: r.totalAmount,
+          paid: r.paid,
+          paymentError: r.paymentError,
+        });
+        setBookingConfirmed(true);
+        invalidate('/api/v1/me');
+      },
+      onError: (e) => toast.error(e.message),
+    }
+  );
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 pb-20 font-sans">
@@ -313,47 +352,46 @@ export default function TaxiServicePage() {
                 </button>
               ) : null}
 
-              {TAXI_PACKAGES.map((pkg) => (
-                <div key={pkg.id} className={`bg-gradient-to-b ${pkg.theme} rounded-3xl p-5 shadow-sm border relative transition-colors`}>
-                  {pkg.popular && (
-                    <div className="absolute top-0 left-5 -translate-y-1/2 bg-emerald-500 text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-sm">
-                      الأكثر طلباً
+              {/* One fare, because there is one TAXI price. */}
+              {!taxiAvailable && !driversLoading ? (
+                <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm text-center">
+                  <Car className="w-9 h-9 text-gray-300 mx-auto mb-3" aria-hidden />
+                  <h3 className="font-extrabold text-gray-800 mb-1">خدمة التكسي غير متاحة حالياً</h3>
+                  <p className="text-sm text-gray-500 leading-relaxed">
+                    لا يوجد سائق مفعّل لهذه الخدمة في الوقت الحالي. جرّب لاحقاً.
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-gradient-to-b from-blue-50/50 to-white rounded-3xl p-5 shadow-sm border border-blue-100">
+                  <div className="flex items-start gap-3 mb-5">
+                    <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center flex-shrink-0">
+                      <Car className="w-6 h-6" aria-hidden />
                     </div>
-                  )}
-
-                  <div className="flex gap-4 mb-4">
-                    <div className={`w-14 h-14 ${pkg.iconBg} rounded-2xl flex items-center justify-center flex-shrink-0`}>
-                      <Car className="w-7 h-7" />
-                    </div>
-                    <div className="flex-1 text-right pt-1">
-                      <h4 className="font-extrabold text-gray-800 text-lg mb-0.5">{pkg.name}</h4>
-                      <p className="text-xs text-gray-500 leading-relaxed">{pkg.description}</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-white/50 rounded-2xl p-4 mb-5">
-                    <div className="grid grid-cols-2 gap-y-3 gap-x-2">
-                      {pkg.features.map((feature, idx) => (
-                        <div key={idx} className="flex items-center gap-1.5">
-                          <CheckCircle2 className={`w-4 h-4 flex-shrink-0 ${pkg.popular ? 'text-emerald-500' : 'text-blue-500'}`} />
-                          <span className="text-xs text-gray-700 font-bold">{feature}</span>
-                        </div>
-                      ))}
+                    <div className="min-w-0">
+                      <h3 className="font-extrabold text-gray-900 mb-1">تكسي سند</h3>
+                      <p className="text-xs text-gray-500 leading-relaxed">
+                        توصيل من وإلى موقعك مع سائق معتمد من المنصة.
+                      </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between mt-auto pt-4 border-t border-gray-100">
-                    <span className="font-extrabold text-gray-900 text-2xl">{pkg.price} <span className="text-xs text-gray-400 font-normal">د.ع</span></span>
+                  <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                    <span className="font-extrabold text-gray-900 text-2xl">
+                      {/* «—» while the price is unknown: 0 would read as free. */}
+                      {fare === null ? '—' : formatNumber(fare)}{' '}
+                      <span className="text-xs text-gray-400 font-normal">د.ع</span>
+                    </span>
                     <button
-                      onClick={() => handleSelectPackage(pkg)}
-                      className={`text-sm font-bold px-8 py-3 rounded-xl transition-colors shadow-md active:scale-95 ${pkg.popular ? 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-emerald-500/20' : 'bg-primary text-white hover:bg-primary/90 shadow-primary/20'
-                        }`}
+                      type="button"
+                      disabled={driversLoading || !taxiAvailable}
+                      onClick={handleRequestRide}
+                      className="text-sm font-bold px-8 py-3 rounded-xl transition-colors shadow-md active:scale-95 bg-primary text-white hover:bg-primary/90 shadow-primary/20 disabled:opacity-40"
                     >
                       طلب الآن
                     </button>
                   </div>
                 </div>
-              ))}
+              )}
             </div>
           </div>
         )}
@@ -373,16 +411,34 @@ export default function TaxiServicePage() {
                   <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mb-4 animate-bounce">
                     <Check className="w-10 h-10 text-emerald-500" />
                   </div>
-                  <h3 className="text-xl font-extrabold text-gray-800 mb-2">تم تأكيد رحلتك!</h3>
-                  <p className="text-sm text-gray-500 mb-1">السائق في طريقه إليك الآن</p>
-                  <p className="text-xs font-bold text-primary mt-2">رقم الرحلة: #TX-{Math.floor(Math.random() * 10000)}</p>
+                  {/* Read back from the order. The reference is the real
+                      `orderNumber`, and nothing here claims a driver is
+                      moving — dispatch assigns one, and the patient is told
+                      that instead of being told it already happened. */}
+                  <h3 className="text-xl font-extrabold text-gray-800 mb-2">
+                    {outcome?.paid ? 'تم تأكيد طلبك والدفع' : 'تم تسجيل طلبك'}
+                  </h3>
+                  <p className="text-sm text-gray-500 mb-1">سيتم إسناد سائق والتواصل معك لتأكيد الرحلة.</p>
+                  {outcome?.total !== null && outcome?.total !== undefined ? (
+                    <p className="text-sm text-gray-600 mt-1">
+                      المبلغ: <span className="font-extrabold text-primary">{formatNumber(outcome.total)} د.ع</span>
+                    </p>
+                  ) : null}
+                  {outcome?.paymentError ? (
+                    <p className="text-xs font-bold text-amber-600 mt-2">
+                      تم تسجيل الطلب، لكن الدفع من المحفظة لم يتم: {outcome.paymentError}
+                    </p>
+                  ) : null}
+                  {outcome?.orderNumber ? (
+                    <p className="text-[10px] text-gray-400 mt-2 font-mono" dir="ltr">{outcome.orderNumber}</p>
+                  ) : null}
                 </div>
               ) : (
                 <div className="space-y-6">
                   <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
                     <div className="flex justify-between items-center mb-3">
-                      <span className="text-sm text-gray-500">الباقة المختارة</span>
-                      <span className="font-bold text-gray-800">{selectedPackage?.name}</span>
+                      <span className="text-sm text-gray-500">الخدمة</span>
+                      <span className="font-bold text-gray-800">تكسي سند</span>
                     </div>
                     <div className="flex justify-between items-center mb-3">
                       <span className="text-sm text-gray-500">من</span>
@@ -423,9 +479,10 @@ export default function TaxiServicePage() {
               <DrawerFooter className="px-5 pb-8 pt-4">
                 <Button
                   className="w-full py-6 rounded-xl font-bold text-base shadow-lg shadow-primary/20"
-                  onClick={confirmPayment}
+                  disabled={booking}
+                  onClick={() => void confirmPayment()}
                 >
-                  تأكيد واستقطاع من المحفظة
+                  {booking ? 'جاري التأكيد...' : 'تأكيد واستقطاع من المحفظة'}
                 </Button>
                 <DrawerClose asChild>
                   <Button variant="outline" className="w-full py-6 rounded-xl font-bold mt-2">

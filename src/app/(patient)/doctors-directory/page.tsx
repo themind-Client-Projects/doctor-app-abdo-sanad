@@ -12,25 +12,35 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from '@
 import { FlexibleHeader } from '@/components/shared/flexible-header';
 import type { Doctor } from '@/types/patient';
 import { useDoctors } from '@/hooks/use-doctors';
+import { useDashboardData } from '@/hooks/use-dashboard-data';
+import { STALE_TIME } from '@/lib/request-cache';
 import { formatCurrency } from '@/lib/format';
 import { LoadError, loadFailed } from '@/components/shared/load-error';
 
-const AREAS = [
-  { id: 'all', name: 'كل المناطق' },
-  { id: 'منصور', name: 'المنصور' },
-  { id: 'كرادة', name: 'الكرادة' },
-  { id: 'زيونة', name: 'زيونة' },
-  { id: 'أعظمية', name: 'الأعظمية' },
-  { id: 'جادرية', name: 'الجادرية' },
-  { id: 'حارثية', name: 'الحارثية' },
-  { id: 'يرموك', name: 'اليرموك' },
-];
+// AREAS removed. Eight Baghdad districts written into the source, matched
+// against `doctor.location` with `.includes()`. `Governorate.areas` is a JSON
+// array the admin maintains and /api/public/governorates already returns it —
+// so a patient in Basra was offered «المنصور» and «الكرادة», and any district
+// the admin added was unreachable. See `areas` below.
 
 function DoctorsDirectoryContent() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSpecialty, setActiveSpecialty] = useState('all');
   const [selectedGender, setSelectedGender] = useState<'all' | 'male' | 'female'>('all');
   const [selectedArea, setSelectedArea] = useState('all');
+
+  // The real districts, from whichever governorate the patient is browsing.
+  const { data: governorates } = useDashboardData<{ id: string; name: string; areas: unknown }[]>({
+    url: '/api/public/governorates',
+    staleTime: STALE_TIME.reference,
+  });
+  const areas = useMemo(() => {
+    const names = (governorates ?? []).flatMap((g) =>
+      Array.isArray(g.areas) ? g.areas.filter((a): a is string => typeof a === 'string') : []
+    );
+    // «كل المناطق» first; the rest are whatever the admin has defined.
+    return [{ id: 'all', name: 'كل المناطق' }, ...[...new Set(names)].map((n) => ({ id: n, name: n }))];
+  }, [governorates]);
   const [selectedExperience, setSelectedExperience] = useState('all'); // 'all', '10+', '15+'
   
   // Dialog & Drawer state
@@ -521,7 +531,7 @@ function DoctorsDirectoryContent() {
               <div>
                 <h4 className="text-xs font-black text-gray-800 mb-3">المنطقة الجغرافية</h4>
                 <div className="flex flex-wrap gap-2">
-                  {AREAS.map((area) => (
+                  {areas.map((area) => (
                     <button
                       key={area.id}
                       onClick={() => setSelectedArea(area.id)}

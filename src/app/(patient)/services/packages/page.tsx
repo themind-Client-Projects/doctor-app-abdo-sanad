@@ -55,7 +55,7 @@ export default function SanadPackagesPage() {
         <section className="text-center mb-8">
           <h2 className="text-2xl font-extrabold text-primary mb-2">سند رعاية أشمل صحة أوفر</h2>
           <p className="text-sm font-medium text-gray-600 mb-6">
-            وفر حتى 50% على جميع احتياجاتك من الرعاية الصحية
+            أسعار مخفّضة على جميع احتياجاتك من الرعاية الصحية
           </p>
 
           <div className="flex items-center justify-center gap-2 flex-wrap mb-6">

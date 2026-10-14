@@ -168,9 +168,16 @@ function RootLandingContent() {
 
         {/* Sanad Board (Link to /sanad) */}
         <section>
+          {/* No «50%». The largest discount the platform actually grants is
+              21.4% (سند physiotherapy, from PriceConfig) and the largest plan
+              discount is 15% — so «وفر حتى 50%» overstated the real benefit by
+              about 2.3x, on four patient surfaces. The figure is removed rather
+              than replaced: which number to advertise is a marketing decision,
+              and if one is wanted it should be derived from PriceConfig, not
+              written into a page. */}
           <PromoBanner 
             brandName="سند"
-            title="وفر حتى 50% على جميع الخدمات الطبية"
+            title="أسعار مخفّضة على جميع الخدمات الطبية"
             subtitle="خصومات طبية في العراق"
             href="/sanad" 
           />

@@ -1,15 +1,25 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Droplet, Search, HeartHandshake, AlertCircle } from 'lucide-react';
 import { FlexibleHeader } from '@/components/shared/flexible-header';
+import { useDashboardData } from '@/hooks/use-dashboard-data';
+import { STALE_TIME } from '@/lib/request-cache';
 
 type Role = 'none' | 'need' | 'donate';
 type BloodType = 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-';
-type City = 'بغداد' | 'البصرة' | 'أربيل' | 'الموصل' | 'النجف' | 'كربلاء';
+/** A governorate NAME, as `Governorate.name` stores it. */
+type City = string;
 
-const CITIES: City[] = ['بغداد', 'البصرة', 'أربيل', 'الموصل', 'النجف', 'كربلاء'];
+// The six-name `CITIES` constant is gone. `Governorate` holds eighteen rows the
+// admin maintains behind an `isActive` flag, and /api/public/governorates
+// already serves them — so a city switched off in إعدادات النظام was still
+// offered here, and a city added there never appeared. The request form and the
+// admin disagreed about where the platform operates.
+//
+// `BLOOD_TYPES` stays a constant on purpose: the eight ABO/Rh groups are fixed
+// by biology, not by configuration.
 const BLOOD_TYPES: BloodType[] = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
 // ─────────────────────────────────────────────────────────────
@@ -37,6 +47,13 @@ export default function BloodBankPage() {
   const [role, setRole] = useState<Role>('none');
   
   // Need Blood State
+  // Cities the admin actually serves.
+  const { data: governorates } = useDashboardData<{ id: string; name: string }[]>({
+    url: '/api/public/governorates',
+    staleTime: STALE_TIME.reference,
+  });
+  const cities = useMemo(() => (governorates ?? []).map((g) => g.name), [governorates]);
+
   const [needCity, setNeedCity] = useState<City>('بغداد');
   const [needBloodType, setNeedBloodType] = useState<BloodType>('O+');
   const [urgency, setUrgency] = useState<'normal' | 'urgent'>('normal');
@@ -125,7 +142,7 @@ export default function BloodBankPage() {
                     onChange={(e) => setNeedCity(e.target.value as City)}
                     className="w-full bg-white border-2 border-gray-100 rounded-xl p-4 text-base font-bold text-gray-900 focus:border-red-500 outline-none transition-colors"
                   >
-                    {CITIES.map(city => <option key={city} value={city}>{city}</option>)}
+                    {cities.map(city => <option key={city} value={city}>{city}</option>)}
                   </select>
                 </div>
 
@@ -226,7 +243,7 @@ export default function BloodBankPage() {
                       onChange={(e) => setDonateCity(e.target.value as City)}
                       className="w-full bg-white border-2 border-gray-100 rounded-xl p-4 text-base font-bold text-gray-900 focus:border-red-500 outline-none transition-colors"
                     >
-                      {CITIES.map(city => <option key={city} value={city}>{city}</option>)}
+                      {cities.map(city => <option key={city} value={city}>{city}</option>)}
                     </select>
                   </div>
 

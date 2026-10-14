@@ -12,7 +12,6 @@
 
 import { useState, useMemo, Suspense } from 'react';
 import { Search, Filter } from 'lucide-react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { FlexibleHeader } from '@/components/shared/flexible-header';
 
@@ -34,11 +33,11 @@ import { LoadError, loadFailed } from '@/components/shared/load-error';
 /** Cover images live in /public and are keyed by position — the DB stores no
  *  complex artwork, so cycling them keeps the strip looking designed rather
  *  than showing a broken image for every complex. */
-const COMPLEX_COVERS = [
-  '/complexes/real_complex_1.png',
-  '/complexes/real_complex_2.png',
-  '/complexes/real_complex_3.png',
-];
+// COMPLEX_COVERS removed. Three PNGs in /public handed out by LIST POSITION —
+// `COMPLEX_COVERS[i % 3]` — so the photo on a complex card belonged to
+// whichever complex happened to sit at that index, and reordering the list
+// silently reassigned the buildings. `MedicalComplex` has no image column at
+// all, so there is nothing to show; a gradient says nothing false.
 
 type ComplexAd = { id: string; name: string; complex: { id: string; name: string } | null };
 
@@ -108,7 +107,7 @@ export function DoctorsBrowse({ channel = 'DIRECT' }: { channel?: Channel }) {
                 <span className="block text-xs text-gray-500 mt-0.5">
                   {sanadOn
                     ? 'تعرض الآن أطباء سند بأسعارهم المخفّضة'
-                    : 'فعّل لعرض أطباء سند بخصومات تصل إلى 50%'}
+                    : 'فعّل لعرض أطباء سند بأسعار مخفّضة'}
                 </span>
               </span>
               <span
@@ -135,7 +134,7 @@ export function DoctorsBrowse({ channel = 'DIRECT' }: { channel?: Channel }) {
           <div className="flex gap-4 overflow-x-auto hide-scrollbar snap-x px-4 pb-2">
             {(complexAds ?? []).map((complex, i) => (
               <Link key={complex.id} href={`/complexes/${complex.complex?.id ?? complex.id}`} className="min-w-[240px] h-36 relative rounded-[2rem] shadow-sm snap-center overflow-hidden flex flex-col items-center justify-end p-5 group active:scale-95 transition-transform">
-                <Image src={COMPLEX_COVERS[i % COMPLEX_COVERS.length]} alt={complex.complex?.name ?? complex.name} fill className="object-cover group-hover:scale-105 transition-transform duration-500" />
+                <div className="absolute inset-0 bg-gradient-to-br from-primary/80 via-primary/60 to-emerald-500/60" />
                 <div className="absolute inset-0 bg-gradient-to-t from-gray-900/90 via-gray-900/40 to-transparent" />
                 <h3 className="relative z-10 font-bold text-lg text-white drop-shadow-lg tracking-wide">{complex.complex?.name ?? complex.name}</h3>
               </Link>
