@@ -9,7 +9,20 @@ import type { UserRole } from "@prisma/client";
 export const roleRoutes: Record<string, readonly UserRole[]> = {
   "/admin": ["SUPER_ADMIN"],
   "/operations": ["OPERATIONS", "SUPER_ADMIN"],
-  "/dashboard": ["DOCTOR", "LAB", "PHARMACY", "NURSE", "DRIVER", "RADIOLOGY"],
+  /**
+   * SUPER_ADMIN belongs here too, and its absence was the whole bug: an admin
+   * who opened /dashboard was bounced to «ليس لديك صلاحية» by this table while
+   * every other layer was already built to serve them —
+   * `src/app/api/dashboard/summary/route.ts:293` has a dedicated
+   * `case "SUPER_ADMIN"` returning platform-wide KPIs, the shell names the role
+   * «إدارة وريد» (`src/app/(dashboard)/layout.tsx:17`), `ROLES.STAFF` admits it,
+   * and `partnerScope` deliberately returns `{}` for platform roles so their
+   * queries span every partner. This line was the only one that disagreed.
+   *
+   * OPERATIONS is deliberately NOT added: it has its own portal at /operations,
+   * and the summary endpoint's shared branch is reached from there already.
+   */
+  "/dashboard": ["SUPER_ADMIN", "DOCTOR", "LAB", "PHARMACY", "NURSE", "DRIVER", "RADIOLOGY"],
 };
 
 /**

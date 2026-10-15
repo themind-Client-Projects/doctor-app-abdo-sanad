@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import Link from "next/link";
-import { KeyRound, UserCog } from "lucide-react";
+import { KeyRound, UserCog, Wallet } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { useServerFilters } from "@/hooks/use-server-filters";
 import { apiFetch, useMutation } from "@/hooks/use-mutation";
@@ -10,7 +10,8 @@ import { DataTable, type Column } from "@/components/data/data-table";
 import { Field, FormDialog, fieldClass } from "@/components/data/form-dialog";
 import { PageHeader, Pill } from "@/components/data/crud-kit";
 import { ServerFilterBar } from "@/components/data/server-filter-bar";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatNumber } from "@/lib/format";
+import { toast } from "sonner";
 
 // ─────────────────────────────────────────────────────────────
 // المستخدمون — إدارة الحسابات (req L265)
@@ -47,6 +48,21 @@ const CREATABLE_ROLES = ["OPERATIONS", "SUPER_ADMIN", "PATIENT"] as const;
 
 /** Mirrors `PASSWORD_ROLES` on the server: everyone but a patient. */
 const hasPasswordLogin = (role: string) => role !== "PATIENT";
+
+/**
+ * Only a patient holds a `PatientWallet`, and the endpoint behind this lives at
+ * /api/patients/[id]/wallet — so the action is offered on patient rows only.
+ */
+const hasWallet = (role: string) => role === "PATIENT";
+
+/** `reason` as the endpoint's schema spells it. PAYMENT is a debit reason. */
+type WalletReason = "TOPUP" | "REFUND" | "REWARD" | "PAYMENT";
+
+const CREDIT_REASONS: { value: WalletReason; label: string }[] = [
+  { value: "TOPUP", label: "شحن رصيد" },
+  { value: "REFUND", label: "استرجاع" },
+  { value: "REWARD", label: "مكافأة" },
+];
 
 type User = {
   id: string;
@@ -86,6 +102,7 @@ type Dialog =
   | { kind: "password"; user: User }
   | { kind: "role"; user: User }
   | { kind: "delete"; user: User }
+  | { kind: "wallet"; user: User }
   | null;
 
 export default function UsersPage() {
@@ -99,12 +116,22 @@ export default function UsersPage() {
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [password, setPassword] = useState("");
   const [nextRole, setNextRole] = useState("");
+  // محفظة المريض — amount is held as a STRING so the field can be empty and so
+  // a half-typed number never becomes 0.
+  const [walletAmount, setWalletAmount] = useState("");
+  const [walletDirection, setWalletDirection] = useState<"CREDIT" | "DEBIT">("CREDIT");
+  const [walletReason, setWalletReason] = useState<WalletReason>("TOPUP");
+  const [walletNote, setWalletNote] = useState("");
 
   const close = useCallback(() => {
     setDialog(null);
     setDraft(EMPTY_DRAFT);
     setPassword("");
     setNextRole("");
+    setWalletAmount("");
+    setWalletDirection("CREDIT");
+    setWalletReason("TOPUP");
+    setWalletNote("");
   }, []);
 
   const done = useCallback(() => {
@@ -165,6 +192,40 @@ export default function UsersPage() {
     async (id: string) =>
       apiFetch(`/api/users/${id}/role`, { method: "PUT", body: JSON.stringify({ role: nextRole }) }),
     { successMessage: "تم تغيير الدور", onSuccess: done }
+  );
+
+  // The wallet being adjusted, read live so the admin sees the balance they
+  // are changing rather than one cached from a list.
+  const walletUserId = dialog?.kind === "wallet" ? dialog.user.id : null;
+  const { data: walletData, isLoading: walletLoading } = useDashboardData<{
+    balance: number;
+  }>({
+    url: walletUserId ? `/api/patients/${walletUserId}/wallet` : "",
+    enabled: Boolean(walletUserId),
+  });
+
+  const { mutate: adjustWallet, isPending: adjusting } = useMutation<{ balance: number }, [string]>(
+    async (userId: string) =>
+      apiFetch(`/api/patients/${userId}/wallet`, {
+        method: "POST",
+        body: JSON.stringify({
+          direction: walletDirection,
+          amount: Number(walletAmount),
+          // PAYMENT is the only debit reason the schema takes; a credit always
+          // carries one of the three above.
+          reason: walletDirection === "DEBIT" ? "PAYMENT" : walletReason,
+          description: walletNote.trim() || undefined,
+        }),
+      }),
+    {
+      successMessage: null,
+      onSuccess: (r) => {
+        toast.success(
+          `${walletDirection === "CREDIT" ? "تم إيداع" : "تم خصم"} ${formatNumber(Number(walletAmount))} د.ع — الرصيد الآن ${formatNumber(r.balance)} د.ع`
+        );
+        done();
+      },
+    }
   );
 
   const { mutate: remove, isPending: removing } = useMutation(
@@ -251,7 +312,7 @@ export default function UsersPage() {
     },
   ];
 
-  const busy = toggling || removing;
+  const busy = toggling || removing || adjusting;
 
   return (
     <div className="space-y-5">
@@ -328,6 +389,11 @@ export default function UsersPage() {
             >
               الدور
             </RowButton>
+            {hasWallet(u.role) ? (
+              <RowButton onClick={() => setDialog({ kind: "wallet", user: u })} disabled={busy}>
+                المحفظة
+              </RowButton>
+            ) : null}
             <RowButton onClick={() => void setActive(u.id, !u.isActive)} disabled={busy}>
               {u.isActive ? "إيقاف" : "تفعيل"}
             </RowButton>
@@ -434,6 +500,95 @@ export default function UsersPage() {
       </FormDialog>
 
       {/* ── password ───────────────────────────────────────────── */}
+      {/* محفظة المريض — «admin can add money to wallet».
+          POST /api/patients/[id]/wallet has supported this since it was
+          written (it even logs every adjustment to ActivityLog, because money
+          moved by hand is the first thing anyone asks about later) and no
+          screen ever called it, so no admin could put a dinar into a wallet. */}
+      <FormDialog
+        open={dialog?.kind === "wallet"}
+        title="محفظة المريض"
+        description={
+          dialog?.kind === "wallet"
+            ? `${dialog.user.name ?? dialog.user.phone ?? dialog.user.email ?? ""}`
+            : undefined
+        }
+        onClose={close}
+        onSubmit={() => void (dialog?.kind === "wallet" && adjustWallet(dialog.user.id))}
+        isPending={adjusting}
+        submitLabel={walletDirection === "CREDIT" ? "إيداع" : "خصم"}
+        submitDisabled={!(Number(walletAmount) > 0)}
+      >
+        <div className="rounded-xl border border-border bg-muted/40 px-3 py-2.5 text-sm">
+          <span className="text-muted-foreground">الرصيد الحالي: </span>
+          {/* «—» while unknown: a patient with no wallet row and a failed read
+              are both "we do not know", and 0 is a real balance. */}
+          <span className="font-bold text-foreground">
+            {walletLoading || !walletData ? "—" : `${formatNumber(walletData.balance)} د.ع`}
+          </span>
+        </div>
+
+        <Field label="العملية" htmlFor="wallet-direction">
+          <select
+            id="wallet-direction"
+            className={fieldClass}
+            value={walletDirection}
+            onChange={(e) => setWalletDirection(e.target.value as "CREDIT" | "DEBIT")}
+          >
+            <option value="CREDIT">إيداع — إضافة رصيد</option>
+            <option value="DEBIT">خصم — سحب رصيد</option>
+          </select>
+        </Field>
+
+        <Field label="المبلغ (د.ع)" htmlFor="wallet-amount">
+          <input
+            id="wallet-amount"
+            type="number"
+            min="1"
+            step="250"
+            inputMode="numeric"
+            className={fieldClass}
+            value={walletAmount}
+            onChange={(e) => setWalletAmount(e.target.value)}
+            placeholder="مثال: 25000"
+          />
+        </Field>
+
+        {walletDirection === "CREDIT" ? (
+          <Field label="السبب" htmlFor="wallet-reason">
+            <select
+              id="wallet-reason"
+              className={fieldClass}
+              value={walletReason}
+              onChange={(e) => setWalletReason(e.target.value as WalletReason)}
+            >
+              {CREDIT_REASONS.map((r) => (
+                <option key={r.value} value={r.value}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+        ) : null}
+
+        <Field label="ملاحظة (اختياري)" htmlFor="wallet-note" hint="تظهر للمريض في سجل معاملاته">
+          <input
+            id="wallet-note"
+            className={fieldClass}
+            value={walletNote}
+            onChange={(e) => setWalletNote(e.target.value)}
+            maxLength={160}
+            placeholder="مثال: شحن مقابل خدمة"
+          />
+        </Field>
+
+        <p className="flex items-start gap-2 rounded-lg bg-muted/50 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+          <Wallet className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          كل عملية تُسجَّل باسمك في سجل النشاط، وتظهر فوراً في محفظة المريض.
+          الخصم يُرفض إذا كان الرصيد غير كافٍ.
+        </p>
+      </FormDialog>
+
       <FormDialog
         open={dialog?.kind === "password"}
         title={dialog?.kind === "password" && dialog.user.hasPassword ? "إعادة تعيين كلمة المرور" : "تعيين كلمة المرور"}
