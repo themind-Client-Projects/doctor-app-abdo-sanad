@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { withPublic } from "@/lib/api-auth";
 import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { parseQuery } from "@/lib/validation";
+import { readPartnerRating } from "@/server/services/partner-rating";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -66,6 +67,11 @@ export const GET = withPublic<Ctx>(async (req, { params }) => {
     return fail(ErrorCode.NOT_FOUND, 404, "لم يتم العثور على الجهة", { requestId });
   }
 
+  // How many people actually rated them. The list endpoints cannot afford a
+  // per-row aggregate, but a detail page is one row — and «4.5» with no idea
+  // how many said so is a different claim from «4.5 من 12 تقييماً».
+  const rating = await readPartnerRating(p.id);
+
   return ok(
     {
       id: p.id,
@@ -76,7 +82,9 @@ export const GET = withPublic<Ctx>(async (req, { params }) => {
       address: p.address ?? "",
       latitude: p.latitude,
       longitude: p.longitude,
-      rating: p.rating,
+      rating: rating.average,
+      /** Real ratings submitted — NOT `totalTasks`. */
+      reviewCount: rating.count,
       /** The complex this partner OWNS, if any. */
       ownedComplex: p.ownedComplex,
       /** The complex this partner is a MEMBER of, if any. */

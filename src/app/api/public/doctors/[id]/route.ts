@@ -4,6 +4,7 @@ import { withPublic } from "@/lib/api-auth";
 import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { parseQuery } from "@/lib/validation";
 import { SERVICE_TYPE_LABELS } from "@/lib/labels";
+import { readPartnerRating } from "@/server/services/partner-rating";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -86,6 +87,12 @@ export const GET = withPublic<Ctx>(async (req, { params }) => {
 
   if (!d) return fail(ErrorCode.NOT_FOUND, 404, "الطبيب غير موجود", { requestId });
 
+  // The doctor's rating is their PARTNER's — one row, so the count is
+  // affordable here in a way it is not on the list.
+  const rating = d.user.partner?.id
+    ? await readPartnerRating(d.user.partner.id)
+    : { average: 0, count: 0 };
+
   const price = await prisma.priceConfig.findUnique({
     where: { serviceType: service },
     select: { basePrice: true, sanadPrice: true, complexPrice: true },
@@ -110,7 +117,9 @@ export const GET = withPublic<Ctx>(async (req, { params }) => {
       name: d.user.name ?? "",
       specialty: d.specialty?.name ?? "",
       specialtyId: d.specialty?.slug ?? "",
-      rating: d.user.partner?.rating ?? 0,
+      rating: rating.average,
+      /** Ratings actually submitted. */
+      reviewCount: rating.count,
       /** `Partner.totalTasks` — COMPLETED TASKS. Nothing in the schema counts
      *  reviews, and this was served as `reviewCount`, which two screens then
      *  printed as «مراجعة» and «من N زائر». Renamed for what it holds. */

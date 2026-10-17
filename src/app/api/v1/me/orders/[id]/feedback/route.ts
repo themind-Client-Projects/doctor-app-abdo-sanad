@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { recomputeRatingsForOrder } from "@/server/services/partner-rating";
 import { withAuth } from "@/lib/api-auth";
 import { ErrorCode, fail, ok } from "@/lib/api-response";
 import { parseBody } from "@/lib/validation";
@@ -88,6 +89,18 @@ export const POST = withAuth<Ctx>({}, async (req, { params }, identity) => {
     },
     select: { rating: true, comment: true, createdAt: true, updatedAt: true },
   });
+
+  // The star a patient just gave now moves the partner's public rating.
+  // `Partner.rating` was read on six surfaces and written by nothing, so every
+  // score on the platform was the one `seed.ts` invented — and flattering:
+  // صيدلية الرازي showed 4.7 against a real 3.92. Best-effort: a rating that
+  // was accepted must not be reported as failed because a cache update threw.
+  try {
+    await recomputeRatingsForOrder(id);
+  } catch {
+    // Left stale rather than losing the feedback. The next rating on any of
+    // this order's partners recomputes it from scratch.
+  }
 
   return ok(data, { status: 201, requestId });
 });
