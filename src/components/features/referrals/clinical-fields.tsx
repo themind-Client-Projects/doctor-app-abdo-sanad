@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 import { Field, fieldClass } from "@/components/data/form-dialog";
-import { MedicationRows, readMedications } from "@/components/features/clinical/medication-rows";
+import { MedicationRows, medicationsComplete, readMedications } from "@/components/features/clinical/medication-rows";
 import {
   RADIOLOGY_EXAMS,
   RADIOLOGY_EXAM_LABELS,
@@ -50,7 +50,13 @@ export function isClinicalComplete(kind: ReferralKind, draft: ClinicalDraft): bo
       typeof draft.metalImplant === "boolean"
     );
   }
-  if (kind === "PHARMACY") return ((draft.medications as unknown[]) ?? []).length > 0;
+  // Not `length > 0`. One click of «إضافة دواء» pushes BLANK_MEDICATION, whose
+  // name/dose/route/duration are all "" — so the row existed, the button
+  // enabled, and the server refused with 400 «بيانات النموذج غير مكتملة» and a
+  // raw `clinical.medications.0.name` in the toast. `medicationsComplete` is
+  // the exported mirror of the server's required columns and exists for
+  // exactly this; /dashboard/prescriptions already calls it.
+  if (kind === "PHARMACY") return medicationsComplete(readMedications(draft.medications));
   if (kind === "LAB") return ((draft.tests as string[]) ?? []).length > 0;
   return true;
 }

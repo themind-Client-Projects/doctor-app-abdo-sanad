@@ -175,6 +175,16 @@ export function useReferrals(initialBox: ReferralBox = "inbox") {
     complex: context.data?.complex ?? null,
     recipients: context.data?.recipients ?? [],
     isContextLoading: context.isLoading,
+    // The context request's FAILURE, which the page could not see before.
+    //
+    // `isLoading` is `active && isEmpty && error === null`, so it goes false
+    // the moment the request fails while `data` stays null — and the page read
+    // that as «حسابك غير مرتبط بمجمّع طبي»: one 500 or dropped connection told
+    // a genuine complex member, as a statement of fact about their account,
+    // that they belong to no complex, and replaced the entire screen with no
+    // retry. Non-membership may only be asserted from a response that arrived.
+    contextError: context.error,
+    refetchContext: context.refetch,
     send: send.mutate,
     isSending: send.isPending,
     respond: respond.mutate,
@@ -191,9 +201,12 @@ export type ReferablePatient = {
 };
 
 export function useMyPatients(enabled = true) {
-  const { data, isLoading } = useDashboardData<ReferablePatient[]>({
+  const { data, isLoading, error, refetch } = useDashboardData<ReferablePatient[]>({
     url: "/api/dashboard/patients",
     enabled,
   });
-  return { patients: data ?? [], isLoading };
+  // `error` was dropped here, so the picker's «لا مرضى بعد» was unreachable
+  // from the truth: a failed or still-flying request looked exactly like a
+  // doctor with no patients.
+  return { patients: data ?? [], isLoading, error, refetch };
 }

@@ -135,6 +135,31 @@ export const PATCH = withAuth<Ctx>({ roles: ROLES.CLINICAL }, async (req, { para
     );
   }
 
+  // TERMINAL MEANS TERMINAL — for the whole payload, not just `status`.
+  //
+  // `canTransition` above runs only `if (next !== undefined)`, so a PATCH
+  // carrying ONLY `{ resultSummary }` — every field of `respondSchema` is
+  // optional, and that schema is the published mobile contract — skipped the
+  // state machine entirely. The recipient of a `completed` referral could
+  // rewrite the stored clinical result, and no `ReferralEvent` was written
+  // because events are only recorded when the status changes: the record
+  // changed and the history said nothing happened.
+  //
+  // That breaks the invariant stated one file away in referral-rules.ts:67-70
+  // — a finished referral is a clinical record, and reopening it would let a
+  // result be rewritten after the fact.
+  if (
+    (input.resultSummary !== undefined || input.attachments !== undefined) &&
+    (current === "completed" || current === "cancelled")
+  ) {
+    return fail(
+      ErrorCode.BUSINESS_RULE_VIOLATION,
+      422,
+      "الإحالة مغلقة ولا يمكن تعديلها",
+      { requestId }
+    );
+  }
+
   // A referral is only "completed" when it says what happened. Closing it empty
   // would leave the doctor with a green tick and no result — the exact thing
   // this feature exists to deliver.

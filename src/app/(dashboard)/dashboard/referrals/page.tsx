@@ -98,6 +98,8 @@ export default function ReferralsPage() {
     complex,
     recipients,
     isContextLoading,
+    contextError,
+    refetchContext,
     send,
     isSending,
     respond,
@@ -105,9 +107,21 @@ export default function ReferralsPage() {
   } = useReferrals("inbox");
 
   // Only the send form needs the patient list, and only members can send.
-  const { patients } = useMyPatients(complex !== null);
+  const { patients, isLoading: patientsLoading, error: patientsError } = useMyPatients(
+    complex !== null
+  );
+  // «لا مرضى بعد» is true only for a request that ARRIVED and was empty. While
+  // it is in flight — it does not even start until the complex context lands —
+  // or after it failed, the picker was stating that the doctor has no patients.
+  const patientsEmptyMessage = patientsLoading
+    ? "جاري تحميل المرضى..."
+    : patientsError
+      ? "تعذّر تحميل قائمة المرضى"
+      : "لا مرضى بعد";
 
   const [sendOpen, setSendOpen] = useState(false);
+  /** Bumped after a successful send so the dialog remounts with empty fields. */
+  const [sendResetKey, setSendResetKey] = useState(0);
   const [replyTo, setReplyTo] = useState<Referral | null>(null);
   const [reReferFrom, setReReferFrom] = useState<Referral | null>(null);
 
@@ -174,7 +188,22 @@ export default function ReferralsPage() {
       {
         key: "status",
         header: "الحالة",
-        render: (r) => <StagePill stages={STAGES} value={r.status} />,
+        render: (r) => (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <StagePill stages={STAGES} value={r.status} />
+            {/* Expiry was invisible: a 31-day-old referral read «مُرسلة», with
+                an enabled «الرد», indistinguishable from a live one. The
+                server refuses every write to it but a cancellation. */}
+            {r.isExpired ? (
+              <span
+                className="rounded-lg bg-muted px-2 py-0.5 text-[11px] font-bold text-muted-foreground"
+                title={r.expiresAt ? `انتهت في ${formatDateTime(r.expiresAt)}` : undefined}
+              >
+                منتهية الصلاحية
+              </span>
+            ) : null}
+          </div>
+        ),
       },
       {
         key: "result",
@@ -216,8 +245,36 @@ export default function ReferralsPage() {
     [respond]
   );
 
+  // A FAILED context read is not a non-member. This branch used to fire on
+  // `!isContextLoading && !complex`, and `isLoading` goes false the moment a
+  // request fails — so one 500, one dropped connection or one pool timeout
+  // replaced the whole screen with «حسابك غير مرتبط بمجمّع طبي»: a confident
+  // statement about the reader's own account, with no retry, shown to a
+  // genuine member. Non-membership is asserted only from a response.
+  if (contextError && !complex) {
+    return (
+      <div className="space-y-5">
+        <PageHeader title="الإحالات" subtitle="إحالة المرضى داخل المجمّع الطبي" icon={Share2} />
+        <div className="rounded-2xl border border-border bg-card p-10 text-center">
+          <Building2 className="mx-auto mb-3 text-muted-foreground" size={32} />
+          <p className="font-medium text-foreground">تعذّر تحميل بيانات المجمّع</p>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            لم نتمكن من التحقق من عضويتك في المجمّع. حاول مرة أخرى.
+          </p>
+          <button
+            type="button"
+            onClick={() => void refetchContext()}
+            className="mt-4 text-sm font-bold text-primary"
+          >
+            إعادة المحاولة
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Not in a complex: say so, rather than showing an empty table.
-  if (!isContextLoading && !complex) {
+  if (!isContextLoading && !contextError && !complex) {
     return (
       <div className="space-y-5">
         <PageHeader title="الإحالات" subtitle="إحالة المرضى داخل المجمّع الطبي" icon={Share2} />
@@ -272,7 +329,14 @@ export default function ReferralsPage() {
         ))}
       </div>
 
-      <PipelineStrip stages={STAGES} counts={counts} active={stage} onSelect={setStage} />
+      <PipelineStrip
+        stages={STAGES}
+        counts={counts}
+        active={stage}
+        onSelect={setStage}
+        isLoading={isLoading}
+        error={error}
+      />
 
       <DataTable
         rows={rows}
@@ -282,10 +346,27 @@ export default function ReferralsPage() {
         onRetry={refetch}
         searchable={(r) => `${r.patientName} ${r.patientPhone} ${r.title} ${r.fromPartner.name} ${r.toPartner.name}`}
         searchPlaceholder="بحث باسم المريض أو الطلب..."
-        emptyMessage={stage ? "لا إحالات في هذه الحالة" : "لا إحالات بعد"}
+        emptyMessage={
+          // Three different facts. «لا إحالات بعد» claims the complex has none
+          // at all — but on «التي أرسلتها» an empty list only means this
+          // partner has SENT none, while their inbox may be full.
+          stage
+            ? "لا إحالات في هذه الحالة"
+            : box === "inbox"
+              ? "لا إحالات واردة إليك"
+              : box === "outbox"
+                ? "لم ترسل أي إحالة بعد"
+                : "لا إحالات بعد"
+        }
         actions={(r) => (
           <div className="flex items-center justify-end gap-1.5">
-            {r.direction === "incoming" && RECIPIENT_NEXT[r.status]?.length ? (
+            {/* `isExpired` has always been on the row (referral.ts:271) and was
+                read nowhere. The server refuses EVERY patch on an expired
+                referral except a cancellation ([id]/route.ts:110-118), so the
+                recipient could open «الرد», type the lab result, attach the
+                files, save — and be refused. «سحب» stays available below,
+                because cancelling an expired referral is still allowed. */}
+            {r.direction === "incoming" && !r.isExpired && RECIPIENT_NEXT[r.status]?.length ? (
               <button
                 type="button"
                 onClick={() => setReplyTo(r)}
@@ -307,7 +388,7 @@ export default function ReferralsPage() {
                 and the server refuses their send with 422 because they belong
                 to no complex. Offering a button that cannot succeed is worse
                 than offering none. */}
-            {r.status !== "cancelled" && r.direction !== "observed" ? (
+            {r.status !== "cancelled" && r.direction !== "observed" && !r.isExpired ? (
               <button
                 type="button"
                 onClick={() => setReReferFrom(r)}
@@ -344,6 +425,7 @@ export default function ReferralsPage() {
       />
 
       <SendReferralDialog
+        key={sendResetKey}
         open={sendOpen}
         onClose={() => setSendOpen(false)}
         recipients={recipients}
@@ -352,10 +434,20 @@ export default function ReferralsPage() {
           label: p.name ?? "—",
           hint: p.phone ?? undefined,
         }))}
+        patientsEmptyMessage={patientsEmptyMessage}
         isPending={isSending}
         onSubmit={async (input) => {
           const created = await send(input);
-          if (created) setSendOpen(false);
+          // `setSendOpen(false)` alone left every field standing: the dialog is
+          // rendered unconditionally, so its useState survives `open={false}`
+          // and `reset()` was reachable only through `onClose`. Reopening for
+          // the NEXT patient showed the previous patient, title, priority —
+          // and their drug list. On a prescription form that is a clinical
+          // hazard, not a cosmetic one. The dialog now resets on success.
+          if (created) {
+            setSendResetKey((k) => k + 1);
+            setSendOpen(false);
+          }
         }}
       />
 
@@ -391,6 +483,7 @@ function SendReferralDialog({
   onClose,
   recipients,
   patients,
+  patientsEmptyMessage,
   isPending,
   onSubmit,
 }: {
@@ -399,6 +492,7 @@ function SendReferralDialog({
   /** Every member of the complex, with their type — filtered per document below. */
   recipients: { id: string; name: string; type: string }[];
   patients: SelectOption[];
+  patientsEmptyMessage: string;
   isPending: boolean;
   onSubmit: (input: {
     kind: ReferralKind;
@@ -506,7 +600,7 @@ function SendReferralDialog({
           onChange={setPatientId}
           options={patients}
           placeholder="— اختر المريض —"
-          emptyMessage="لا مرضى بعد"
+          emptyMessage={patientsEmptyMessage}
         />
       </Field>
 
@@ -594,6 +688,15 @@ function RespondDialog({
   // start from THAT referral's values rather than the previous one's.
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
 
+  // Closing forgets the draft. Without this, `loadedFor` kept the id of the
+  // referral just closed, so reopening the SAME row skipped the re-seed and
+  // restored an abandoned result and a pre-selected status — the recipient saw
+  // text they had deliberately discarded, ready to save. The sibling dialog
+  // (re-refer-dialog.tsx:74) already guards exactly this.
+  if (!referral && loadedFor !== null) {
+    setLoadedFor(null);
+  }
+
   if (referral && loadedFor !== referral.id) {
     setLoadedFor(referral.id);
     setStatus("");
@@ -601,7 +704,11 @@ function RespondDialog({
     setFiles(readAttachments(referral.attachments));
   }
 
-  const nextStatuses = referral ? (RECIPIENT_NEXT[referral.status] ?? []) : [];
+  // No transitions on an expired referral — the server refuses them all. The
+  // dialog is unreachable from the row now, but a stale open one must not
+  // offer a move that 422s either.
+  const nextStatuses =
+    referral && !referral.isExpired ? (RECIPIENT_NEXT[referral.status] ?? []) : [];
   // The server refuses to close a referral with nothing to show for it.
   const blocked = status === "completed" && resultSummary.trim() === "";
 

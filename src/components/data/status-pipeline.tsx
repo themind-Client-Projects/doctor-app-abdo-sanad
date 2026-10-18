@@ -71,13 +71,30 @@ export const PipelineStrip = memo(function PipelineStrip({
   counts,
   active,
   onSelect,
+  isLoading = false,
+  error = null,
 }: {
   stages: readonly Stage[];
   counts: Record<string, number>;
   /** Currently filtered stage, if the strip doubles as a filter. */
   active?: string | null;
   onSelect?: (key: string | null) => void;
+  /**
+   * The state of the request the counts come from.
+   *
+   * Without these the strip printed «٠» at every stage before the first
+   * response AND after a failed one — `useStageCounts` seeds each key to 0 and
+   * an empty list is indistinguishable from an unanswered one. A reader saw
+   * «٠ مُرسلة ٠ قيد التنفيذ ٠ مكتملة» as a statement about their workload,
+   * directly above a table saying the load had failed. Eight sibling screens
+   * mount this component, so the honesty belongs here rather than in each.
+   */
+  isLoading?: boolean;
+  error?: unknown;
 }) {
+  // A count is only shown once one is known. Filtering is suppressed too: a
+  // stage with an unknown count cannot meaningfully be selected.
+  const unknown = isLoading || (error != null && Object.values(counts).every((c) => c === 0));
   return (
     <div className="flex items-center gap-0 overflow-x-auto pb-2 hide-scrollbar">
       {stages.map((stage, i) => {
@@ -86,7 +103,7 @@ export const PipelineStrip = memo(function PipelineStrip({
         const content = (
           <>
             <span className="mb-1.5 text-lg font-bold tabular-nums text-foreground">
-              {formatNumber(count)}
+              {unknown ? "—" : formatNumber(count)}
             </span>
             <span className="text-center text-xs font-medium text-muted-foreground">
               {stage.label}
@@ -96,7 +113,7 @@ export const PipelineStrip = memo(function PipelineStrip({
 
         return (
           <div key={stage.key} className="flex items-center">
-            {onSelect ? (
+            {onSelect && !unknown ? (
               <button
                 type="button"
                 // Clicking a stage filters the table to it — the strip was
