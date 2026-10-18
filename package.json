@@ -14,7 +14,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "recompute-ratings": "tsx scripts/recompute-partner-ratings.ts",
-    "unpaid-settlements": "tsx scripts/unpaid-settlements.ts"
+    "unpaid-settlements": "tsx scripts/unpaid-settlements.ts",
+    "seed-logins": "tsx scripts/seed-role-logins.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",
