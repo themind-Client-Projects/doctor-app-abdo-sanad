@@ -11,6 +11,9 @@ function settlementFailure(error: CommissionError, requestId?: string) {
     case "ALREADY_SETTLED":
       return fail(ErrorCode.DUPLICATE_RESOURCE, 409, error.message, { requestId });
     case "ORDER_NOT_COMPLETED":
+    // Same shape as NOT_COMPLETED: the order is real and the request is
+    // well-formed, the order is simply not in a state that may be paid out.
+    case "ORDER_NOT_PAID":
       return fail(ErrorCode.INVALID_STATE_TRANSITION, 409, error.message, { requestId });
     case "NOT_SETTLED":
       return fail(ErrorCode.NOT_FOUND, 404, error.message, { requestId });

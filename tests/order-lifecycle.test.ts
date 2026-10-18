@@ -23,7 +23,10 @@ let nurseId: string;
 let driverId: string;
 const createdOrderIds: string[] = [];
 
-async function makeOrder(status: Prisma.OrderCreateInput["status"] = "NEW") {
+async function makeOrder(
+  status: Prisma.OrderCreateInput["status"] = "NEW",
+  paymentStatus: Prisma.OrderCreateInput["paymentStatus"] = "PAID"
+) {
   const order = await prisma.order.create({
     data: {
       orderNumber: `TEST-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
@@ -32,6 +35,13 @@ async function makeOrder(status: Prisma.OrderCreateInput["status"] = "NEW") {
       patientPhone: "9647700000000",
       serviceType: "HOME_LAB_TEST",
       status,
+      // PAID by default, because settlement pays money OUT and now refuses an
+      // order whose money never came IN. These fixtures left it at the
+      // `PENDING` default and settled anyway — encoding the very defect the
+      // guard exists to stop, and leaving nine settled-but-uncollected orders
+      // in the development database. A test that wants the unpaid path asks
+      // for it explicitly.
+      paymentStatus,
       source: "DIRECT",
       assignedLabId: labId,
       assignedNurseId: nurseId,

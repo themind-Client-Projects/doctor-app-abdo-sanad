@@ -41,6 +41,7 @@ export class CommissionError extends Error {
       | "NO_RULE"
       | "SHARES_INVALID"
       | "ORDER_NOT_COMPLETED"
+      | "ORDER_NOT_PAID"
       | "NO_AMOUNT"
       | "ALREADY_SETTLED"
       | "NOT_SETTLED"
@@ -233,6 +234,7 @@ export async function settleOrder(orderId: string, settledById?: string) {
     select: {
       id: true,
       status: true,
+      paymentStatus: true,
       serviceType: true,
       totalAmount: true,
       currency: true,
@@ -264,6 +266,32 @@ export async function settleOrder(orderId: string, settledById?: string) {
   }
   if (!order.totalAmount || order.totalAmount.lessThanOrEqualTo(0)) {
     throw new CommissionError("NO_AMOUNT", "الطلب لا يحتوي على مبلغ قابل للتسوية");
+  }
+  // MONEY IN BEFORE MONEY OUT.
+  //
+  // Settlement credits every partner's wallet with their share — it pays money
+  // OUT. Nothing here ever asked whether any came IN: `paymentStatus` was not
+  // even selected, so a COMPLETED order settled on the strength of its status
+  // alone. `paymentMethod` defaults to CASH and the call-centre form defaults
+  // to it too, and the ONLY writer of `PAID` in the whole codebase is
+  // `payOrderFromWallet` — so a cash order could never become PAID, because
+  // nothing collects it. Every cash order therefore paid out commission on
+  // money the platform had not received. On this database that had already
+  // happened to nine of the sixty-three settlements.
+  //
+  // Refusing here is the narrow fix and it fails SAFE: `completeOrder` already
+  // catches a settlement error into `settlementError` (services/orders.ts:317),
+  // so the order still completes and the work is still recorded — only the
+  // payout waits. `POST /api/orders/[id]/settle` is the retry once the cash is
+  // marked collected.
+  //
+  // What this does NOT do is collect the cash: who marks a cash order paid, and
+  // when, is a product decision and has no UI yet.
+  if (order.paymentStatus !== "PAID") {
+    throw new CommissionError(
+      "ORDER_NOT_PAID",
+      "لا يمكن تسوية طلب لم يُحصَّل مبلغه بعد"
+    );
   }
 
   // The provider is whichever partner slot the service was assigned to.

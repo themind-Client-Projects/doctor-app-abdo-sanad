@@ -1,6 +1,7 @@
 "use client";
 
 import { useDashboardData } from "@/hooks/use-dashboard-data";
+import { formatNumber } from "@/lib/format";
 import { BarChart3, TrendingUp, Users, Star, Building2, FlaskConical, Pill, Stethoscope, HeartPulse } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────
@@ -20,11 +21,29 @@ interface ReportsData {
 export default function ReportsPage() {
   const { data, isLoading } = useDashboardData<ReportsData>({ url: "/api/reports" });
 
+  // الإيرادات and الأرباح were the literal string "—" on a page whose subtitle
+  // lists all nine reports — under a nav entry marked ready. Both figures
+  // already existed, and the owner's own home screen was already rendering
+  // them: /api/dashboard/admin-overview returns `totalRevenue` (the sum of
+  // completed order amounts) and `platformProfit` (WARID's settlement shares).
+  // Only this page had never asked.
+  const { data: overview } = useDashboardData<{
+    kpis: {
+      totalRevenue: { value: number };
+      platformProfit: { value: number };
+    };
+  }>({ url: "/api/dashboard/admin-overview" });
+
+  const revenue = overview?.kpis.totalRevenue.value ?? null;
+  const profit = overview?.kpis.platformProfit.value ?? null;
+
   const reportCards = [
-    { label: "الإيرادات", value: "—", icon: <TrendingUp size={18} />, color: "border-emerald-200 dark:border-emerald-800" },
-    { label: "الأرباح", value: "—", icon: <BarChart3 size={18} />, color: "border-blue-200 dark:border-blue-800" },
-    { label: "الطلبات", value: `${data?.totalOrders ?? 0}`, icon: <BarChart3 size={18} />, color: "border-purple-200 dark:border-purple-800" },
-    { label: "رضا العملاء", value: `⭐ ${data?.avgSatisfaction?.toFixed(1) ?? "—"}`, icon: <Star size={18} />, color: "border-amber-200 dark:border-amber-800" },
+    // «—» until the figure is known — never a confident 0, which is a real
+    // revenue number in its own right.
+    { label: "الإيرادات", value: revenue === null ? "—" : `${formatNumber(revenue)} د.ع`, icon: <TrendingUp size={18} />, color: "border-emerald-200 dark:border-emerald-800" },
+    { label: "الأرباح", value: profit === null ? "—" : `${formatNumber(profit)} د.ع`, icon: <BarChart3 size={18} />, color: "border-blue-200 dark:border-blue-800" },
+    { label: "الطلبات", value: data ? `${data.totalOrders}` : "—", icon: <BarChart3 size={18} />, color: "border-purple-200 dark:border-purple-800" },
+    { label: "رضا العملاء", value: data?.avgSatisfaction ? `⭐ ${data.avgSatisfaction.toFixed(1)}` : "—", icon: <Star size={18} />, color: "border-amber-200 dark:border-amber-800" },
   ];
 
   const topLists = [
