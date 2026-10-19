@@ -5,7 +5,7 @@ import type { ChangeEvent, ClipboardEvent, FocusEvent, FormEvent, KeyboardEvent 
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { AlertCircle, ArrowRight, Loader2, Phone } from "lucide-react";
-import { resolveHomePath } from "@/lib/roles";
+import { safeInternalPath } from "@/lib/roles";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
 /**
@@ -41,11 +41,19 @@ function SignInFlow() {
   // credibility. `resolveHomePath` rejects absolute and protocol-relative URLs
   // and falls back to the role's home.
   const rawCallback = useSearchParams().get("callbackUrl");
-  const callbackUrl = resolveHomePath("PATIENT", rawCallback);
+  // GUARDED, not resolved. This page cannot know who is signing in — Google is
+  // offered here and works for every role — so asking "may PATIENT open this?"
+  // was answering the wrong question: a staff destination resolved to the
+  // patient home, and with no callback at all it produced `/`, so a SUPER_ADMIN
+  // signing in with Google landed on the patient storefront rather than /admin.
+  // The final hop resolves it against the real role.
+  const safeCallback = safeInternalPath(rawCallback);
   // Every sign-in lands on onboarding, which passes straight through when the
   // profile is already complete. Branching here instead would mean asking each
   // provider a question only the database can answer.
-  const afterSignIn = `/complete-profile?next=${encodeURIComponent(callbackUrl)}`;
+  const afterSignIn = safeCallback
+    ? `/complete-profile?next=${encodeURIComponent(safeCallback)}`
+    : "/complete-profile";
   const reduce = useReducedMotion();
 
   const [phone, setPhone] = useState("");

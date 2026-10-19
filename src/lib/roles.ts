@@ -98,6 +98,35 @@ export function resolveHomePath(
 
   if (!callbackUrl) return home;
 
+  const safe = safeInternalPath(callbackUrl);
+  if (safe === null) return home;
+
+  // Authorise the PATH, not the query string: `/doctors?category=cardiology`
+  // must be judged as `/doctors`, or a preserved filter would look like an
+  // unknown route and silently drop the user on their home page instead.
+  const path = safe.split(/[?#]/)[0];
+  if (role && !canAccess(role, path)) return home;
+
+  return safe;
+}
+
+/**
+ * A caller-supplied destination, if it is safely internal — otherwise null.
+ *
+ * Split out of `resolveHomePath` because the two questions are different, and
+ * conflating them sent staff to the wrong place. `/signin` has to carry a
+ * callback across the OAuth round trip BEFORE it knows who is signing in, so it
+ * cannot ask "may this role open it?" yet. It used to answer that question as
+ * PATIENT anyway, which turned every staff destination into the patient home —
+ * and with no callback at all it produced `/`, so a SUPER_ADMIN signing in with
+ * Google landed on the patient storefront instead of /admin.
+ *
+ * Returning null for "nothing usable" lets the caller omit the parameter
+ * entirely and let the final hop resolve it against the real role.
+ */
+export function safeInternalPath(callbackUrl: string | null | undefined): string | null {
+  if (!callbackUrl) return null;
+
   // Open-redirect guard.
   //
   // A backslash is the hole a "starts with / but not //" check leaves open:
@@ -106,17 +135,11 @@ export function resolveHomePath(
   // which is exactly the phishing shape a sign-in redirect must not have.
   // Control characters get the same treatment: they can be stripped during
   // parsing and reveal a scheme this check never saw.
-  if (callbackUrl.includes("\\")) return home;
+  if (callbackUrl.includes("\\")) return null;
   // eslint-disable-next-line no-control-regex
-  if (/[\u0000-\u001f\u007f]/.test(callbackUrl)) return home;
+  if (/[\u0000-\u001f\u007f]/.test(callbackUrl)) return null;
   // Reject protocol-relative and absolute URLs.
-  if (!callbackUrl.startsWith("/") || callbackUrl.startsWith("//")) return home;
-
-  // Authorise the PATH, not the query string: `/doctors?category=cardiology`
-  // must be judged as `/doctors`, or a preserved filter would look like an
-  // unknown route and silently drop the user on their home page instead.
-  const path = callbackUrl.split(/[?#]/)[0];
-  if (role && !canAccess(role, path)) return home;
+  if (!callbackUrl.startsWith("/") || callbackUrl.startsWith("//")) return null;
 
   return callbackUrl;
 }

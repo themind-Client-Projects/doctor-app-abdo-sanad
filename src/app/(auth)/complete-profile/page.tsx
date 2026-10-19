@@ -10,6 +10,7 @@ import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { apiFetch } from "@/hooks/use-mutation";
 import { useMe } from "@/hooks/use-me";
 import { resolveHomePath } from "@/lib/roles";
+import type { UserRole } from "@prisma/client";
 
 /**
  * إكمال الملف الشخصي — the details sign-in cannot supply.
@@ -39,10 +40,16 @@ export default function CompleteProfilePage() {
 function CompleteProfile() {
   const router = useRouter();
   // Guarded: `?next=https://evil.com` would otherwise make this an open redirect.
-  const next = resolveHomePath("PATIENT", useSearchParams().get("next"));
+  const rawNext = useSearchParams().get("next");
   const reduce = useReducedMotion();
 
   const { user, isLoading: loadingMe, refetch } = useMe();
+
+  // Resolved against the REAL role, which is only known here — this is the
+  // final hop for every provider, including Google, which signs in any role.
+  // It used to be hardcoded to PATIENT, so a SUPER_ADMIN arriving from /signin
+  // was sent to the patient storefront instead of /admin.
+  const next = resolveHomePath((user?.role as UserRole | undefined) ?? null, rawNext);
   const { data: governorates } = useDashboardData<Governorate[]>({
     url: "/api/public/governorates",
     staleTime: STALE_TIME.reference,
@@ -75,6 +82,14 @@ function CompleteProfile() {
   useEffect(() => {
     if (checked || loadingMe || !user) return;
     setChecked(true);
+    // This screen is PATIENT onboarding — it asks for a governorate and an area
+    // so a home visit can be routed. A doctor, a lab or an administrator has no
+    // business being asked, so they pass through on role alone rather than on
+    // whether they happen to have filled in patient fields.
+    if (user.role !== "PATIENT") {
+      router.replace(next);
+      return;
+    }
     const complete = Boolean(user.name && user.phone && user.governorateId);
     if (complete) router.replace(next);
   }, [checked, loadingMe, user, router, next]);
