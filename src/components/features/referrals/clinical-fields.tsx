@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { Field, fieldClass } from "@/components/data/form-dialog";
 import { MedicationRows, medicationsComplete, readMedications } from "@/components/features/clinical/medication-rows";
 import {
@@ -242,29 +242,79 @@ function PharmacyFields({ value, set }: { value: ClinicalDraft; set: SetFn }) {
   );
 }
 
+
+/* --------------------------- one-item-per-line ---------------------------- */
+
+/**
+ * A textarea holding a LIST, one item per line.
+ *
+ * The obvious spelling is a trap, and both list fields on this form had it:
+ *
+ *     value={items.join("\n")}
+ *     onChange={(e) => set(key, e.target.value.split("\n").map(t => t.trim()).filter(Boolean))}
+ *
+ * The controlled value is re-derived from the TRIMMED array on every render, so
+ * typing «تحليل» then a space produces «تحليل », which trims to ["تحليل"], which
+ * joins back to «تحليل» — byte-identical to the previous value prop. React then
+ * restores the DOM node and the space never lands. `filter(Boolean)` destroys
+ * Enter the same way, so a second line cannot be created at all — and the LAB
+ * field's own hint asks for «فحص في كل سطر». Its example, «تحليل دم شامل CBC»,
+ * could not be typed in the natural order.
+ *
+ * So the raw text is held locally and only the PARSED array is pushed up. The
+ * imaging screen already does exactly this (dashboard/imaging/page.tsx:382).
+ */
+function LineListField({
+  id,
+  label,
+  hint,
+  items,
+  onChange,
+  rows = "h-24",
+}: {
+  id: string;
+  label: string;
+  hint?: string;
+  items: string[];
+  onChange: (next: string[]) => void;
+  rows?: string;
+}) {
+  // Seeded once. Re-seeding from `items` on every render is the bug above.
+  const [text, setText] = useState(() => items.join("\n"));
+
+  return (
+    <Field label={label} htmlFor={id} hint={hint}>
+      <textarea
+        id={id}
+        className={`${fieldClass} ${rows} py-2.5`}
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+          onChange(
+            e.target.value
+              .split("\n")
+              .map((t) => t.trim())
+              .filter(Boolean)
+          );
+        }}
+      />
+    </Field>
+  );
+}
+
 /* ------------------------------- LAB — تحاليل ----------------------------- */
 
 function LabFields({ value, set }: { value: ClinicalDraft; set: SetFn }) {
   const tests = (value.tests as string[]) ?? [];
   return (
     <>
-      <Field
+      <LineListField
+        id="lab-tests"
         label="الفحوصات المطلوبة"
-        htmlFor="lab-tests"
         hint="فحص في كل سطر — مثال: تحليل دم شامل CBC"
-      >
-        <textarea
-          id="lab-tests"
-          className={`${fieldClass} h-24 py-2.5`}
-          value={tests.join("\n")}
-          onChange={(e) =>
-            set(
-              "tests",
-              e.target.value.split("\n").map((t) => t.trim()).filter(Boolean)
-            )
-          }
-        />
-      </Field>
+        items={tests}
+        onChange={(next) => set("tests", next)}
+      />
 
       <label className="flex items-center gap-2 text-sm text-foreground">
         <input
@@ -349,16 +399,13 @@ function DoctorFields({ value, set }: { value: ClinicalDraft; set: SetFn }) {
         </Field>
       </div>
 
-      <Field label="الملخص السريري" htmlFor="ref-summary" hint="سطر لكل نقطة">
-        <textarea
-          id="ref-summary"
-          className={`${fieldClass} h-24 py-2.5`}
-          value={summary.join("\n")}
-          onChange={(e) =>
-            set("summary", e.target.value.split("\n").map((l) => l.trim()).filter(Boolean))
-          }
-        />
-      </Field>
+      <LineListField
+        id="ref-summary"
+        label="الملخص السريري"
+        hint="سطر لكل نقطة"
+        items={summary}
+        onChange={(next) => set("summary", next)}
+      />
 
       <Field label="الحساسية" htmlFor="ref-allergies" hint="اكتب «لا توجد» إن لم تكن هناك">
         <input

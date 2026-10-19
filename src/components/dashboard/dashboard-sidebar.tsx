@@ -103,7 +103,11 @@ export function DashboardSidebar({ role, userName, entityName, avatarUrl }: Side
 
   const menu = useMemo(() => {
     const base = roleMenus[role] || roleMenus.DOCTOR;
-    if (!isComplexMember) return base;
+    // Membership alone is not enough. A DRIVER can be a complex member, and
+    // every write on the referrals screen is ROLES.CLINICAL — so the link led
+    // a courier to a screen whose four controls all 403. Referral is a
+    // clinical act; the reads now match the writes.
+    if (!isComplexMember || role === "DRIVER") return base;
     // Second from last, above الإعدادات — a working list, not a setting.
     const at = Math.max(base.length - 2, 1);
     return [...base.slice(0, at), REFERRALS_ITEM, ...base.slice(at)];

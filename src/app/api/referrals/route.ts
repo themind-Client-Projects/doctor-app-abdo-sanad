@@ -79,7 +79,15 @@ const createSchema = z
   .strict();
 
 // GET /api/referrals
-export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) => {
+// ROLES.CLINICAL, not STAFF — the same boundary the writes use.
+//
+// STAFF includes DRIVER, so a driver who happens to be a complex member got
+// the whole referrals screen: a populated complex, a recipients list, and four
+// controls — «إحالة مريض», «الرد», «إعادة الإحالة», «سحب» — every one of which
+// 403s, because POST and PATCH are CLINICAL. Reading a patient's clinical
+// referral is not a courier's business either way, and /api/dashboard/patients
+// already draws the line here.
+export const GET = withAuth({ roles: ROLES.CLINICAL }, async (req, _ctx, identity) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
   const { box, status, patientId, cursor, limit } = parseQuery(
     req.nextUrl.searchParams,

@@ -18,6 +18,14 @@ import {
 
 type Ctx = { params: Promise<{ id: string }> };
 
+/** Raised when the referral moved between our read and our write. */
+class ReferralRaceError extends Error {
+  constructor() {
+    super("تم تحديث الإحالة من جهة أخرى — أعد فتحها وحاول مجدداً");
+    this.name = "ReferralRaceError";
+  }
+}
+
 /**
  * One referral — read it, and reply to it.
  *
@@ -65,7 +73,7 @@ async function loadForCaller(id: string, identity: Parameters<typeof complexCont
 }
 
 // GET /api/referrals/[id]
-export const GET = withAuth<Ctx>({ roles: ROLES.STAFF }, async (req, { params }, identity) => {
+export const GET = withAuth<Ctx>({ roles: ROLES.CLINICAL /* was STAFF: a DRIVER could read a clinical referral */ }, async (req, { params }, identity) => {
   const requestId = req.headers.get("x-request-id") ?? undefined;
   const { id } = await params;
 
@@ -181,7 +189,9 @@ export const PATCH = withAuth<Ctx>({ roles: ROLES.CLINICAL }, async (req, { para
     data.respondedById = identity.userId;
   }
 
-  const updated = await prisma.$transaction(async (tx) => {
+  let updated;
+  try {
+    updated = await prisma.$transaction(async (tx) => {
     // The event is written BEFORE the update, because the update is what reads
     // `events` back for the response. Writing it after left the timeline in
     // every reply one step behind the database it came from — the row said
@@ -197,9 +207,30 @@ export const PATCH = withAuth<Ctx>({ roles: ROLES.CLINICAL }, async (req, { para
       });
     }
 
-    const row = await tx.complexReferral.update({
-      where: { id },
+    // OPTIMISTIC LOCK on the status the validation above was decided against.
+    //
+    // `current` is read at :95, OUTSIDE this transaction, and every check —
+    // expiry, actor, canTransition, the terminal guard — is made against that
+    // value. The write then keyed on `id` alone, under Postgres read-committed
+    // (TX_OPTIONS sets no isolationLevel), so two writers could both validate
+    // against `sent` and both commit: the sender's «سحب» and the recipient's
+    // «مكتملة» landing together leave a referral `completed` carrying a
+    // cancellation event, or `cancelled` carrying a clinical result — the exact
+    // state POST refuses to chain a re-referral from.
+    //
+    // `updateMany` with the status predicate makes the write conditional on the
+    // row still being what we validated. Zero rows means somebody moved it
+    // first, and the caller is told to look again rather than silently winning.
+    const affected = await tx.complexReferral.updateMany({
+      where: { id, status: current },
       data,
+    });
+    if (affected.count === 0) {
+      throw new ReferralRaceError();
+    }
+
+    const row = await tx.complexReferral.findUniqueOrThrow({
+      where: { id },
       include: REFERRAL_INCLUDE,
     });
 
@@ -226,8 +257,16 @@ export const PATCH = withAuth<Ctx>({ roles: ROLES.CLINICAL }, async (req, { para
       });
     }
 
-    return row;
-  });
+      return row;
+    });
+  } catch (error) {
+    // 409: the request was valid when it was made, and somebody else got there
+    // first. The client should re-read the row, not retry blindly.
+    if (error instanceof ReferralRaceError) {
+      return fail(ErrorCode.INVALID_STATE_TRANSITION, 409, error.message, { requestId });
+    }
+    throw error;
+  }
 
   return ok(
     {

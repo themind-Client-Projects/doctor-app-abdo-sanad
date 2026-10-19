@@ -57,3 +57,48 @@ describe("terminal referrals are terminal for the whole payload", () => {
     );
   });
 });
+
+describe("concurrent writers cannot both win", () => {
+  it("the update is conditional on the status the validation was decided against", async () => {
+    const fs = await import("node:fs");
+    const src = fs.readFileSync("src/app/api/referrals/[id]/route.ts", "utf8");
+
+    // `current` is read outside the transaction and every check is made
+    // against it, so the write must assert the row still holds it. Keyed on
+    // `id` alone, سحب racing «مكتملة» left a referral `completed` carrying a
+    // cancellation event.
+    expect(src).toContain("updateMany({");
+    expect(src).toMatch(/where:\s*\{\s*id,\s*status:\s*current\s*\}/);
+    expect(src).toContain("ReferralRaceError");
+    // And it must be reported, not swallowed.
+    expect(src).toContain("409");
+  });
+});
+
+describe("the referral reads and writes share one boundary", () => {
+  it("GET is CLINICAL, matching POST and PATCH — a DRIVER gets no dead screen", async () => {
+    const fs = await import("node:fs");
+    for (const file of [
+      "src/app/api/referrals/route.ts",
+      "src/app/api/referrals/recipients/route.ts",
+      "src/app/api/referrals/[id]/route.ts",
+    ]) {
+      const src = fs.readFileSync(file, "utf8");
+      expect(src, `${file} must not read as STAFF`).not.toContain("ROLES.STAFF");
+    }
+  });
+});
+
+describe("a list textarea does not re-derive its own value", () => {
+  it("no field feeds a trimmed join back into value=", async () => {
+    const fs = await import("node:fs");
+    const raw = fs.readFileSync("src/components/features/referrals/clinical-fields.tsx", "utf8");
+    // Strip comments — the shared helper documents the broken spelling in its
+    // own header, and that explanation must not trip the guard.
+    const src = raw.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, "");
+    // `value={items.join("\n")}` with a trimming onChange eats every space and
+    // newline as it is typed. The shared LineListField holds raw text instead.
+    expect(src).not.toMatch(/value=\{[a-zA-Z]+\.join\("\\n"\)\}/);
+    expect(src).toContain("LineListField");
+  });
+});
