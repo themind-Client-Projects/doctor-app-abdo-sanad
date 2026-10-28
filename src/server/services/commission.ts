@@ -54,6 +54,40 @@ export class CommissionError extends Error {
   }
 }
 
+/**
+ * The orders that are still owed — "delivered, priced, and not paid out".
+ *
+ * This MUST mirror the settleable rule inside `settleOrder` below: only a LIVE
+ * settlement means an order has been paid out. A REVERSED one means the money
+ * was clawed back, so the order is settleable again and is therefore still
+ * owed.
+ *
+ * Three separate dues queries asked `orderSettlement: null` instead — true
+ * only while no settlement row has ever existed, and a reversal deliberately
+ * LEAVES its row behind as the audit trail. So the moment a dispute was
+ * resolved in the partner's favour, the order became worth nothing to anybody:
+ * the wallet had been debited, yet the order no longer counted as owed, no
+ * longer appeared as unsettled, and showed up in no total on any screen.
+ *
+ * Composed through `AND` rather than returned for spreading, so a caller's own
+ * conditions can never collide with the `OR` this predicate needs.
+ */
+export function unsettledOrderWhere(
+  scope: Prisma.OrderWhereInput = {}
+): Prisma.OrderWhereInput {
+  return {
+    AND: [
+      scope,
+      {
+        status: "COMPLETED",
+        totalAmount: { gt: 0 },
+        deletedAt: null,
+        OR: [{ orderSettlement: null }, { orderSettlement: { status: "REVERSED" } }],
+      },
+    ],
+  };
+}
+
 export type ShareInput = {
   party: SettlementParty;
   partnerId: string | null;

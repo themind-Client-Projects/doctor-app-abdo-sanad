@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -128,20 +129,36 @@ export function StatTile({
   value,
   hint,
   icon: Icon,
+  href,
 }: {
   label: string;
   value: string;
   hint?: string;
   icon?: LucideIcon;
+  /** Makes the whole tile a link — for a figure that has a screen behind it. */
+  href?: string;
 }) {
-  return (
-    <div className="rounded-2xl border border-border bg-card p-4">
+  const body = (
+    <>
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         {Icon ? <Icon size={14} aria-hidden="true" /> : null}
         {label}
       </div>
       <p className="mt-1.5 text-2xl font-bold tabular-nums text-foreground">{value}</p>
       {hint ? <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p> : null}
-    </div>
+    </>
   );
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className="block rounded-2xl border border-border bg-card p-4 transition-colors hover:border-[hsl(var(--primary))] hover:bg-muted/40"
+      >
+        {body}
+      </Link>
+    );
+  }
+
+  return <div className="rounded-2xl border border-border bg-card p-4">{body}</div>;
 }

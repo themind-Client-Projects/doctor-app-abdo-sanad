@@ -171,6 +171,19 @@ export const PAYMENT_METHOD_LABELS = {
   WALLET: "محفظة",
 } as const;
 
+/**
+ * `PaymentStatus` — whether the money for an order actually arrived.
+ *
+ * Settlement refuses to pay partners out of an order that is not PAID, so this
+ * is the difference between "waiting on the patient" and "waiting on us".
+ */
+export const PAYMENT_STATUS_LABELS = {
+  PENDING: "لم يُحصَّل",
+  PAID: "محصَّل",
+  FAILED: "فشل التحصيل",
+  REFUNDED: "مُعاد",
+} as const;
+
 /** `BloodType` — the 8 groups, rendered the way people actually write them. */
 export const BLOOD_TYPE_LABELS = {
   A_POS: "A+",

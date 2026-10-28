@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { ROLES, withAuth } from "@/lib/api-auth";
 import { keysetArgs, okList, toPage } from "@/lib/api-response";
 import { parseQuery } from "@/lib/validation";
+import { unsettledOrderWhere } from "@/server/services/commission";
 
 const emptyToUndefined = (value: unknown) => (value === "" ? undefined : value);
 
@@ -40,7 +41,7 @@ export const GET = withAuth({ roles: ROLES.ADMIN }, async (req) => {
 
   const OPEN = { notIn: ["paid", "cancelled"] };
 
-  const [wallets, totals, debtTotals, dues] = await Promise.all([
+  const [wallets, totals, overdrafts, debtTotals, dues] = await Promise.all([
     prisma.wallet.findMany({
       where: keyset.where ? { AND: [where, keyset.where] } : where,
       include: { partner: { select: { id: true, name: true, type: true } } },
@@ -48,11 +49,20 @@ export const GET = withAuth({ roles: ROLES.ADMIN }, async (req) => {
       take: keyset.take,
     }),
     prisma.wallet.aggregate({ _sum: { balance: true, totalEarnings: true }, _count: true }),
+    // A wallet below zero is money the PLATFORM is owed, and `_sum(balance)`
+    // nets it off against everyone else's credit — so «إجمالي الأرصدة» quietly
+    // understated what Warid owes by exactly the amount it is owed back.
+    //
+    // Reversal is where this comes from: it claws back the partner's full
+    // share, and if the partner had already withdrawn it the balance goes
+    // negative. That is correct — flooring the decrement would forgive a real
+    // debt — but it has to be visible rather than netted.
+    prisma.wallet.aggregate({ where: { balance: { lt: 0 } }, _sum: { balance: true }, _count: true }),
     prisma.debt.aggregate({ where: { status: OPEN }, _sum: { amount: true }, _count: true }),
     // المستحقات across the platform: delivered, priced, not yet settled — the
     // same definition `partnerDues` applies per partner.
     prisma.order.aggregate({
-      where: { status: "COMPLETED", totalAmount: { gt: 0 }, orderSettlement: null, deletedAt: null },
+      where: unsettledOrderWhere(),
       _sum: { totalAmount: true },
       _count: true,
     }),
@@ -78,6 +88,9 @@ export const GET = withAuth({ roles: ROLES.ADMIN }, async (req) => {
         wallets: totals._count,
         balance: totals._sum.balance ?? zero,
         earnings: totals._sum.totalEarnings ?? zero,
+        // Reported as a positive magnitude: "this much is owed back to Warid".
+        overdrafts: (overdrafts._sum.balance ?? zero).negated(),
+        overdraftCount: overdrafts._count,
         openDebts: debtTotals._sum.amount ?? zero,
         openDebtCount: debtTotals._count,
         dues: dues._sum.totalAmount ?? zero,

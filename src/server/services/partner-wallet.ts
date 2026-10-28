@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { TX_OPTIONS, prisma } from "@/lib/prisma";
 import { PROVIDER_SLOT, isProviderRole } from "@/lib/order-slots";
+import { unsettledOrderWhere } from "@/server/services/commission";
 
 /**
  * A partner's wallet as the OWNER moves it — payouts, adjustments and debts.
@@ -251,13 +252,7 @@ export async function partnerDues(partnerId: string): Promise<Prisma.Decimal> {
 
   const slot = PROVIDER_SLOT[partner.type];
   const result = await prisma.order.aggregate({
-    where: {
-      [slot]: partnerId,
-      status: "COMPLETED",
-      totalAmount: { gt: 0 },
-      orderSettlement: null,
-      deletedAt: null,
-    },
+    where: unsettledOrderWhere({ [slot]: partnerId }),
     _sum: { totalAmount: true },
   });
   return result._sum.totalAmount ?? new D(0);

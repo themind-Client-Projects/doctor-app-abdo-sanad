@@ -2,7 +2,8 @@
 
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { formatNumber } from "@/lib/format";
-import { BarChart3, TrendingUp, Users, Star, Building2, FlaskConical, Pill, Stethoscope, HeartPulse } from "lucide-react";
+import Link from "next/link";
+import { BarChart3, TrendingUp, Users, Star, Building2, FlaskConical, Pill, Scale, Stethoscope, HeartPulse } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────
 // Section 9: التقارير (req L255-264) — 9 report types
@@ -16,6 +17,14 @@ interface ReportsData {
   topDoctors: { name: string; rating: number; totalTasks: number }[];
   topLabs: { name: string; rating: number; totalTasks: number }[];
   topPharmacies: { name: string; rating: number; totalTasks: number }[];
+  settlements: {
+    settledCount: number;
+    settledAmount: number;
+    reversedCount: number;
+    reversedAmount: number;
+    pendingCount: number;
+    pendingAmount: number;
+  };
 }
 
 export default function ReportsPage() {
@@ -67,6 +76,52 @@ export default function ReportsPage() {
             <span className="text-2xl font-bold text-foreground">{isLoading ? "..." : r.value}</span>
           </div>
         ))}
+      </div>
+
+      {/* التسويات — the report had no settlement figures at all, so "الأرباح"
+          sat beside no indication of whether any of it had actually been paid
+          out. Links through to the screen that can retry a stuck one. */}
+      <div className="rounded-xl border border-border bg-card p-5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <Scale size={16} /> التسويات
+          </h3>
+          <Link
+            href="/admin/settlements"
+            className="text-xs font-semibold text-[hsl(var(--primary))] hover:underline"
+          >
+            إدارة التسويات ←
+          </Link>
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div>
+            <p className="text-xs text-muted-foreground">وُزّع هذا الشهر</p>
+            <p className="mt-1 text-xl font-bold tabular-nums text-foreground">
+              {data ? `${formatNumber(data.settlements.settledAmount)} د.ع` : "—"}
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {data ? `${formatNumber(data.settlements.settledCount)} تسوية` : ""}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">بانتظار التسوية</p>
+            <p className="mt-1 text-xl font-bold tabular-nums text-foreground">
+              {data ? `${formatNumber(data.settlements.pendingAmount)} د.ع` : "—"}
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {data ? `${formatNumber(data.settlements.pendingCount)} طلب منجز لم يُوزّع` : ""}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">عُكس هذا الشهر</p>
+            <p className="mt-1 text-xl font-bold tabular-nums text-foreground">
+              {data ? `${formatNumber(data.settlements.reversedAmount)} د.ع` : "—"}
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {data ? `${formatNumber(data.settlements.reversedCount)} تسوية مُعكوسة` : ""}
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Top partner lists (L259-261) */}

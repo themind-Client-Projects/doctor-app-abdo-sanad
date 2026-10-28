@@ -4,6 +4,7 @@ import { ROLES, isPlatformRole, withAuth } from "@/lib/api-auth";
 import { ok } from "@/lib/api-response";
 import { startOfBaghdadDay, startOfBaghdadMonth } from "@/lib/time";
 import { orderScopeFor } from "@/lib/order-slots";
+import { unsettledOrderWhere } from "@/server/services/commission";
 
 const D = Prisma.Decimal;
 
@@ -61,12 +62,7 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) 
     }),
     // Delivered, priced, and not yet settled — the honest meaning of "owed".
     prisma.order.aggregate({
-      where: {
-        ...orderScopeFor(identity),
-        status: "COMPLETED",
-        totalAmount: { gt: 0 },
-        orderSettlement: null,
-      },
+      where: unsettledOrderWhere(orderScopeFor(identity)),
       _sum: { totalAmount: true },
     }),
   ]);

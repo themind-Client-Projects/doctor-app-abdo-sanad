@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   Percent,
   Receipt,
+  Scale,
   Settings,
   ToggleLeft,
   Droplet,
@@ -84,6 +85,9 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     title: "الإدارة المالية",
     items: [
       { label: "المحافظ المالية", href: "/admin/wallets", icon: Wallet, ready: true },
+      // What the commission engine moved, and what it has not moved yet. The
+      // engine's RULES live under «العمولات والنسب»; this is the money.
+      { label: "التسويات", href: "/admin/settlements", icon: Scale, ready: true },
       { label: "سجل التحويلات", href: "/admin/transfers", icon: ArrowLeftRight, ready: true },
       { label: "الفواتير والمدفوعات", href: "/admin/invoices", icon: Receipt, ready: true },
     ],

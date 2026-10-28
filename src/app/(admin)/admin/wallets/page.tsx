@@ -43,6 +43,8 @@ type Summary = {
   openDebtCount: number;
   dues: number;
   duesOrders: number;
+  overdrafts: number;
+  overdraftCount: number;
 };
 
 const EMPTY_FILTERS = { q: "", type: "" };
@@ -141,13 +143,35 @@ export default function WalletsPage() {
           value={summary ? formatCurrency(summary.openDebts) : "—"}
           hint={summary ? `${formatNumber(summary.openDebtCount)} دين` : undefined}
         />
+        {/* This was the only figure anywhere for unsettled money, and it was
+            a dead number — nothing could be done about what it counted. It now
+            leads to the screen that can retry each one. */}
         <StatTile
           icon={Coins}
           label="المستحقات"
           value={summary ? formatCurrency(summary.dues) : "—"}
           hint={summary ? `${formatNumber(summary.duesOrders)} طلب منجز لم يُسوَّ` : undefined}
+          href="/admin/settlements"
         />
       </div>
+
+      {/* An overdrawn wallet is money Warid is owed, and «إجمالي الأرصدة» above
+          nets it against everyone else's credit — so the total understates the
+          platform's liability by exactly this much. Shown only when it exists:
+          a permanent «٠» beside three real figures is noise. */}
+      {summary && summary.overdraftCount > 0 ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
+          <AlertTriangle size={15} aria-hidden />
+          <span className="font-semibold">
+            {formatNumber(summary.overdraftCount)} محفظة برصيد سالب بإجمالي{" "}
+            {formatCurrency(summary.overdrafts)}
+          </span>
+          <span className="text-xs">
+            — سُحبت حصص بعد عكس تسوية كان الشريك قد صرفها. المبلغ مستحق لوريد
+            ومخصوم من «إجمالي الأرصدة» أعلاه، ولم يُسجَّل كدين.
+          </span>
+        </div>
+      ) : null}
 
       <ServerFilterBar
         idPrefix="wl"
