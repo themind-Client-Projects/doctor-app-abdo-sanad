@@ -1,4 +1,4 @@
-import type { Prisma, UserRole } from "@prisma/client";
+import { Prisma, type UserRole } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { AuthError, ROLES, withAuth } from "@/lib/api-auth";
@@ -53,12 +53,68 @@ export const GET = withAuth<Ctx>(
       throw new AuthError(403, "ليس لديك صلاحية للوصول إلى هذا الملف");
     }
 
-    const data = await prisma.patientMedicalRecord.findUnique({ where: { patientId } });
-    if (!data) {
+    // «يعرض» — the requirement (L409-419) says this file DISPLAYS eight things,
+    // and four of them are records the platform already holds. آخر التحاليل،
+    // آخر الأشعة and الوصفات السابقة are therefore DERIVED here rather than
+    // read from their stored columns: "latest" has to mean the actual latest,
+    // and a hand-typed copy is stale the moment the next result lands. The
+    // columns stay for back-compatibility; nothing writes them any more.
+    const [record, prescriptions, labs, radiology] = await Promise.all([
+      prisma.patientMedicalRecord.findUnique({ where: { patientId } }),
+      prisma.prescription.findMany({
+        where: { patientId },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        select: { id: true, medications: true, notes: true, status: true, createdAt: true },
+      }),
+      prisma.labSample.findMany({
+        where: { order: { is: { patientId } }, results: { not: Prisma.DbNull } },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        select: { id: true, results: true, status: true, createdAt: true },
+      }),
+      prisma.radiologyRequest.findMany({
+        where: { order: { is: { patientId } } },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        select: { id: true, status: true, createdAt: true },
+      }),
+    ]);
+
+    // A patient with no stored file but real results still has a file worth
+    // showing — 404 here is what left the operations screen on its empty state
+    // for every patient. It is only absent when there is genuinely nothing.
+    const hasAnything =
+      record !== null || prescriptions.length > 0 || labs.length > 0 || radiology.length > 0;
+    if (!hasAnything) {
       return fail(ErrorCode.NOT_FOUND, 404, "الملف غير موجود", { requestId });
     }
 
-    return ok(data, { requestId });
+    // الطبيب المعالج as a NAME. The column holds a `DoctorProfile.id`, and the
+    // reader printed it raw — a cuid under an Arabic label.
+    const treatingDoctor = record?.treatingDoctorId
+      ? await prisma.doctorProfile.findUnique({
+          where: { id: record.treatingDoctorId },
+          select: { id: true, user: { select: { name: true } } },
+        })
+      : null;
+
+    return ok(
+      {
+        patientId,
+        medicalHistory: record?.medicalHistory ?? null,
+        chronicDiseases: record?.chronicDiseases ?? [],
+        allergies: record?.allergies ?? [],
+        currentMedications: record?.currentMedications ?? [],
+        latestLabResults: labs,
+        latestRadiology: radiology,
+        previousPrescriptions: prescriptions,
+        treatingDoctorId: record?.treatingDoctorId ?? null,
+        treatingDoctorName: treatingDoctor?.user.name ?? null,
+        updatedAt: record?.updatedAt ?? null,
+      },
+      { requestId }
+    );
   }
 );
 

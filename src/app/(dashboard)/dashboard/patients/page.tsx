@@ -1,9 +1,10 @@
 "use client";
 
-import { Suspense, useMemo } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Users } from "lucide-react";
+import { HeartPulse, Users } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
+import { MedicalRecordDrawer } from "@/components/features/clinical/medical-record-drawer";
 import { useRole } from "@/hooks/use-role";
 import { DataTable, type Column } from "@/components/data/data-table";
 import { PageHeader, Pill } from "@/components/data/crud-kit";
@@ -75,6 +76,13 @@ function PatientsTable() {
   // and its filter option appear a moment after the table does.
   const hasAppointments =
     isRoleLoading || role === "DOCTOR" || role === "SUPER_ADMIN" || role === "OPERATIONS";
+
+  // الملف الطبي المختصر — offered only to the roles PUT actually accepts
+  // (RECORD_WRITE_ROLES in the endpoint). A LAB or PHARMACY opening it would
+  // get a 403, and the endpoint's own comment explains why they are excluded:
+  // a dispensing pharmacy must not be able to rewrite a patient's allergies.
+  const canEditRecord = role === "DOCTOR" || role === "NURSE" || role === "SUPER_ADMIN";
+  const [recordFor, setRecordFor] = useState<Patient | null>(null);
 
   const columns: Column<Patient>[] = useMemo(
     () => [
@@ -180,6 +188,26 @@ function PatientsTable() {
           },
         ]}
         emptyMessage="لا مرضى بعد"
+        actions={
+          canEditRecord
+            ? (r) => (
+                <button
+                  type="button"
+                  onClick={() => setRecordFor(r)}
+                  className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+                >
+                  <HeartPulse size={12} aria-hidden />
+                  الملف الطبي
+                </button>
+              )
+            : undefined
+        }
+      />
+
+      <MedicalRecordDrawer
+        patientId={recordFor?.id ?? null}
+        patientName={recordFor?.name ?? "المريض"}
+        onClose={() => setRecordFor(null)}
       />
     </div>
   );

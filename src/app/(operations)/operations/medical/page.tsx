@@ -34,6 +34,9 @@ import { SERVICE_TYPE_LABELS, labelOf } from "@/lib/labels";
 //
 // Read-only by design: writing a patient's allergies is restricted to
 // SUPER_ADMIN, DOCTOR and NURSE, so an edit control here would only ever 403.
+// Those roles write it from «مرضاي» (/dashboard/patients → الملف الطبي), which
+// is where the file finally got a writer — until then nothing in the product
+// called PUT, so this screen sat on its empty state for every patient.
 // ─────────────────────────────────────────────────────────────
 
 type PatientRef = {
@@ -54,6 +57,7 @@ type MedicalRecord = {
   latestRadiology: unknown;
   previousPrescriptions: unknown;
   treatingDoctorId: string | null;
+  treatingDoctorName: string | null;
 };
 
 /**
@@ -139,7 +143,14 @@ export default function MedicalPage() {
         value: renderJson(record?.previousPrescriptions),
         Icon: PillIcon,
       },
-      { label: "الطبيب المعالج", value: record?.treatingDoctorId ?? "", Icon: Stethoscope },
+      {
+        label: "الطبيب المعالج",
+        // The NAME. This printed `treatingDoctorId` — a raw cuid under an
+        // Arabic label — because the column holds a DoctorProfile id and
+        // nothing resolved it. The endpoint now returns the name beside it.
+        value: record?.treatingDoctorName ?? "",
+        Icon: Stethoscope,
+      },
     ],
     [record]
   );
