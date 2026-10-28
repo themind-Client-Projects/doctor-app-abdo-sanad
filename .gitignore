@@ -44,4 +44,4 @@ token.md
 
 # Seeded test logins. Real credentials — this repo is pushed to a client
 # organisation, so they must never be committed.
-SEED_LOGINS.local.md
+SEED_LOGINS.local.*
