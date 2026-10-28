@@ -211,11 +211,46 @@ export const GET = withAuth({ roles: ROLES.STAFF }, async (req, _ctx, identity) 
         }),
       ]);
 
+      // إحالات واردة — work a COMPLEX pharmacy really holds.
+      //
+      // Inside a complex a pharmacy is sent «وصفة طبية» as a ComplexReferral,
+      // which is deliberately its own document — own number, own 30-day
+      // validity, own clinical content — and never becomes a Prescription row.
+      // All three KPIs above count `Prescription` by `pharmacyId`, so such a
+      // pharmacy read zero on its home screen while its referrals list was
+      // full. Counted as ITSELF rather than folded into «الوصفات الجديدة»:
+      // they are two different documents and summing them would make both
+      // numbers unanswerable.
+      //
+      // The card appears only when there is something to show, so a pharmacy
+      // outside any complex is not given a permanent zero.
+      const incomingReferrals = partnerId
+        ? await prisma.complexReferral.count({
+            where: {
+              toPartnerId: partnerId,
+              status: { in: ["sent", "received", "in_progress"] },
+            },
+          })
+        : 0;
+
       kpis = [
         { key: "newPrescriptions", label: "الوصفات الجديدة", value: newPrescriptions, change: calcChange(newPrescriptions, yesterdayPrescriptions), color: "blue", icon: "file-text", href: "/dashboard/prescriptions" },
         { key: "inPreparation", label: "قيد التجهيز", value: inPreparation, change: null, color: "yellow", icon: "loader", href: "/dashboard/prescriptions?status=preparing" },
         { key: "completed", label: "المكتملة", value: completed, change: null, color: "green", icon: "check-circle", href: "/dashboard/prescriptions?status=delivered" },
         { key: "pharmEarnings", label: "الأرباح", value: decimalToNumber(pharmEarnings._sum.amount), change: null, color: "purple", icon: "wallet", href: "/dashboard/finance", isCurrency: true },
+        ...(incomingReferrals > 0
+          ? [
+              {
+                key: "incomingReferrals",
+                label: "إحالات واردة",
+                value: incomingReferrals,
+                change: null,
+                color: "blue" as const,
+                icon: "share-2",
+                href: "/dashboard/referrals",
+              },
+            ]
+          : []),
       ];
       break;
     }

@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { Pill as PillIcon } from "lucide-react";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { useStageMutation } from "@/hooks/use-stage-mutation";
+import { apiFetch, useMutation } from "@/hooks/use-mutation";
 import { DataTable, type Column } from "@/components/data/data-table";
 import { PageHeader } from "@/components/data/crud-kit";
 import {
@@ -84,6 +85,30 @@ export default function PharmacyPage() {
   const refresh = useCallback(() => void refetch(), [refetch]);
   const { setStage: advance, isPending } = useStageMutation("/api/prescriptions", refresh);
 
+  // ROUTING A PRESCRIPTION TO A PHARMACY — the control this screen never had.
+  //
+  // `Prescription.pharmacyId` is the tenant key for the pharmacy's own
+  // prescription list, three of its four KPI cards and its home task table,
+  // and NOTHING in the product ever wrote it: the doctor's dialog omits it on
+  // purpose (`/api/partners` is operations-only, and a partner directory on a
+  // doctor's screen would widen who can enumerate the platform), and
+  // `POST /api/orders/[id]/assign` never touches Prescription. So every
+  // pharmacy's inbound queue was empty by construction.
+  //
+  // The capability already existed and is already role-gated — PATCH
+  // /api/prescriptions/[id] accepts `pharmacyId` only from the prescribing
+  // doctor or a platform role (prescriptions/[id]/route.ts:119, :170), so a
+  // pharmacy cannot reassign its own work. It was, exactly as the audit put
+  // it, a missing dropdown.
+  const { mutate: route, isPending: routing } = useMutation(
+    async (id: string, pharmacyId: string) =>
+      apiFetch(`/api/prescriptions/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ pharmacyId }),
+      }),
+    { successMessage: "تم إسناد الوصفة إلى الصيدلية", onSuccess: refresh }
+  );
+
   const rows = useMemo(
     () => (stage ? (data ?? []).filter((p) => p.status === stage) : (data ?? [])),
     [data, stage]
@@ -125,13 +150,33 @@ export default function PharmacyPage() {
         key: "pharmacy",
         header: "الصيدلية",
         secondary: true,
-        render: (r) => (
-          <span className="text-xs text-muted-foreground">
-            {r.pharmacyId
-              ? (pharmacyNames.get(r.pharmacyId) ?? r.pharmacyId.slice(-8))
-              : "لم تُسند لصيدلية"}
-          </span>
-        ),
+        render: (r) =>
+          r.pharmacyId ? (
+            <span className="text-xs text-muted-foreground">
+              {pharmacyNames.get(r.pharmacyId) ?? r.pharmacyId.slice(-8)}
+            </span>
+          ) : (
+            // «لم تُسند لصيدلية» was the whole of it — a statement with no way
+            // to act on it, on the one screen whose job is dispatch.
+            <select
+              aria-label={`إسناد الوصفة ${r.id.slice(-8)} إلى صيدلية`}
+              className="h-8 max-w-[11rem] rounded-lg border border-input bg-background px-2 text-xs text-foreground outline-none focus:border-primary/40"
+              value=""
+              disabled={routing || (pharmacies ?? []).length === 0}
+              onChange={(e) => {
+                if (e.target.value) void route(r.id, e.target.value);
+              }}
+            >
+              <option value="">
+                {(pharmacies ?? []).length === 0 ? "لا صيدليات متاحة" : "لم تُسند — اختر صيدلية"}
+              </option>
+              {(pharmacies ?? []).map((ph) => (
+                <option key={ph.id} value={ph.id}>
+                  {ph.name}
+                </option>
+              ))}
+            </select>
+          ),
         sortValue: (r) => (r.pharmacyId ? (pharmacyNames.get(r.pharmacyId) ?? "") : ""),
       },
       {
@@ -158,7 +203,10 @@ export default function PharmacyPage() {
         sortValue: (r) => new Date(r.createdAt).getTime(),
       },
     ],
-    [pharmacyNames]
+    // The الصيدلية cell is now an interactive picker, so it depends on the
+    // options, the mutation and its pending flag — without them the select
+    // could stay disabled after a save finished, or render an empty list.
+    [pharmacyNames, pharmacies, route, routing]
   );
 
   return (
